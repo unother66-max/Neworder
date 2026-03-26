@@ -44,7 +44,7 @@ function buildRssUrl(blogId: string) {
 
 function decodeXmlText(text: string) {
   return text
-    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, "$1")
+    .replace(/<!\[CDATA\[(.*?)\]\]>/g, "$1")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
