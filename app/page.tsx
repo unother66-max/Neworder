@@ -35,7 +35,7 @@ function getRankTextColor(rank: string) {
   return "text-gray-500";
 }
 
-export default function Home() {
+export default function page() {
   const [blogUrl, setBlogUrl] = useState("");
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
