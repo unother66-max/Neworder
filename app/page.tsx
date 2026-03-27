@@ -180,9 +180,7 @@ export default function Home() {
               />
             </Link>
 
-            <p className="mt-4 text-sm leading-6 text-gray-500">
-              네이버 블로그 상위노출 분석 도구
-            </p>
+        
           </div>
 
           <nav className="px-4 py-6 text-sm">
@@ -197,9 +195,11 @@ export default function Home() {
                 <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
                   블로그 분석 기록
                 </li>
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  체험단용 메모
-                </li>
+               <li>
+  <Link href="/place" className="block rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
+    플레이스 순위 추적
+  </Link>
+</li>
               </ul>
             </div>
 
