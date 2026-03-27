@@ -31,11 +31,15 @@ function getMobilePlaceLink(link?: string) {
 
   try {
     const url = new URL(link);
+
     if (url.hostname.includes("m.place.naver.com")) {
       return url.toString();
     }
 
-    if (url.hostname.includes("map.naver.com") || url.hostname.includes("place.naver.com")) {
+    if (
+      url.hostname.includes("map.naver.com") ||
+      url.hostname.includes("place.naver.com")
+    ) {
       return url.toString().replace("place.naver.com", "m.place.naver.com");
     }
 
@@ -50,6 +54,7 @@ function getPcPlaceLink(link?: string) {
 
   try {
     const url = new URL(link);
+
     if (url.hostname.includes("m.place.naver.com")) {
       return url.toString().replace("m.place.naver.com", "place.naver.com");
     }
@@ -102,7 +107,9 @@ export default function PlacePage() {
   const [placeSearchError, setPlaceSearchError] = useState("");
 
   const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
-  const [selectedStoreIndex, setSelectedStoreIndex] = useState<number | null>(null);
+  const [selectedStoreIndex, setSelectedStoreIndex] = useState<number | null>(
+    null
+  );
   const [keywordInput, setKeywordInput] = useState("");
   const [tempKeywords, setTempKeywords] = useState<string[]>([]);
 
@@ -196,8 +203,7 @@ export default function PlacePage() {
     const targetStore = filteredStores[storeIndex];
     const realIndex = stores.findIndex(
       (item) =>
-        item.name === targetStore.name &&
-        item.address === targetStore.address
+        item.name === targetStore.name && item.address === targetStore.address
     );
 
     if (realIndex === -1) return;
@@ -258,414 +264,460 @@ export default function PlacePage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f5f7fb] text-black">
-      <div className="flex min-h-screen">
-        <div className="fixed left-0 right-0 top-0 z-30 border-b border-gray-200 bg-white px-5 py-4 xl:hidden">
-          <Link href="/" className="flex items-center gap-3">
-            <img
-              src="/logo.png"
-              alt="logo"
-              className="h-10 w-auto object-contain"
-            />
-          </Link>
-        </div>
-
-        <aside className="hidden w-[260px] border-r border-gray-200 bg-white xl:block">
-          <div className="border-b border-gray-100 px-7 py-7">
-            <Link href="/" className="block">
+    <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
+      <header className="border-b border-[#e8ebf2] bg-white">
+        <div className="mx-auto flex max-w-[1280px] items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-8">
+            <Link href="/" className="shrink-0">
               <img
                 src="/logo.png"
                 alt="logo"
-                className="h-12 w-auto object-contain"
+                className="h-11 w-auto object-contain"
               />
             </Link>
 
-            <p className="mt-4 text-sm leading-6 text-gray-500">
-              네이버 블로그 상위노출 분석 도구
+            <nav className="hidden items-center gap-7 lg:flex">
+              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
+                스마트스토어
+              </Link>
+              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
+                상위블로그찾기
+              </Link>
+              <Link
+                href="/place"
+                className="text-[14px] font-extrabold text-[#7c3aed]"
+              >
+                플레이스 순위 추적
+              </Link>
+              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
+                키워드 실험실
+              </Link>
+              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
+                경쟁 블로그 참고
+              </Link>
+              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
+                서비스 소개
+              </Link>
+              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
+                공지사항
+              </Link>
+            </nav>
+          </div>
+
+          <div className="hidden items-center gap-5 lg:flex">
+            <div className="text-[13px] font-semibold text-[#4b5563]">
+              전체 1 / 사용 1 / <span className="text-[#7c3aed]">잔여 0</span>
+            </div>
+            <div className="text-[22px]">👤</div>
+          </div>
+        </div>
+      </header>
+
+      <div className="border-b border-[#e8ebf2] bg-white/80">
+        <div className="mx-auto max-w-[1280px] px-6 py-3 text-[13px] text-[#6b7280]">
+          홈 &gt; 네이버지도 &gt;{" "}
+          <span className="font-semibold text-[#111827]">플레이스 순위 추적</span>
+        </div>
+      </div>
+
+      <section className="mx-auto max-w-[1280px] px-6 py-8">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-[28px] font-black tracking-[-0.02em] text-[#111827]">
+                매장 순위 추적
+              </h1>
+              <span className="text-[18px] text-[#9ca3af]">ⓘ</span>
+            </div>
+
+            <p className="mt-3 text-[14px] leading-7 text-[#6b7280]">
+              스마트플레이스 순위 추적은 네이버 지도에 등록된 가게의 노출 순위를
+              확인하실 수 있습니다.
             </p>
           </div>
 
-          <nav className="px-4 py-6 text-sm">
-            <div className="mb-7">
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-                Blog
-              </p>
-              <ul className="space-y-1.5">
-                <li>
-                  <Link
-                    href="/"
-                    className="block rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50"
-                  >
-                    상위 노출 블로그 찾기
-                  </Link>
-                </li>
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  블로그 분석 기록
-                </li>
-                <li>
-                  <Link
-                    href="/place"
-                    className="block rounded-2xl bg-green-50 px-4 py-3 font-semibold text-green-700"
-                  >
-                    플레이스 순위 추적
-                  </Link>
-                </li>
-              </ul>
+          <button
+            onClick={openRegisterModal}
+            className="h-[46px] min-w-[118px] rounded-[14px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[15px] font-bold text-white shadow-[0_10px_20px_rgba(139,44,245,0.18)] transition hover:opacity-95"
+          >
+            매장 등록
+          </button>
+        </div>
+
+        <div className="mt-8 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <h2 className="text-[22px] font-black tracking-[-0.02em] text-[#111827]">
+                등록된 매장
+              </h2>
+
+              <button className="rounded-[12px] bg-[#eef1f5] px-4 py-2.5 text-[14px] font-semibold text-[#374151]">
+                매장 관리
+              </button>
             </div>
-          </nav>
-        </aside>
 
-        <section className="flex-1">
-          <div className="mx-auto max-w-7xl px-6 py-8 pt-24 xl:pt-8">
-            <div className="mb-8 rounded-[32px] bg-white p-8 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
-              <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <h1 className="text-4xl font-black tracking-tight text-black">
-                    매장 순위 추적
-                  </h1>
-                  <p className="mt-3 text-base leading-7 text-gray-600">
-                    스마트플레이스 순위 추적은 네이버 지도에 등록된 가게의 노출
-                    순위를 확인할 수 있습니다.
-                  </p>
-                </div>
+            <p className="mt-5 text-[13px] text-[#6b7280]">📍 기준 순위 조회중</p>
+          </div>
 
-                <button
-                  onClick={openRegisterModal}
-                  className="rounded-2xl bg-purple-600 px-6 py-4 font-semibold text-white shadow-md transition hover:scale-[1.02] hover:bg-purple-700"
-                >
-                  매장 등록
-                </button>
+          <div className="w-full xl:w-[420px]">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="등록된 플레이스 검색"
+                className="h-[46px] w-full rounded-[14px] border border-[#d9dee7] bg-white px-4 pr-12 text-[14px] text-[#111827] outline-none placeholder:text-[#b7bec8] focus:border-[#8b2cf5]"
+              />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[18px] text-[#111827]">
+                🔍
               </div>
             </div>
 
-            <div className="mb-8 rounded-[32px] bg-white p-8 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold tracking-tight text-black">
-                    등록된 매장
-                  </h2>
-                  <button className="rounded-2xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700">
-                    매장 관리
-                  </button>
-                </div>
-
-                <div className="w-full md:w-[420px]">
-                  <input
-                    type="text"
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    placeholder="등록된 플레이스 검색"
-                    className="w-full rounded-2xl border border-gray-300 bg-white px-5 py-4 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
-                  />
-                </div>
-              </div>
-
-              <p className="mt-4 text-sm text-gray-500">
-                기준 순위 조회중 · IP, 설정한 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              {filteredStores.map((store, index) => (
-                <div
-                  key={index}
-                  className="rounded-[32px] bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100"
-                >
-                  <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex gap-4">
-                      <div className="h-20 w-20 rounded-2xl bg-gray-100" />
-                      <div>
-                        <h3 className="text-2xl font-bold tracking-tight text-black">
-                          {store.name}
-                        </h3>
-                        <p className="mt-1 text-sm text-gray-600">
-                          {store.category} | {store.address}
-                        </p>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                          <span>매장 바로가기</span>
-
-                          {store.placeLink ? (
-                            <>
-                              <a
-                                href={getMobilePlaceLink(store.placeLink)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-medium text-black underline"
-                              >
-                                모바일웹
-                              </a>
-                              <a
-                                href={getPcPlaceLink(store.placeLink)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-medium text-black underline"
-                              >
-                                PC웹
-                              </a>
-                            </>
-                          ) : (
-                            <span>링크 없음</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">
-                        순위 변화 보기
-                      </button>
-                      <button className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">
-                        자동 추적 OFF
-                      </button>
-                      <button
-                        onClick={() => openKeywordModal(index)}
-                        className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-semibold text-white"
-                      >
-                        키워드 관리
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="overflow-hidden rounded-3xl border border-gray-200">
-                    <table className="min-w-full border-collapse">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="border-b border-gray-200 px-5 py-4 text-left text-sm font-semibold text-gray-700">
-                            키워드
-                          </th>
-                          <th className="border-b border-gray-200 px-5 py-4 text-left text-sm font-semibold text-gray-700">
-                            월 검색량
-                          </th>
-                          <th className="border-b border-gray-200 px-5 py-4 text-left text-sm font-semibold text-gray-700">
-                            모바일
-                          </th>
-                          <th className="border-b border-gray-200 px-5 py-4 text-left text-sm font-semibold text-gray-700">
-                            PC
-                          </th>
-                          <th className="border-b border-gray-200 px-5 py-4 text-left text-sm font-semibold text-gray-700">
-                            검색 순위
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {store.keywords.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={5}
-                              className="px-5 py-16 text-center text-base text-gray-500"
-                            >
-                              지금 키워드를 등록하고, 내 매장의 키워드 별 순위를 확인해보세요.
-                              <br />
-                              <span className="font-semibold text-gray-700">
-                                [키워드 관리]
-                              </span>
-                              버튼을 눌러 시작할 수 있어요.
-                            </td>
-                          </tr>
-                        ) : (
-                          store.keywords.map((item, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="border-b border-gray-200 px-5 py-4 text-sm font-medium text-black">
-                                {item.keyword}
-                              </td>
-                              <td className="border-b border-gray-200 px-5 py-4 text-sm text-black">
-                                {item.monthly}
-                              </td>
-                              <td className="border-b border-gray-200 px-5 py-4 text-sm text-gray-600">
-                                {item.mobile}
-                              </td>
-                              <td className="border-b border-gray-200 px-5 py-4 text-sm text-gray-600">
-                                {item.pc}
-                              </td>
-                              <td className="border-b border-gray-200 px-5 py-4 text-sm font-semibold text-black">
-                                {item.rank}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
+            <div className="mt-3 text-right text-[12px] text-[#6b7280]">
+              ⓘ IP, 설정한 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* 매장 등록 모달 */}
-        {isRegisterModalOpen && (
-          <div
-            className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px]"
-            onClick={closeRegisterModal}
-          >
-            <div className="flex min-h-screen items-center justify-center p-4">
-              <div
-                className="w-full max-w-5xl rounded-[36px] bg-white p-8 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="mb-8 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-5xl font-black tracking-tight text-black">
-                      매장등록
-                    </h2>
-                    <p className="mt-3 text-base text-gray-500">
-                      네이버 검색 기준으로 매장 이름을 검색하고 등록하세요.
-                    </p>
+        <div className="mt-7 space-y-5">
+          {filteredStores.map((store, index) => (
+            <div
+              key={`${store.name}-${store.address}`}
+              className="rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]"
+            >
+              <div className="mb-6 flex flex-col gap-5 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                <div className="flex gap-4">
+                  <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[12px] text-[#9ca3af]">
+                    이미지
                   </div>
 
-                  <button
-                    onClick={closeRegisterModal}
-                    className="rounded-3xl bg-gray-100 px-7 py-5 text-2xl font-bold text-gray-800"
-                  >
-                    취소
-                  </button>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h3 className="text-[17px] font-black tracking-[-0.01em] text-[#111827]">
+                        {store.name}
+                      </h3>
+                      <span className="text-[14px] text-[#6b7280]">
+                        {store.category}
+                      </span>
+                      <span className="text-[14px] text-[#c6cad3]">|</span>
+                      <span className="text-[14px] text-[#374151]">
+                        {store.address}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-5 text-[13px] text-[#6b7280]">
+                      <span>
+                        검색량{" "}
+                        <strong className="text-[13px] font-bold text-[#111827]">
+                          1,490
+                        </strong>
+                      </span>
+                      <span>📱 1,380</span>
+                      <span>🖥 110</span>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
+                      <span className="text-[#6b7280]">매장 바로가기</span>
+
+                      {store.placeLink ? (
+                        <>
+                          <a
+                            href={getMobilePlaceLink(store.placeLink)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-[#111827] underline underline-offset-2"
+                          >
+                            모바일
+                          </a>
+                          <a
+                            href={getPcPlaceLink(store.placeLink)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-[#111827] underline underline-offset-2"
+                          >
+                            PC
+                          </a>
+                        </>
+                      ) : (
+                        <span className="text-[#b7bec8]">링크 없음</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex overflow-hidden rounded-[28px] border-2 border-purple-600 bg-white">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="px-1 text-[18px] text-[#374151]">📌</div>
+
+                  <button className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]">
+                    순위 변화 보기
+                  </button>
+
+                  <button className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]">
+                    자동 추적 <span className="text-[#ff6b6b]">OFF</span>
+                  </button>
+
+                  <button
+                    onClick={() => openKeywordModal(index)}
+                    className="rounded-[10px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-95"
+                  >
+                    키워드 관리
+                  </button>
+
+                  <button className="px-1 text-[20px] text-[#4b5563]">⋮</button>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-[16px] border border-[#e5e9f0]">
+                <table className="min-w-full border-collapse">
+                  <thead className="bg-[#f4f6f9]">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
+                        키워드
+                      </th>
+                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
+                        월 검색량
+                      </th>
+                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
+                        📱 모바일
+                      </th>
+                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
+                        🖥 PC
+                      </th>
+                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
+                        검색 순위
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {store.keywords.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="px-6 py-14 text-center text-[13px] leading-7 text-[#6b7280]"
+                        >
+                          지금 키워드를 등록하고, 내 매장의 키워드 별 순위를
+                          확인해보세요.
+                          <br />
+                          <span className="font-bold text-[#4b5563]">
+                            [키워드 관리]
+                          </span>
+                          버튼을 눌러 시작할 수 있어요.
+                        </td>
+                      </tr>
+                    ) : (
+                      store.keywords.map((item, i) => (
+                        <tr key={i} className="border-t border-[#e5e7eb]">
+                          <td className="px-6 py-3 text-[13px] font-medium text-[#111827]">
+                            {item.keyword}
+                          </td>
+                          <td className="px-6 py-3 text-[13px] text-[#111827]">
+                            {item.monthly}
+                          </td>
+                          <td className="px-6 py-3 text-[13px] text-[#6b7280]">
+                            {item.mobile}
+                          </td>
+                          <td className="px-6 py-3 text-[13px] text-[#6b7280]">
+                            {item.pc}
+                          </td>
+                          <td className="px-6 py-3 text-[13px] font-bold text-[#111827]">
+                            {item.rank}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {isRegisterModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]"
+          onClick={closeRegisterModal}
+        >
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div
+              className="w-full max-w-[860px] rounded-[18px] bg-[#f7f7f8] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-[#e5e7eb] px-6 py-5">
+                <h2 className="text-[24px] font-black tracking-[-0.02em] text-black">
+                  매장등록
+                </h2>
+              </div>
+
+              <div className="px-6 py-8 md:px-8">
+                <div className="flex overflow-hidden rounded-[16px] border-2 border-[#6d28ff] bg-white">
                   <input
                     type="text"
                     value={placeQuery}
                     onChange={(e) => setPlaceQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handlePlaceSearch();
+                    }}
                     placeholder="매장 이름을 검색하세요"
-                    className="flex-1 bg-white px-8 py-7 text-2xl text-black outline-none placeholder:text-gray-400"
+                    className="h-[56px] flex-1 bg-white px-5 text-[15px] text-[#111827] outline-none placeholder:text-[#a8afbb]"
                   />
 
                   <button
                     onClick={handlePlaceSearch}
-                    className="bg-purple-600 px-10 text-3xl font-bold text-white"
+                    className="min-w-[110px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[15px] font-bold text-white"
                   >
                     {placeSearchLoading ? "검색중" : "검색"}
                   </button>
                 </div>
 
                 {placeSearchError && (
-                  <p className="mt-4 text-lg font-medium text-red-600">
+                  <p className="mt-4 text-[13px] font-medium text-red-600">
                     {placeSearchError}
                   </p>
                 )}
 
-                <div className="mt-8 max-h-[420px] space-y-4 overflow-y-auto pr-1">
-                  {placeResults.map((item, index) => (
-                    <button
-                      key={`${item.title}-${index}`}
-                      onClick={() => handleRegisterPlace(item)}
-                      className="block w-full rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:border-purple-400 hover:shadow-md"
-                    >
-                      <div className="text-2xl font-bold text-black">
-                        {item.title}
-                      </div>
-                      <div className="mt-2 text-base text-gray-600">
-                        {item.category}
-                      </div>
-                      <div className="mt-2 text-base text-gray-500">
-                        {item.address}
-                      </div>
-                    </button>
-                  ))}
+                <div className="mt-5 min-h-[220px]">
+                  {placeResults.length > 0 && (
+                    <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb] bg-white">
+                      {placeResults.map((item, index) => (
+                        <button
+                          key={`${item.title}-${index}`}
+                          onClick={() => handleRegisterPlace(item)}
+                          className="block w-full border-b border-[#e5e7eb] px-5 py-5 text-left transition last:border-b-0 hover:bg-[#fafafa]"
+                        >
+                          <div className="flex flex-wrap items-baseline gap-2">
+                            <span className="text-[16px] font-bold text-[#4f46e5]">
+                              {item.title}
+                            </span>
+                            <span className="text-[13px] font-medium text-[#111827]">
+                              {item.category.split(">").pop()?.trim() ||
+                                item.category}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 text-[13px] text-[#9ca3af]">
+                            {item.address}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {!placeSearchLoading &&
                     placeQuery.trim() &&
                     !placeSearchError &&
                     placeResults.length === 0 && (
-                      <div className="rounded-3xl border border-dashed border-gray-300 px-6 py-10 text-center text-lg text-gray-400">
+                      <div className="mt-6 rounded-[14px] border border-dashed border-[#d1d5db] px-6 py-10 text-center text-[13px] text-[#9ca3af]">
                         검색 결과가 없습니다.
                       </div>
                     )}
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* 키워드 관리 모달 */}
-        {isKeywordModalOpen && (
-          <div
-            className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px]"
-            onClick={closeKeywordModal}
-          >
-            <div className="flex min-h-screen items-center justify-center p-4">
-              <div
-                className="w-full max-w-3xl rounded-[36px] bg-white p-8 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="mb-8 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-4xl font-black tracking-tight text-black">
-                      키워드 관리
-                    </h2>
-                    <p className="mt-3 text-base text-gray-500">
-                      추적할 키워드를 추가하고 저장하세요.
-                    </p>
-                  </div>
-
+                <div className="mt-8 flex justify-end">
                   <button
-                    onClick={closeKeywordModal}
-                    className="rounded-3xl bg-gray-100 px-6 py-4 text-xl font-bold text-gray-800"
-                  >
-                    닫기
-                  </button>
-                </div>
-
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    value={keywordInput}
-                    onChange={(e) => setKeywordInput(e.target.value)}
-                    placeholder="예: 연남동 피자"
-                    className="flex-1 rounded-2xl border border-gray-300 bg-white px-5 py-4 text-black outline-none placeholder-gray-400 focus:border-purple-500 focus:ring-4 focus:ring-purple-100"
-                  />
-                  <button
-                    onClick={addTempKeyword}
-                    className="rounded-2xl bg-purple-600 px-5 py-4 font-semibold text-white"
-                  >
-                    추가
-                  </button>
-                </div>
-
-                <div className="mt-6 max-h-[300px] space-y-3 overflow-y-auto pr-1">
-                  {tempKeywords.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-gray-300 px-6 py-10 text-center text-gray-400">
-                      아직 추가된 키워드가 없습니다.
-                    </div>
-                  ) : (
-                    tempKeywords.map((keyword) => (
-                      <div
-                        key={keyword}
-                        className="flex items-center justify-between rounded-2xl border border-gray-200 px-4 py-4"
-                      >
-                        <span className="font-medium text-black">{keyword}</span>
-                        <button
-                          onClick={() => removeTempKeyword(keyword)}
-                          className="rounded-xl bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="mt-8 flex justify-end gap-3">
-                  <button
-                    onClick={closeKeywordModal}
-                    className="rounded-2xl border border-gray-300 bg-white px-5 py-3 font-semibold text-gray-700"
+                    onClick={closeRegisterModal}
+                    className="h-[42px] rounded-[12px] bg-[#efeff3] px-6 text-[14px] font-bold text-[#222]"
                   >
                     취소
                   </button>
-                  <button
-                    onClick={saveKeywords}
-                    className="rounded-2xl bg-purple-600 px-5 py-3 font-semibold text-white"
-                  >
-                    저장하기
-                  </button>
                 </div>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {isKeywordModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]"
+          onClick={closeKeywordModal}
+        >
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div
+              className="w-full max-w-2xl rounded-[20px] bg-white p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="text-[22px] font-black tracking-[-0.02em] text-black">
+                    키워드 관리
+                  </h2>
+                  <p className="mt-1 text-[13px] text-[#6b7280]">
+                    추적할 키워드를 추가하고 저장하세요.
+                  </p>
+                </div>
+
+                <button
+                  onClick={closeKeywordModal}
+                  className="rounded-[10px] bg-[#f1f3f7] px-4 py-2 text-[13px] font-semibold text-[#374151]"
+                >
+                  닫기
+                </button>
+              </div>
+
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={keywordInput}
+                  onChange={(e) => setKeywordInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addTempKeyword();
+                  }}
+                  placeholder="예: 연남동 피자"
+                  className="h-[44px] flex-1 rounded-[12px] border border-[#d1d5db] bg-white px-4 text-[14px] text-black outline-none placeholder:text-[#9ca3af] focus:border-[#8b2cf5] focus:ring-4 focus:ring-[#f0e7ff]"
+                />
+                <button
+                  onClick={addTempKeyword}
+                  className="rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[14px] font-semibold text-white"
+                >
+                  추가
+                </button>
+              </div>
+
+              <div className="mt-5 max-h-[260px] space-y-3 overflow-y-auto pr-1">
+                {tempKeywords.length === 0 ? (
+                  <div className="rounded-[14px] border border-dashed border-[#d1d5db] px-6 py-8 text-center text-[13px] text-[#9ca3af]">
+                    아직 추가된 키워드가 없습니다.
+                  </div>
+                ) : (
+                  tempKeywords.map((keyword) => (
+                    <div
+                      key={keyword}
+                      className="flex items-center justify-between rounded-[14px] border border-[#e5e7eb] px-4 py-3"
+                    >
+                      <span className="text-[14px] font-medium text-black">
+                        {keyword}
+                      </span>
+                      <button
+                        onClick={() => removeTempKeyword(keyword)}
+                        className="rounded-[8px] bg-[#f3f4f6] px-3 py-1.5 text-[12px] font-semibold text-[#374151]"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={closeKeywordModal}
+                  className="rounded-[10px] border border-[#d1d5db] bg-white px-4 py-2 text-[13px] font-semibold text-[#374151]"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={saveKeywords}
+                  className="rounded-[10px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-4 py-2 text-[13px] font-semibold text-white"
+                >
+                  저장하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

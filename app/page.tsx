@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import PageHeader from "@/components/page-header";
+import TopNav from "@/components/top-nav";
 
 type Post = {
   title: string;
@@ -62,6 +63,13 @@ export default function Home() {
       });
 
       const data = await response.json();
+
+      if (!response.ok) {
+        setErrorMessage(data.error || "최근글을 가져오는 중 오류가 났어요.");
+        setPosts([]);
+        return;
+      }
+
       setPosts(data.posts || []);
     } catch (error) {
       console.error(error);
@@ -155,288 +163,186 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f5f7fb] text-gray-900">
-      <div className="flex min-h-screen">
-        {/* 모바일 상단 헤더 */}
-        <div className="fixed left-0 right-0 top-0 z-30 border-b border-gray-200 bg-white px-5 py-4 xl:hidden">
-          <Link href="/" className="flex items-center gap-3">
-            <img
-              src="logo.png"
-              alt="logo"
-              className="h-10 w-auto object-contain"
-            />
-          </Link>
+    <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
+      <TopNav active="blog" />
+
+      <section className="mx-auto max-w-[1280px] px-6 py-8">
+        <PageHeader
+          title="상위 노출 블로그 찾기"
+          description="블로그 상위노출, 감으로 하지 마세요. 지금 상위에 노출되는 포스트를 확인하고, 포스트별 키워드 순위와 검색량을 기준으로 체험단용 블로그를 더 빠르게 고를 수 있습니다."
+        />
+
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]">
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-[12px] bg-[#f0fdf4] text-[14px] font-bold text-green-700">
+              1
+            </div>
+            <h2 className="text-[17px] font-bold text-[#111827]">블로그 등록</h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#6b7280]">
+              블로그 URL을 입력하고 최근 발행 포스트를 자동으로 불러옵니다.
+            </p>
+          </div>
+
+          <div className="rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]">
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-[12px] bg-[#f0fdf4] text-[14px] font-bold text-green-700">
+              2
+            </div>
+            <h2 className="text-[17px] font-bold text-[#111827]">키워드 검색</h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#6b7280]">
+              각 포스트에 핵심 키워드를 넣고 개별 검색으로 노출 여부를 확인하세요.
+            </p>
+          </div>
+
+          <div className="rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]">
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-[12px] bg-[#f0fdf4] text-[14px] font-bold text-green-700">
+              3
+            </div>
+            <h2 className="text-[17px] font-bold text-[#111827]">블로그 선정</h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#6b7280]">
+              순위와 검색량을 보고 체험단 효율이 좋은 포스트를 선별할 수 있습니다.
+            </p>
+          </div>
         </div>
 
-        {/* 좌측 사이드바 */}
-        <aside className="hidden w-[260px] border-r border-gray-200 bg-white xl:block">
-          <div className="border-b border-gray-100 px-7 py-7">
-            <Link href="/" className="block">
-              <img
-                src="logo.png"
-                alt="logo"
-                className="h-40 w-auto object-contain"
-                
-              />
-            </Link>
-
-        
+        <div className="mt-6 rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]">
+          <div className="mb-5">
+            <h2 className="text-[22px] font-black tracking-[-0.02em] text-[#111827]">
+              블로그 URL을 입력하세요
+            </h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#6b7280]">
+              네이버 블로그 URL을 입력하면 최신 포스트 목록을 불러오고, 포스트별 키워드 검색을 바로 진행할 수 있습니다.
+            </p>
           </div>
 
-          <nav className="px-4 py-6 text-sm">
-            <div className="mb-7">
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-                Blog
-              </p>
-              <ul className="space-y-1.5">
-                <li className="rounded-2xl bg-green-50 px-4 py-3 font-semibold text-green-700">
-                  상위 노출 블로그 찾기
-                </li>
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  블로그 분석 기록
-                </li>
-               <li>
-  <Link href="/place" className="block rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-    플레이스 순위 추적
-  </Link>
-</li>
-              </ul>
-            </div>
+          <div className="flex flex-col gap-3 md:flex-row">
+            <input
+              type="text"
+              value={blogUrl}
+              onChange={(e) => setBlogUrl(e.target.value)}
+              placeholder="예: https://blog.naver.com/kikolog"
+              className="h-[46px] flex-1 rounded-[14px] border border-[#d9dee7] bg-white px-4 text-[14px] text-[#111827] outline-none placeholder:text-[#b7bec8] focus:border-[#8b2cf5]"
+            />
 
-            <div className="mb-7">
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-                Menu
-              </p>
-              <ul className="space-y-1.5">
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  키워드 실험실
-                </li>
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  경쟁 블로그 참고
-                </li>
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  플레이스 확장 준비
-                </li>
-              </ul>
-            </div>
+            <button
+              onClick={fetchPosts}
+              className="h-[46px] rounded-[14px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[14px] font-semibold text-white shadow-[0_10px_20px_rgba(139,44,245,0.18)] transition hover:opacity-95"
+            >
+              {loading ? "불러오는 중..." : "분석 시작"}
+            </button>
+          </div>
 
+          {errorMessage && (
+            <p className="mt-4 text-[13px] font-medium text-red-600">
+              {errorMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-6 rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]">
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-                Info
+              <h2 className="text-[22px] font-black tracking-[-0.02em] text-[#111827]">
+                블로그 최신 포스트
+              </h2>
+              <p className="mt-2 text-[13px] leading-6 text-[#6b7280]">
+                최근 발행 포스트를 불러온 뒤, 각 포스트별로 키워드를 직접 입력해 순위와 검색량을 개별 확인할 수 있습니다.
               </p>
-              <ul className="space-y-1.5">
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  서비스 소개
-                </li>
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  공지사항
-                </li>
-                <li className="rounded-2xl px-4 py-3 text-gray-600 hover:bg-gray-50">
-                  업데이트 예정
-                </li>
-              </ul>
-            </div>
-          </nav>
-        </aside>
-
-        {/* 메인 */}
-        <section className="flex-1">
-          <div className="mx-auto max-w-7xl px-6 py-8 pt-24 xl:pt-8">
-            <div className="mb-8 overflow-hidden rounded-[32px] bg-white shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
-              <div className="bg-[radial-gradient(circle_at_top_left,#dcfce7,transparent_28%),radial-gradient(circle_at_top_right,#dbeafe,transparent_24%),white] px-8 py-10">
-                <p className="text-sm font-semibold text-green-600">
-                  NEWORDER LAB
-                </p>
-                <h1 className="mt-3 text-4xl font-black tracking-tight text-gray-900">
-                  상위 노출 블로그 찾기
-                </h1>
-                <p className="mt-4 max-w-3xl text-base leading-7 text-gray-600">
-                  블로그 상위노출, 감으로 하지 마세요. 지금 상위에 노출되는
-                  포스트를 확인하고, 포스트별 키워드 순위와 검색량을 기준으로
-                  체험단용 블로그를 더 빠르게 고를 수 있습니다.
-                </p>
-
-                <div className="mt-8 grid gap-4 md:grid-cols-3">
-                  <div className="rounded-3xl border border-gray-100 bg-white/90 p-6 shadow-sm">
-                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-green-100 text-lg font-bold text-green-700">
-                      1
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-900">블로그 등록</h2>
-                    <p className="mt-2 text-sm leading-6 text-gray-600">
-                      블로그 URL을 입력하고 최근 발행 포스트를 자동으로
-                      불러옵니다.
-                    </p>
-                  </div>
-
-                  <div className="rounded-3xl border border-gray-100 bg-white/90 p-6 shadow-sm">
-                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-green-100 text-lg font-bold text-green-700">
-                      2
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-900">키워드 검색</h2>
-                    <p className="mt-2 text-sm leading-6 text-gray-600">
-                      각 포스트에 핵심 키워드를 넣고 개별 검색으로 노출 여부를
-                      확인하세요.
-                    </p>
-                  </div>
-
-                  <div className="rounded-3xl border border-gray-100 bg-white/90 p-6 shadow-sm">
-                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-green-100 text-lg font-bold text-green-700">
-                      3
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-900">블로그 선정</h2>
-                    <p className="mt-2 text-sm leading-6 text-gray-600">
-                      순위와 검색량을 보고 체험단 효율이 좋은 포스트를 선별할 수
-                      있습니다.
-                    </p>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            <div className="mb-8 rounded-[32px] bg-white p-8 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-                  블로그 URL을 입력하세요
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-gray-600">
-                  네이버 블로그 URL을 입력하면 최신 포스트 목록을 불러오고,
-                  포스트별 키워드 검색을 바로 진행할 수 있습니다.
-                </p>
+            {posts.length > 0 && (
+              <div className="inline-flex rounded-[12px] bg-[#f4f6f9] px-4 py-2.5 text-[13px] text-[#6b7280] ring-1 ring-[#e5e9f0]">
+                총
+                <span className="mx-1 font-bold text-[#111827]">
+                  {posts.length}개
+                </span>
+                포스트
               </div>
-
-              <div className="flex flex-col gap-3 md:flex-row">
-                <input
-                  type="text"
-                  value={blogUrl}
-                  onChange={(e) => setBlogUrl(e.target.value)}
-                  placeholder="예: https://blog.naver.com/kikolog"
-                  className="flex-1 rounded-2xl border border-gray-300 bg-white px-5 py-4 text-black outline-none placeholder-gray-400 transition focus:border-green-500 focus:ring-4 focus:ring-green-100"
-                />
-
-                <button
-                  onClick={fetchPosts}
-                  className="rounded-2xl bg-green-600 px-6 py-4 font-semibold text-white shadow-md transition hover:scale-[1.02] hover:bg-green-700"
-                >
-                  {loading ? "불러오는 중..." : "분석 시작"}
-                </button>
-              </div>
-
-              {errorMessage && (
-                <p className="mt-4 text-sm font-medium text-red-600">
-                  {errorMessage}
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-[32px] bg-white p-8 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
-              <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-                    블로그 최신 포스트
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-gray-600">
-                    최근 발행 포스트를 불러온 뒤, 각 포스트별로 키워드를 직접
-                    입력해 순위와 검색량을 개별 확인할 수 있습니다.
-                  </p>
-                </div>
-
-                {posts.length > 0 && (
-                  <div className="inline-flex rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-600 ring-1 ring-gray-200">
-                    총{" "}
-                    <span className="mx-1 font-bold text-gray-900">
-                      {posts.length}개
-                    </span>
-                    포스트
-                  </div>
-                )}
-              </div>
-
-              {posts.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-gray-300 px-6 py-14 text-center text-sm text-gray-500">
-                  아직 불러온 포스트가 없습니다. 위에서 블로그 URL을 등록해
-                  주세요.
-                </div>
-              ) : (
-                <div className="overflow-hidden rounded-3xl border border-gray-200">
-                  <table className="min-w-full border-collapse">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="border-b border-gray-200 px-4 py-4 text-left text-sm font-semibold text-gray-700">
-                          발행일
-                        </th>
-                        <th className="border-b border-gray-200 px-4 py-4 text-left text-sm font-semibold text-gray-700">
-                          제목
-                        </th>
-                        <th className="border-b border-gray-200 px-4 py-4 text-left text-sm font-semibold text-gray-700">
-                          상위 노출 키워드 검색
-                        </th>
-                        <th className="border-b border-gray-200 px-4 py-4 text-left text-sm font-semibold text-gray-700">
-                          순위
-                        </th>
-                        <th className="border-b border-gray-200 px-4 py-4 text-left text-sm font-semibold text-gray-700">
-                          검색량
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {posts.map((post, index) => (
-                        <tr key={`${post.link}-${index}`} className="hover:bg-gray-50">
-                          <td className="border-b border-gray-200 px-4 py-4 text-sm font-medium text-gray-500">
-                            {post.date}
-                          </td>
-
-                          <td className="border-b border-gray-200 px-4 py-4 text-sm">
-                            <a
-                              href={post.link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-semibold leading-6 text-gray-900 hover:text-green-700 hover:underline"
-                            >
-                              {post.title}
-                            </a>
-                          </td>
-
-                          <td className="border-b border-gray-200 px-4 py-4 text-sm">
-                            <div className="flex flex-col gap-2 md:flex-row">
-                              <input
-                                type="text"
-                                value={post.keyword}
-                                onChange={(e) =>
-                                  updatePostKeyword(index, e.target.value)
-                                }
-                                placeholder="핵심 키워드 입력"
-                                className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-black outline-none placeholder-gray-400 transition focus:border-green-500 focus:ring-4 focus:ring-green-100 md:w-60"
-                              />
-
-                              <button
-                                onClick={() => checkSinglePostRank(index)}
-                                className="rounded-2xl border border-gray-300 bg-white px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50"
-                              >
-                                검색
-                              </button>
-                            </div>
-                          </td>
-
-                          <td className="border-b border-gray-200 px-4 py-4 text-sm font-semibold">
-                            <span className={getRankTextColor(post.rank)}>
-                              {post.rank}
-                            </span>
-                          </td>
-
-                          <td className="border-b border-gray-200 px-4 py-4 text-sm text-gray-600">
-                            {post.searchVolume || "-"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            )}
           </div>
-        </section>
-      </div>
+
+          {posts.length === 0 ? (
+            <div className="rounded-[16px] border border-dashed border-[#d1d5db] px-6 py-14 text-center text-[13px] text-[#9ca3af]">
+              아직 불러온 포스트가 없습니다. 위에서 블로그 URL을 등록해 주세요.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-[16px] border border-[#e5e9f0]">
+              <table className="min-w-full border-collapse">
+                <thead className="bg-[#f4f6f9]">
+                  <tr>
+                    <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[13px] font-bold text-[#374151]">
+                      발행일
+                    </th>
+                    <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[13px] font-bold text-[#374151]">
+                      제목
+                    </th>
+                    <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[13px] font-bold text-[#374151]">
+                      상위 노출 키워드 검색
+                    </th>
+                    <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[13px] font-bold text-[#374151]">
+                      순위
+                    </th>
+                    <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[13px] font-bold text-[#374151]">
+                      검색량
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {posts.map((post, index) => (
+                    <tr key={`${post.link}-${index}`} className="hover:bg-[#fafbfc]">
+                      <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px] font-medium text-[#6b7280]">
+                        {post.date}
+                      </td>
+
+                      <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px]">
+                        <a
+                          href={post.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold leading-6 text-[#111827] hover:text-[#8b2cf5] hover:underline"
+                        >
+                          {post.title}
+                        </a>
+                      </td>
+
+                      <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px]">
+                        <div className="flex flex-col gap-2 md:flex-row">
+                          <input
+                            type="text"
+                            value={post.keyword}
+                            onChange={(e) =>
+                              updatePostKeyword(index, e.target.value)
+                            }
+                            placeholder="핵심 키워드 입력"
+                            className="h-[42px] w-full rounded-[12px] border border-[#d9dee7] bg-white px-4 text-[13px] text-[#111827] outline-none placeholder:text-[#b7bec8] focus:border-[#8b2cf5] md:w-60"
+                          />
+
+                          <button
+                            onClick={() => checkSinglePostRank(index)}
+                            className="h-[42px] rounded-[12px] border border-[#d9dee7] bg-white px-4 text-[13px] font-medium text-[#374151] transition hover:bg-[#f8fafc]"
+                          >
+                            검색
+                          </button>
+                        </div>
+                      </td>
+
+                      <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px] font-semibold">
+                        <span className={getRankTextColor(post.rank)}>
+                          {post.rank}
+                        </span>
+                      </td>
+
+                      <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px] text-[#6b7280]">
+                        {post.searchVolume || "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
     </main>
   );
 }
