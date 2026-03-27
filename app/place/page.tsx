@@ -26,13 +26,47 @@ type SearchPlaceItem = {
   link: string;
 };
 
+function getMobilePlaceLink(link?: string) {
+  if (!link) return "#";
+
+  try {
+    const url = new URL(link);
+    if (url.hostname.includes("m.place.naver.com")) {
+      return url.toString();
+    }
+
+    if (url.hostname.includes("map.naver.com") || url.hostname.includes("place.naver.com")) {
+      return url.toString().replace("place.naver.com", "m.place.naver.com");
+    }
+
+    return url.toString();
+  } catch {
+    return link;
+  }
+}
+
+function getPcPlaceLink(link?: string) {
+  if (!link) return "#";
+
+  try {
+    const url = new URL(link);
+    if (url.hostname.includes("m.place.naver.com")) {
+      return url.toString().replace("m.place.naver.com", "place.naver.com");
+    }
+
+    return url.toString();
+  } catch {
+    return link;
+  }
+}
+
 export default function PlacePage() {
   const [stores, setStores] = useState<Store[]>([
     {
       name: "키코필라테스 앤 발레",
       category: "필라테스",
       address: "서울특별시 용산구 만리재로 134 7층",
-      placeLink: "",
+      placeLink: "https://m.place.naver.com/place/1234567890/home",
       keywords: [
         {
           keyword: "서울역 필라테스",
@@ -48,53 +82,29 @@ export default function PlacePage() {
           pc: "10",
           rank: "26위",
         },
-        {
-          keyword: "서울역 발레",
-          monthly: "30",
-          mobile: "30",
-          pc: "0",
-          rank: "12위",
-        },
       ],
     },
     {
-      name: "뉴오더클럽 한남",
+      name: "뉴오더클럽 연남",
       category: "피자",
-      address: "이태원로54길 58-14 1F 뉴오더클럽 한남",
-      placeLink: "",
-      keywords: [
-        {
-          keyword: "한남동 맛집",
-          monthly: "33,650",
-          mobile: "29,100",
-          pc: "4,550",
-          rank: "86위",
-        },
-        {
-          keyword: "이태원 맛집",
-          monthly: "43,630",
-          mobile: "38,400",
-          pc: "5,230",
-          rank: "73위",
-        },
-        {
-          keyword: "한남동 피자",
-          monthly: "1,660",
-          mobile: "1,380",
-          pc: "280",
-          rank: "4위",
-        },
-      ],
+      address: "서울 마포구 연남동 260-31",
+      placeLink: "https://m.place.naver.com/place/9876543210/home",
+      keywords: [],
     },
   ]);
 
   const [searchText, setSearchText] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeResults, setPlaceResults] = useState<SearchPlaceItem[]>([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
   const [placeSearchError, setPlaceSearchError] = useState("");
+
+  const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
+  const [selectedStoreIndex, setSelectedStoreIndex] = useState<number | null>(null);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [tempKeywords, setTempKeywords] = useState<string[]>([]);
 
   const filteredStores = useMemo(() => {
     const text = searchText.trim().toLowerCase();
@@ -109,15 +119,15 @@ export default function PlacePage() {
     });
   }, [searchText, stores]);
 
-  const openModal = () => {
-    setIsModalOpen(true);
+  const openRegisterModal = () => {
+    setIsRegisterModalOpen(true);
     setPlaceQuery("");
     setPlaceResults([]);
     setPlaceSearchError("");
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
+  const closeRegisterModal = () => {
+    setIsRegisterModalOpen(false);
     setPlaceQuery("");
     setPlaceResults([]);
     setPlaceSearchError("");
@@ -179,7 +189,72 @@ export default function PlacePage() {
     };
 
     setStores((prev) => [newStore, ...prev]);
-    closeModal();
+    closeRegisterModal();
+  };
+
+  const openKeywordModal = (storeIndex: number) => {
+    const targetStore = filteredStores[storeIndex];
+    const realIndex = stores.findIndex(
+      (item) =>
+        item.name === targetStore.name &&
+        item.address === targetStore.address
+    );
+
+    if (realIndex === -1) return;
+
+    setSelectedStoreIndex(realIndex);
+    setTempKeywords(stores[realIndex].keywords.map((item) => item.keyword));
+    setKeywordInput("");
+    setIsKeywordModalOpen(true);
+  };
+
+  const closeKeywordModal = () => {
+    setIsKeywordModalOpen(false);
+    setSelectedStoreIndex(null);
+    setKeywordInput("");
+    setTempKeywords([]);
+  };
+
+  const addTempKeyword = () => {
+    const value = keywordInput.trim();
+    if (!value) return;
+
+    if (tempKeywords.includes(value)) {
+      alert("이미 추가된 키워드입니다.");
+      return;
+    }
+
+    setTempKeywords((prev) => [...prev, value]);
+    setKeywordInput("");
+  };
+
+  const removeTempKeyword = (keyword: string) => {
+    setTempKeywords((prev) => prev.filter((item) => item !== keyword));
+  };
+
+  const saveKeywords = () => {
+    if (selectedStoreIndex === null) return;
+
+    const newKeywordItems: KeywordItem[] = tempKeywords.map((keyword) => ({
+      keyword,
+      monthly: "-",
+      mobile: "-",
+      pc: "-",
+      rank: "-",
+    }));
+
+    setStores((prev) =>
+      prev.map((store, index) =>
+        index === selectedStoreIndex
+          ? {
+              ...store,
+              keywords: newKeywordItems,
+            }
+          : store
+      )
+    );
+
+    closeKeywordModal();
   };
 
   return (
@@ -255,7 +330,7 @@ export default function PlacePage() {
                 </div>
 
                 <button
-                  onClick={openModal}
+                  onClick={openRegisterModal}
                   className="rounded-2xl bg-purple-600 px-6 py-4 font-semibold text-white shadow-md transition hover:scale-[1.02] hover:bg-purple-700"
                 >
                   매장 등록
@@ -286,8 +361,7 @@ export default function PlacePage() {
               </div>
 
               <p className="mt-4 text-sm text-gray-500">
-                기준 순위 조회중 · IP, 설정한 위치, 시간에 따라 순위 오차가
-                발생할 수 있습니다.
+                기준 순위 조회중 · IP, 설정한 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
               </p>
             </div>
 
@@ -307,18 +381,31 @@ export default function PlacePage() {
                         <p className="mt-1 text-sm text-gray-600">
                           {store.category} | {store.address}
                         </p>
-                        <div className="mt-3 flex flex-wrap gap-3 text-sm text-gray-600">
+
+                        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                          <span>매장 바로가기</span>
+
                           {store.placeLink ? (
-                            <a
-                              href={store.placeLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-medium text-black underline"
-                            >
-                              매장 바로가기
-                            </a>
+                            <>
+                              <a
+                                href={getMobilePlaceLink(store.placeLink)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium text-black underline"
+                              >
+                                모바일웹
+                              </a>
+                              <a
+                                href={getPcPlaceLink(store.placeLink)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium text-black underline"
+                              >
+                                PC웹
+                              </a>
+                            </>
                           ) : (
-                            <span>매장 링크 없음</span>
+                            <span>링크 없음</span>
                           )}
                         </div>
                       </div>
@@ -331,7 +418,10 @@ export default function PlacePage() {
                       <button className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">
                         자동 추적 OFF
                       </button>
-                      <button className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">
+                      <button
+                        onClick={() => openKeywordModal(index)}
+                        className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-semibold text-white"
+                      >
                         키워드 관리
                       </button>
                     </div>
@@ -364,9 +454,14 @@ export default function PlacePage() {
                           <tr>
                             <td
                               colSpan={5}
-                              className="px-5 py-8 text-center text-sm text-gray-400"
+                              className="px-5 py-16 text-center text-base text-gray-500"
                             >
-                              아직 등록된 키워드가 없습니다.
+                              지금 키워드를 등록하고, 내 매장의 키워드 별 순위를 확인해보세요.
+                              <br />
+                              <span className="font-semibold text-gray-700">
+                                [키워드 관리]
+                              </span>
+                              버튼을 눌러 시작할 수 있어요.
                             </td>
                           </tr>
                         ) : (
@@ -399,10 +494,11 @@ export default function PlacePage() {
           </div>
         </section>
 
-        {isModalOpen && (
+        {/* 매장 등록 모달 */}
+        {isRegisterModalOpen && (
           <div
             className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px]"
-            onClick={closeModal}
+            onClick={closeRegisterModal}
           >
             <div className="flex min-h-screen items-center justify-center p-4">
               <div
@@ -420,7 +516,7 @@ export default function PlacePage() {
                   </div>
 
                   <button
-                    onClick={closeModal}
+                    onClick={closeRegisterModal}
                     className="rounded-3xl bg-gray-100 px-7 py-5 text-2xl font-bold text-gray-800"
                   >
                     취소
@@ -477,6 +573,93 @@ export default function PlacePage() {
                         검색 결과가 없습니다.
                       </div>
                     )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 키워드 관리 모달 */}
+        {isKeywordModalOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px]"
+            onClick={closeKeywordModal}
+          >
+            <div className="flex min-h-screen items-center justify-center p-4">
+              <div
+                className="w-full max-w-3xl rounded-[36px] bg-white p-8 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-8 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-4xl font-black tracking-tight text-black">
+                      키워드 관리
+                    </h2>
+                    <p className="mt-3 text-base text-gray-500">
+                      추적할 키워드를 추가하고 저장하세요.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={closeKeywordModal}
+                    className="rounded-3xl bg-gray-100 px-6 py-4 text-xl font-bold text-gray-800"
+                  >
+                    닫기
+                  </button>
+                </div>
+
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={keywordInput}
+                    onChange={(e) => setKeywordInput(e.target.value)}
+                    placeholder="예: 연남동 피자"
+                    className="flex-1 rounded-2xl border border-gray-300 bg-white px-5 py-4 text-black outline-none placeholder-gray-400 focus:border-purple-500 focus:ring-4 focus:ring-purple-100"
+                  />
+                  <button
+                    onClick={addTempKeyword}
+                    className="rounded-2xl bg-purple-600 px-5 py-4 font-semibold text-white"
+                  >
+                    추가
+                  </button>
+                </div>
+
+                <div className="mt-6 max-h-[300px] space-y-3 overflow-y-auto pr-1">
+                  {tempKeywords.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-300 px-6 py-10 text-center text-gray-400">
+                      아직 추가된 키워드가 없습니다.
+                    </div>
+                  ) : (
+                    tempKeywords.map((keyword) => (
+                      <div
+                        key={keyword}
+                        className="flex items-center justify-between rounded-2xl border border-gray-200 px-4 py-4"
+                      >
+                        <span className="font-medium text-black">{keyword}</span>
+                        <button
+                          onClick={() => removeTempKeyword(keyword)}
+                          className="rounded-xl bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="mt-8 flex justify-end gap-3">
+                  <button
+                    onClick={closeKeywordModal}
+                    className="rounded-2xl border border-gray-300 bg-white px-5 py-3 font-semibold text-gray-700"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={saveKeywords}
+                    className="rounded-2xl bg-purple-600 px-5 py-3 font-semibold text-white"
+                  >
+                    저장하기
+                  </button>
                 </div>
               </div>
             </div>
