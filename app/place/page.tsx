@@ -3,21 +3,23 @@
 import Link from "next/link";
 import { useState } from "react";
 
+type KeywordItem = {
+  keyword: string;
+  monthly: string;
+  mobile: string;
+  pc: string;
+  rank: string;
+};
+
 type Store = {
   name: string;
   category: string;
   address: string;
-  keywords: {
-    keyword: string;
-    monthly: string;
-    mobile: string;
-    pc: string;
-    rank: string;
-  }[];
+  keywords: KeywordItem[];
 };
 
 export default function PlacePage() {
-  const [stores] = useState<Store[]>([
+  const [stores, setStores] = useState<Store[]>([
     {
       name: "키코필라테스 앤 발레",
       category: "필라테스",
@@ -76,10 +78,68 @@ export default function PlacePage() {
     },
   ]);
 
+  const [searchText, setSearchText] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [storeName, setStoreName] = useState("");
+  const [storeCategory, setStoreCategory] = useState("");
+  const [storeAddress, setStoreAddress] = useState("");
+  const [keyword1, setKeyword1] = useState("");
+  const [keyword2, setKeyword2] = useState("");
+  const [keyword3, setKeyword3] = useState("");
+
+  const filteredStores = stores.filter((store) => {
+    const text = searchText.trim().toLowerCase();
+    if (!text) return true;
+
+    return (
+      store.name.toLowerCase().includes(text) ||
+      store.category.toLowerCase().includes(text) ||
+      store.address.toLowerCase().includes(text)
+    );
+  });
+
+  const resetForm = () => {
+    setStoreName("");
+    setStoreCategory("");
+    setStoreAddress("");
+    setKeyword1("");
+    setKeyword2("");
+    setKeyword3("");
+  };
+
+  const handleRegisterStore = () => {
+    if (!storeName.trim() || !storeCategory.trim() || !storeAddress.trim()) {
+      alert("매장명, 업종, 주소는 꼭 입력해주세요.");
+      return;
+    }
+
+    const keywords = [keyword1, keyword2, keyword3]
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => ({
+        keyword: item,
+        monthly: "-",
+        mobile: "-",
+        pc: "-",
+        rank: "-",
+      }));
+
+    const newStore: Store = {
+      name: storeName.trim(),
+      category: storeCategory.trim(),
+      address: storeAddress.trim(),
+      keywords,
+    };
+
+    setStores((prev) => [newStore, ...prev]);
+    resetForm();
+    setIsModalOpen(false);
+  };
+
   return (
     <main className="min-h-screen bg-[#f5f7fb] text-black">
       <div className="flex min-h-screen">
-        {/* 모바일 상단 헤더 */}
         <div className="fixed left-0 right-0 top-0 z-30 border-b border-gray-200 bg-white px-5 py-4 xl:hidden">
           <Link href="/" className="flex items-center gap-3">
             <img
@@ -90,7 +150,6 @@ export default function PlacePage() {
           </Link>
         </div>
 
-        {/* 좌측 사이드바 */}
         <aside className="hidden w-[260px] border-r border-gray-200 bg-white xl:block">
           <div className="border-b border-gray-100 px-7 py-7">
             <Link href="/" className="block">
@@ -170,10 +229,8 @@ export default function PlacePage() {
           </nav>
         </aside>
 
-        {/* 메인 */}
         <section className="flex-1">
           <div className="mx-auto max-w-7xl px-6 py-8 pt-24 xl:pt-8">
-            {/* 상단 헤더 */}
             <div className="mb-8 rounded-[32px] bg-white p-8 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
               <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -186,13 +243,15 @@ export default function PlacePage() {
                   </p>
                 </div>
 
-                <button className="rounded-2xl bg-purple-600 px-6 py-4 font-semibold text-white shadow-md transition hover:scale-[1.02] hover:bg-purple-700">
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="rounded-2xl bg-purple-600 px-6 py-4 font-semibold text-white shadow-md transition hover:scale-[1.02] hover:bg-purple-700"
+                >
                   매장 등록
                 </button>
               </div>
             </div>
 
-            {/* 검색 바 */}
             <div className="mb-8 rounded-[32px] bg-white p-8 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-3">
@@ -207,6 +266,8 @@ export default function PlacePage() {
                 <div className="w-full md:w-[420px]">
                   <input
                     type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
                     placeholder="등록된 플레이스 검색"
                     className="w-full rounded-2xl border border-gray-300 bg-white px-5 py-4 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
                   />
@@ -218,9 +279,8 @@ export default function PlacePage() {
               </p>
             </div>
 
-            {/* 매장 카드 목록 */}
             <div className="space-y-6">
-              {stores.map((store, index) => (
+              {filteredStores.map((store, index) => (
                 <div
                   key={index}
                   className="rounded-[32px] bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100"
@@ -313,6 +373,132 @@ export default function PlacePage() {
             </div>
           </div>
         </section>
+
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-2xl rounded-[32px] bg-white p-8 shadow-2xl">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight text-black">
+                    매장 등록
+                  </h2>
+                  <p className="mt-2 text-sm text-gray-600">
+                    추적할 매장 정보를 입력하고 대표 키워드를 등록하세요.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    resetForm();
+                    setIsModalOpen(false);
+                  }}
+                  className="rounded-2xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700"
+                >
+                  닫기
+                </button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    매장명
+                  </label>
+                  <input
+                    type="text"
+                    value={storeName}
+                    onChange={(e) => setStoreName(e.target.value)}
+                    placeholder="예: 키코필라테스 앤 발레"
+                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    업종
+                  </label>
+                  <input
+                    type="text"
+                    value={storeCategory}
+                    onChange={(e) => setStoreCategory(e.target.value)}
+                    placeholder="예: 필라테스"
+                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    주소
+                  </label>
+                  <input
+                    type="text"
+                    value={storeAddress}
+                    onChange={(e) => setStoreAddress(e.target.value)}
+                    placeholder="예: 서울 용산구 ..."
+                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    대표 키워드 1
+                  </label>
+                  <input
+                    type="text"
+                    value={keyword1}
+                    onChange={(e) => setKeyword1(e.target.value)}
+                    placeholder="예: 서울역 필라테스"
+                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    대표 키워드 2
+                  </label>
+                  <input
+                    type="text"
+                    value={keyword2}
+                    onChange={(e) => setKeyword2(e.target.value)}
+                    placeholder="예: 숙대입구 필라테스"
+                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    대표 키워드 3
+                  </label>
+                  <input
+                    type="text"
+                    value={keyword3}
+                    onChange={(e) => setKeyword3(e.target.value)}
+                    placeholder="예: 서울역 발레"
+                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-black outline-none placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    resetForm();
+                    setIsModalOpen(false);
+                  }}
+                  className="rounded-2xl border border-gray-300 bg-white px-5 py-3 font-semibold text-gray-700"
+                >
+                  취소
+                </button>
+
+                <button
+                  onClick={handleRegisterStore}
+                  className="rounded-2xl bg-purple-600 px-5 py-3 font-semibold text-white shadow-md transition hover:bg-purple-700"
+                >
+                  매장 등록하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
