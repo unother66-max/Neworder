@@ -57,6 +57,35 @@ export default function PlacePage() {
         },
       ],
     },
+    {
+      name: "뉴오더클럽 한남",
+      category: "피자",
+      address: "이태원로54길 58-14 1F 뉴오더클럽 한남",
+      placeLink: "",
+      keywords: [
+        {
+          keyword: "한남동 맛집",
+          monthly: "33,650",
+          mobile: "29,100",
+          pc: "4,550",
+          rank: "86위",
+        },
+        {
+          keyword: "이태원 맛집",
+          monthly: "43,630",
+          mobile: "38,400",
+          pc: "5,230",
+          rank: "73위",
+        },
+        {
+          keyword: "한남동 피자",
+          monthly: "1,660",
+          mobile: "1,380",
+          pc: "280",
+          rank: "4위",
+        },
+      ],
+    },
   ]);
 
   const [searchText, setSearchText] = useState("");
@@ -133,9 +162,7 @@ export default function PlacePage() {
 
   const handleRegisterPlace = (item: SearchPlaceItem) => {
     const exists = stores.some(
-      (store) =>
-        store.name === item.title &&
-        store.address === item.address
+      (store) => store.name === item.title && store.address === item.address
     );
 
     if (exists) {
@@ -259,7 +286,8 @@ export default function PlacePage() {
               </div>
 
               <p className="mt-4 text-sm text-gray-500">
-                기준 순위 조회중 · IP, 설정한 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
+                기준 순위 조회중 · IP, 설정한 위치, 시간에 따라 순위 오차가
+                발생할 수 있습니다.
               </p>
             </div>
 
@@ -372,71 +400,84 @@ export default function PlacePage() {
         </section>
 
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-start justify-center bg-white px-6 py-10">
-            <div className="w-full max-w-5xl">
-              <div className="mb-10 flex items-start justify-between border-b border-gray-200 pb-8">
-                <h2 className="text-6xl font-black tracking-tight text-black">
-                  매장등록
-                </h2>
+          <div
+            className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px]"
+            onClick={closeModal}
+          >
+            <div className="flex min-h-screen items-center justify-center p-4">
+              <div
+                className="w-full max-w-5xl rounded-[36px] bg-white p-8 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-8 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-5xl font-black tracking-tight text-black">
+                      매장등록
+                    </h2>
+                    <p className="mt-3 text-base text-gray-500">
+                      네이버 검색 기준으로 매장 이름을 검색하고 등록하세요.
+                    </p>
+                  </div>
 
-                <button
-                  onClick={closeModal}
-                  className="rounded-3xl bg-gray-100 px-8 py-6 text-3xl font-bold text-gray-800"
-                >
-                  취소
-                </button>
-              </div>
-
-              <div className="flex overflow-hidden rounded-[28px] border-2 border-purple-600 bg-white">
-                <input
-                  type="text"
-                  value={placeQuery}
-                  onChange={(e) => setPlaceQuery(e.target.value)}
-                  placeholder="매장 이름을 검색하세요"
-                  className="flex-1 bg-white px-8 py-8 text-2xl text-black outline-none placeholder:text-gray-400"
-                />
-
-                <button
-                  onClick={handlePlaceSearch}
-                  className="bg-purple-600 px-10 text-3xl font-bold text-white"
-                >
-                  {placeSearchLoading ? "검색중" : "검색"}
-                </button>
-              </div>
-
-              {placeSearchError && (
-                <p className="mt-4 text-lg font-medium text-red-600">
-                  {placeSearchError}
-                </p>
-              )}
-
-              <div className="mt-10 space-y-4">
-                {placeResults.map((item, index) => (
                   <button
-                    key={`${item.title}-${index}`}
-                    onClick={() => handleRegisterPlace(item)}
-                    className="block w-full rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:border-purple-400 hover:shadow-md"
+                    onClick={closeModal}
+                    className="rounded-3xl bg-gray-100 px-7 py-5 text-2xl font-bold text-gray-800"
                   >
-                    <div className="text-2xl font-bold text-black">
-                      {item.title}
-                    </div>
-                    <div className="mt-2 text-base text-gray-600">
-                      {item.category}
-                    </div>
-                    <div className="mt-2 text-base text-gray-500">
-                      {item.address}
-                    </div>
+                    취소
                   </button>
-                ))}
+                </div>
 
-                {!placeSearchLoading &&
-                  placeQuery.trim() &&
-                  !placeSearchError &&
-                  placeResults.length === 0 && (
-                    <div className="rounded-3xl border border-dashed border-gray-300 px-6 py-10 text-center text-lg text-gray-400">
-                      검색 결과가 없습니다.
-                    </div>
-                  )}
+                <div className="flex overflow-hidden rounded-[28px] border-2 border-purple-600 bg-white">
+                  <input
+                    type="text"
+                    value={placeQuery}
+                    onChange={(e) => setPlaceQuery(e.target.value)}
+                    placeholder="매장 이름을 검색하세요"
+                    className="flex-1 bg-white px-8 py-7 text-2xl text-black outline-none placeholder:text-gray-400"
+                  />
+
+                  <button
+                    onClick={handlePlaceSearch}
+                    className="bg-purple-600 px-10 text-3xl font-bold text-white"
+                  >
+                    {placeSearchLoading ? "검색중" : "검색"}
+                  </button>
+                </div>
+
+                {placeSearchError && (
+                  <p className="mt-4 text-lg font-medium text-red-600">
+                    {placeSearchError}
+                  </p>
+                )}
+
+                <div className="mt-8 max-h-[420px] space-y-4 overflow-y-auto pr-1">
+                  {placeResults.map((item, index) => (
+                    <button
+                      key={`${item.title}-${index}`}
+                      onClick={() => handleRegisterPlace(item)}
+                      className="block w-full rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:border-purple-400 hover:shadow-md"
+                    >
+                      <div className="text-2xl font-bold text-black">
+                        {item.title}
+                      </div>
+                      <div className="mt-2 text-base text-gray-600">
+                        {item.category}
+                      </div>
+                      <div className="mt-2 text-base text-gray-500">
+                        {item.address}
+                      </div>
+                    </button>
+                  ))}
+
+                  {!placeSearchLoading &&
+                    placeQuery.trim() &&
+                    !placeSearchError &&
+                    placeResults.length === 0 && (
+                      <div className="rounded-3xl border border-dashed border-gray-300 px-6 py-10 text-center text-lg text-gray-400">
+                        검색 결과가 없습니다.
+                      </div>
+                    )}
+                </div>
               </div>
             </div>
           </div>
