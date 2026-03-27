@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 type Post = {
@@ -156,20 +157,31 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#f5f7fb] text-gray-900">
       <div className="flex min-h-screen">
+        {/* 모바일 상단 헤더 */}
+        <div className="fixed left-0 right-0 top-0 z-30 border-b border-gray-200 bg-white px-5 py-4 xl:hidden">
+          <Link href="/" className="flex items-center gap-3">
+            <img
+              src="logo.png"
+              alt="logo"
+              className="h-10 w-auto object-contain"
+            />
+          </Link>
+        </div>
+
+        {/* 좌측 사이드바 */}
         <aside className="hidden w-[260px] border-r border-gray-200 bg-white xl:block">
           <div className="border-b border-gray-100 px-7 py-7">
-           <div className="flex items-center gap-3">
-  <img
-    src="최종폰트.png"
-    alt="neworder logo"
-    className="h-55 w-auto"
-  />
-  <div className="text-m font-semibold text-gray-700">
-    LAB
-  </div>
-</div>
-            <p className="mt-3 text-sm leading-6 text-gray-500">
-              네이버 분석 도구
+            <Link href="/" className="block">
+              <img
+                src="logo.png"
+                alt="logo"
+                className="h-40 w-auto object-contain"
+                
+              />
+            </Link>
+
+            <p className="mt-4 text-sm leading-6 text-gray-500">
+              네이버 블로그 상위노출 분석 도구
             </p>
           </div>
 
@@ -227,8 +239,9 @@ export default function Home() {
           </nav>
         </aside>
 
+        {/* 메인 */}
         <section className="flex-1">
-          <div className="mx-auto max-w-7xl px-6 py-8">
+          <div className="mx-auto max-w-7xl px-6 py-8 pt-24 xl:pt-8">
             <div className="mb-8 overflow-hidden rounded-[32px] bg-white shadow-[0_10px_40px_rgba(15,23,42,0.06)] ring-1 ring-gray-100">
               <div className="bg-[radial-gradient(circle_at_top_left,#dcfce7,transparent_28%),radial-gradient(circle_at_top_right,#dbeafe,transparent_24%),white] px-8 py-10">
                 <p className="text-sm font-semibold text-green-600">
