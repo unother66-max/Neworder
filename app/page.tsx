@@ -158,12 +158,18 @@ export default function Home() {
       <div className="flex min-h-screen">
         <aside className="hidden w-[260px] border-r border-gray-200 bg-white xl:block">
           <div className="border-b border-gray-100 px-7 py-7">
-            <div className="text-2xl font-black tracking-tight text-gray-900">
-              NEWORDER
-            </div>
-            <div className="mt-1 text-sm font-medium text-green-600">LAB</div>
+           <div className="flex items-center gap-3">
+  <img
+    src="최종폰트.png"
+    alt="neworder logo"
+    className="h-55 w-auto"
+  />
+  <div className="text-m font-semibold text-gray-700">
+    LAB
+  </div>
+</div>
             <p className="mt-3 text-sm leading-6 text-gray-500">
-              네이버 블로그 상위노출 분석 도구
+              네이버 분석 도구
             </p>
           </div>
 
