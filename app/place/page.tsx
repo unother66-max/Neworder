@@ -15,7 +15,10 @@ type Store = {
   name: string;
   category: string;
   address: string;
-  placeLink?: string;
+  placeId?: string;
+  mobilePlaceLink?: string;
+  pcPlaceLink?: string;
+  image?: string;
   keywords: KeywordItem[];
 };
 
@@ -24,45 +27,33 @@ type SearchPlaceItem = {
   category: string;
   address: string;
   link: string;
+  image?: string;
 };
 
-function getMobilePlaceLink(link?: string) {
-  if (!link) return "#";
+function normalizeImageUrl(image?: string) {
+  if (!image) return "";
 
-  try {
-    const url = new URL(link);
+  const trimmed = image.trim();
+  if (!trimmed) return "";
 
-    if (url.hostname.includes("m.place.naver.com")) {
-      return url.toString();
-    }
+  if (trimmed.startsWith("/api/place-image?url=")) return trimmed;
 
-    if (
-      url.hostname.includes("map.naver.com") ||
-      url.hostname.includes("place.naver.com")
-    ) {
-      return url.toString().replace("place.naver.com", "m.place.naver.com");
-    }
-
-    return url.toString();
-  } catch {
-    return link;
+  // //search.pstatic.net/... 형태 대응
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
   }
+
+  return trimmed;
 }
 
-function getPcPlaceLink(link?: string) {
-  if (!link) return "#";
+function getProxyImageUrl(image?: string) {
+  const normalized = normalizeImageUrl(image);
+  if (!normalized) return "";
 
-  try {
-    const url = new URL(link);
+  if (normalized.startsWith("/api/place-image?url=")) return normalized;
 
-    if (url.hostname.includes("m.place.naver.com")) {
-      return url.toString().replace("m.place.naver.com", "place.naver.com");
-    }
-
-    return url.toString();
-  } catch {
-    return link;
-  }
+  // 외부 이미지는 전부 프록시로 통과
+  return `/api/place-image?url=${encodeURIComponent(normalized)}`;
 }
 
 export default function PlacePage() {
@@ -71,7 +62,11 @@ export default function PlacePage() {
       name: "키코필라테스 앤 발레",
       category: "필라테스",
       address: "서울특별시 용산구 만리재로 134 7층",
-      placeLink: "https://m.place.naver.com/place/1234567890/home",
+      placeId: "1234567890",
+      mobilePlaceLink: "https://m.place.naver.com/place/1234567890/home",
+      pcPlaceLink:
+        "https://map.naver.com/p/entry/place/1234567890?placePath=/home",
+      image: "",
       keywords: [
         {
           keyword: "서울역 필라테스",
@@ -93,7 +88,11 @@ export default function PlacePage() {
       name: "뉴오더클럽 연남",
       category: "피자",
       address: "서울 마포구 연남동 260-31",
-      placeLink: "https://m.place.naver.com/place/9876543210/home",
+      placeId: "1173480601",
+      mobilePlaceLink: "https://m.place.naver.com/place/1173480601/home",
+      pcPlaceLink:
+        "https://map.naver.com/p/entry/place/1173480601?placePath=/home",
+      image: "",
       keywords: [],
     },
   ]);
@@ -167,7 +166,13 @@ export default function PlacePage() {
         return;
       }
 
-      setPlaceResults(data.items || []);
+      const normalizedItems = (data.items || []).map((item: SearchPlaceItem) => ({
+        ...item,
+        image: normalizeImageUrl(item.image),
+      }));
+
+      console.log("검색결과 최종 items:", normalizedItems);
+      setPlaceResults(normalizedItems);
     } catch (error) {
       console.error(error);
       setPlaceSearchError("매장 검색 중 오류가 났어요.");
@@ -177,27 +182,72 @@ export default function PlacePage() {
     }
   };
 
-  const handleRegisterPlace = (item: SearchPlaceItem) => {
-    const exists = stores.some(
-      (store) => store.name === item.title && store.address === item.address
-    );
+ const handleRegisterPlace = async (item: SearchPlaceItem) => {
+  const exists = stores.some(
+    (store) => store.name === item.title && store.address === item.address
+  );
 
-    if (exists) {
-      alert("이미 등록된 매장입니다.");
+  if (exists) {
+    alert("이미 등록된 매장입니다.");
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/resolve-place-link", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: item.title,
+        address: item.address,
+        link: item.link,
+      }),
+    });
+
+    const data = await response.json();
+
+    console.log("선택한 검색결과 item:", item);
+    console.log("resolve 응답 data:", data);
+
+    if (!response.ok) {
+      alert(data.error || "플레이스 정보를 가져오지 못했어요.");
       return;
     }
+
+    const rawImage = normalizeImageUrl(data.image || item.image || "");
+    const publicPlaceId = String(data.placeId || "").trim();
+    const encodedQuery = encodeURIComponent(item.title.trim());
 
     const newStore: Store = {
       name: item.title,
       category: item.category.split(">").pop()?.trim() || item.category,
       address: item.address,
-      placeLink: item.link,
+      placeId: publicPlaceId,
+
+      // 🔥 모바일은 공개 placeId 있으면 무조건 restaurant 링크로 저장
+      mobilePlaceLink: publicPlaceId
+        ? `https://m.place.naver.com/restaurant/${publicPlaceId}/home`
+        : `https://m.map.naver.com/search2/search.naver?query=${encodedQuery}`,
+
+      // 🔥 PC도 공개 placeId 있으면 직접 진입 링크로 저장
+      pcPlaceLink: publicPlaceId
+        ? `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`
+        : `https://map.naver.com/p/search/${encodedQuery}`,
+
+      image: rawImage ? getProxyImageUrl(rawImage) : "",
       keywords: [],
     };
 
+    console.log("🔥 최종 저장 store:", newStore);
+
     setStores((prev) => [newStore, ...prev]);
     closeRegisterModal();
-  };
+  } catch (error) {
+    console.error(error);
+    alert("매장 등록 중 오류가 났어요.");
+  }
+};
 
   const openKeywordModal = (storeIndex: number) => {
     const targetStore = filteredStores[storeIndex];
@@ -387,9 +437,23 @@ export default function PlacePage() {
             >
               <div className="mb-6 flex flex-col gap-5 2xl:flex-row 2xl:items-start 2xl:justify-between">
                 <div className="flex gap-4">
-                  <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[12px] text-[#9ca3af]">
-                    이미지
-                  </div>
+                  {store.image ? (
+                    <img
+                      src={store.image}
+                      alt={store.name}
+                      className="h-[72px] w-[72px] rounded-[14px] object-cover"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        console.log("이미지 렌더 실패:", store.image);
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[12px] text-[#9ca3af]">
+                      이미지
+                    </div>
+                  )}
 
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -419,27 +483,30 @@ export default function PlacePage() {
                     <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
                       <span className="text-[#6b7280]">매장 바로가기</span>
 
-                      {store.placeLink ? (
-                        <>
-                          <a
-                            href={getMobilePlaceLink(store.placeLink)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-semibold text-[#111827] underline underline-offset-2"
-                          >
-                            모바일
-                          </a>
-                          <a
-                            href={getPcPlaceLink(store.placeLink)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-semibold text-[#111827] underline underline-offset-2"
-                          >
-                            PC
-                          </a>
-                        </>
+                      {store.mobilePlaceLink ? (
+                        <a
+                          href={store.mobilePlaceLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-[#111827] underline underline-offset-2"
+                        >
+                          모바일
+                        </a>
                       ) : (
-                        <span className="text-[#b7bec8]">링크 없음</span>
+                        <span className="text-[#b7bec8]">모바일 없음</span>
+                      )}
+
+                      {store.pcPlaceLink ? (
+                        <a
+                          href={store.pcPlaceLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-[#111827] underline underline-offset-2"
+                        >
+                          PC
+                        </a>
+                      ) : (
+                        <span className="text-[#b7bec8]">PC 없음</span>
                       )}
                     </div>
                   </div>
@@ -586,18 +653,39 @@ export default function PlacePage() {
                           onClick={() => handleRegisterPlace(item)}
                           className="block w-full border-b border-[#e5e7eb] px-5 py-5 text-left transition last:border-b-0 hover:bg-[#fafafa]"
                         >
-                          <div className="flex flex-wrap items-baseline gap-2">
-                            <span className="text-[16px] font-bold text-[#4f46e5]">
-                              {item.title}
-                            </span>
-                            <span className="text-[13px] font-medium text-[#111827]">
-                              {item.category.split(">").pop()?.trim() ||
-                                item.category}
-                            </span>
-                          </div>
+                          <div className="flex items-center gap-4">
+                            {item.image ? (
+                              <img
+                                src={getProxyImageUrl(item.image)}
+                                alt={item.title}
+                                className="h-[56px] w-[56px] rounded-[12px] object-cover"
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                onError={() => {
+                                  console.log("검색결과 이미지 렌더 실패:", item.image);
+                                }}
+                              />
+                            ) : (
+                              <div className="flex h-[56px] w-[56px] items-center justify-center rounded-[12px] bg-[#eef0f3] text-[11px] text-[#9ca3af]">
+                                이미지
+                              </div>
+                            )}
 
-                          <div className="mt-2 text-[13px] text-[#9ca3af]">
-                            {item.address}
+                            <div className="flex-1">
+                              <div className="flex flex-wrap items-baseline gap-2">
+                                <span className="text-[16px] font-bold text-[#4f46e5]">
+                                  {item.title}
+                                </span>
+                                <span className="text-[13px] font-medium text-[#111827]">
+                                  {item.category.split(">").pop()?.trim() ||
+                                    item.category}
+                                </span>
+                              </div>
+
+                              <div className="mt-2 text-[13px] text-[#9ca3af]">
+                                {item.address}
+                              </div>
+                            </div>
                           </div>
                         </button>
                       ))}
