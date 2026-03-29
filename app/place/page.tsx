@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type KeywordItem = {
   keyword: string;
@@ -30,6 +30,13 @@ type SearchPlaceItem = {
   image?: string;
 };
 
+type RecommendedKeyword = {
+  keyword: string;
+  monthly?: string;
+};
+
+const PAGE_SIZE = 15;
+
 function normalizeImageUrl(image?: string) {
   if (!image) return "";
 
@@ -38,7 +45,6 @@ function normalizeImageUrl(image?: string) {
 
   if (trimmed.startsWith("/api/place-image?url=")) return trimmed;
 
-  // //search.pstatic.net/... 형태 대응
   if (trimmed.startsWith("//")) {
     return `https:${trimmed}`;
   }
@@ -52,11 +58,108 @@ function getProxyImageUrl(image?: string) {
 
   if (normalized.startsWith("/api/place-image?url=")) return normalized;
 
-  // 외부 이미지는 전부 프록시로 통과
   return `/api/place-image?url=${encodeURIComponent(normalized)}`;
 }
 
+function formatCount(value?: string) {
+  if (!value || value === "-") return "-";
+
+  const onlyNumber = String(value).replace(/,/g, "").trim();
+  if (!/^\d+$/.test(onlyNumber)) return value;
+
+  return Number(onlyNumber).toLocaleString("ko-KR");
+}
+
+function getRankMeta(rank: string) {
+  if (!rank || rank === "-" || rank === "오류") {
+    return {
+      main: rank || "-",
+      sub: "-",
+    };
+  }
+
+  const matched = rank.match(/\d+/);
+  if (!matched) {
+    return {
+      main: rank,
+      sub: "-",
+    };
+  }
+
+  const numericRank = Number(matched[0]);
+  const page = Math.ceil(numericRank / PAGE_SIZE);
+  const pagePosition = ((numericRank - 1) % PAGE_SIZE) + 1;
+
+  return {
+    main: `${numericRank}위`,
+    sub: `${page}p ${pagePosition}위`,
+  };
+}
+
+function getDefaultRecommendedKeywords(store: Store): RecommendedKeyword[] {
+  const area = store.address.includes("한남")
+    ? "한남동"
+    : store.address.includes("연남")
+      ? "연남동"
+      : store.address.includes("서울역")
+        ? "서울역"
+        : store.address.includes("숙대")
+          ? "숙대입구"
+          : "";
+
+  if (store.name.includes("뉴오더클럽") && area === "한남동") {
+    return [
+      { keyword: "블루스퀘어청모생일파티" },
+      { keyword: "가성비소개팅회식" },
+      { keyword: "한남동청첩장모임또간집" },
+      { keyword: "맥주숩집내돈내산낮술" },
+      { keyword: "화덕피자", monthly: "28180" },
+    ];
+  }
+
+  if (store.name.includes("뉴오더클럽") && area === "연남동") {
+    return [
+      { keyword: "연남동 피자", monthly: "12410" },
+      { keyword: "연남동 맛집", monthly: "41280" },
+      { keyword: "연남동 데이트" },
+      { keyword: "연남동 화덕피자" },
+      { keyword: "연남 피자집" },
+    ];
+  }
+
+  if (store.category.includes("필라테스")) {
+    return [
+      { keyword: "서울역 필라테스", monthly: "240" },
+      { keyword: "숙대입구 필라테스", monthly: "30" },
+      { keyword: "용산 필라테스" },
+      { keyword: "자세교정 필라테스" },
+      { keyword: "기구필라테스" },
+    ];
+  }
+
+  return [
+    { keyword: `${area} ${store.category}`.trim() || `${store.name} ${store.category}`.trim() },
+    { keyword: `${area} 맛집`.trim() || `${store.name} 맛집`.trim() },
+    { keyword: `${store.category} 추천` },
+    { keyword: `${store.name} 후기` },
+    { keyword: `${store.name} 예약` },
+  ];
+}
+
+function moveItem<T>(arr: T[], from: number, to: number) {
+  const copy = [...arr];
+  const [target] = copy.splice(from, 1);
+  copy.splice(to, 0, target);
+  return copy;
+}
+
 export default function PlacePage() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [stores, setStores] = useState<Store[]>([
     {
       name: "키코필라테스 앤 발레",
@@ -70,17 +173,17 @@ export default function PlacePage() {
       keywords: [
         {
           keyword: "서울역 필라테스",
-          monthly: "240",
-          mobile: "150",
-          pc: "90",
-          rank: "39위",
+          monthly: "-",
+          mobile: "-",
+          pc: "-",
+          rank: "-",
         },
         {
           keyword: "숙대입구 필라테스",
-          monthly: "30",
-          mobile: "20",
-          pc: "10",
-          rank: "26위",
+          monthly: "-",
+          mobile: "-",
+          pc: "-",
+          rank: "-",
         },
       ],
     },
@@ -89,9 +192,9 @@ export default function PlacePage() {
       category: "피자",
       address: "서울 마포구 연남동 260-31",
       placeId: "1173480601",
-      mobilePlaceLink: "https://m.place.naver.com/place/1173480601/home",
+      mobilePlaceLink: "https://m.place.naver.com/restaurant/1173480601/home",
       pcPlaceLink:
-        "https://map.naver.com/p/entry/place/1173480601?placePath=/home",
+        "https://map.naver.com/p/entry/place/1173480601?c=15.00,0,0,0,dh",
       image: "",
       keywords: [],
     },
@@ -110,7 +213,16 @@ export default function PlacePage() {
     null
   );
   const [keywordInput, setKeywordInput] = useState("");
+  const [selectedRecommendedKeywords, setSelectedRecommendedKeywords] = useState<
+    string[]
+  >([]);
   const [tempKeywords, setTempKeywords] = useState<string[]>([]);
+  const [draggingKeywordIndex, setDraggingKeywordIndex] = useState<number | null>(
+    null
+  );
+  const [checkingStoreIndex, setCheckingStoreIndex] = useState<number | null>(
+    null
+  );
 
   const filteredStores = useMemo(() => {
     const text = searchText.trim().toLowerCase();
@@ -124,6 +236,14 @@ export default function PlacePage() {
       );
     });
   }, [searchText, stores]);
+
+  const selectedStore =
+    selectedStoreIndex !== null ? stores[selectedStoreIndex] : null;
+
+  const recommendedKeywords = useMemo(() => {
+    if (!selectedStore) return [];
+    return getDefaultRecommendedKeywords(selectedStore);
+  }, [selectedStore]);
 
   const openRegisterModal = () => {
     setIsRegisterModalOpen(true);
@@ -171,7 +291,6 @@ export default function PlacePage() {
         image: normalizeImageUrl(item.image),
       }));
 
-      console.log("검색결과 최종 items:", normalizedItems);
       setPlaceResults(normalizedItems);
     } catch (error) {
       console.error(error);
@@ -182,72 +301,75 @@ export default function PlacePage() {
     }
   };
 
- const handleRegisterPlace = async (item: SearchPlaceItem) => {
-  const exists = stores.some(
-    (store) => store.name === item.title && store.address === item.address
-  );
+  const handleRegisterPlace = async (item: SearchPlaceItem) => {
+    try {
+      const response = await fetch("/api/resolve-place-link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: item.title,
+          address: item.address,
+          link: item.link,
+        }),
+      });
 
-  if (exists) {
-    alert("이미 등록된 매장입니다.");
-    return;
-  }
+      const data = await response.json();
 
-  try {
-    const response = await fetch("/api/resolve-place-link", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+      if (!response.ok) {
+        alert(data.error || "플레이스 정보를 가져오지 못했어요.");
+        return;
+      }
+
+      const rawImage = normalizeImageUrl(data.image || item.image || "");
+      const publicPlaceId = String(data.placeId || "").trim();
+      const encodedQuery = encodeURIComponent(item.title.trim());
+
+      const alreadyExists = stores.some(
+        (store) =>
+          (publicPlaceId && store.placeId === publicPlaceId) ||
+          (store.name === item.title && store.address === item.address)
+      );
+
+      if (alreadyExists) {
+        alert("이미 등록된 매장입니다.");
+        return;
+      }
+
+      const newStore: Store = {
         name: item.title,
+        category: item.category.split(">").pop()?.trim() || item.category,
         address: item.address,
-        link: item.link,
-      }),
-    });
+        placeId: publicPlaceId,
+        mobilePlaceLink: publicPlaceId
+          ? `https://m.place.naver.com/restaurant/${publicPlaceId}/home`
+          : `https://m.map.naver.com/search2/search.naver?query=${encodedQuery}`,
+        pcPlaceLink: publicPlaceId
+          ? `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`
+          : `https://map.naver.com/p/search/${encodedQuery}`,
+        image: rawImage ? getProxyImageUrl(rawImage) : "",
+        keywords: [],
+      };
 
-    const data = await response.json();
+      setStores((prev) => {
+        const filtered = prev.filter((store) => {
+          if (publicPlaceId && store.placeId === publicPlaceId) return false;
+          if (store.name === item.title && store.address === item.address) {
+            return false;
+          }
+          return true;
+        });
 
-    console.log("선택한 검색결과 item:", item);
-    console.log("resolve 응답 data:", data);
+        return [newStore, ...filtered];
+      });
 
-    if (!response.ok) {
-      alert(data.error || "플레이스 정보를 가져오지 못했어요.");
-      return;
+      closeRegisterModal();
+    } catch (error) {
+      console.error(error);
+      alert("매장 등록 중 오류가 났어요.");
     }
-
-    const rawImage = normalizeImageUrl(data.image || item.image || "");
-    const publicPlaceId = String(data.placeId || "").trim();
-    const encodedQuery = encodeURIComponent(item.title.trim());
-
-    const newStore: Store = {
-      name: item.title,
-      category: item.category.split(">").pop()?.trim() || item.category,
-      address: item.address,
-      placeId: publicPlaceId,
-
-      // 🔥 모바일은 공개 placeId 있으면 무조건 restaurant 링크로 저장
-      mobilePlaceLink: publicPlaceId
-        ? `https://m.place.naver.com/restaurant/${publicPlaceId}/home`
-        : `https://m.map.naver.com/search2/search.naver?query=${encodedQuery}`,
-
-      // 🔥 PC도 공개 placeId 있으면 직접 진입 링크로 저장
-      pcPlaceLink: publicPlaceId
-        ? `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`
-        : `https://map.naver.com/p/search/${encodedQuery}`,
-
-      image: rawImage ? getProxyImageUrl(rawImage) : "",
-      keywords: [],
-    };
-
-    console.log("🔥 최종 저장 store:", newStore);
-
-    setStores((prev) => [newStore, ...prev]);
-    closeRegisterModal();
-  } catch (error) {
-    console.error(error);
-    alert("매장 등록 중 오류가 났어요.");
-  }
-};
+  };
 
   const openKeywordModal = (storeIndex: number) => {
     const targetStore = filteredStores[storeIndex];
@@ -258,9 +380,17 @@ export default function PlacePage() {
 
     if (realIndex === -1) return;
 
+    const existingKeywords = stores[realIndex].keywords.map((item) => item.keyword);
+
     setSelectedStoreIndex(realIndex);
-    setTempKeywords(stores[realIndex].keywords.map((item) => item.keyword));
+    setTempKeywords(existingKeywords);
+    setSelectedRecommendedKeywords(
+      getDefaultRecommendedKeywords(stores[realIndex])
+        .map((item) => item.keyword)
+        .filter((keyword) => existingKeywords.includes(keyword))
+    );
     setKeywordInput("");
+    setDraggingKeywordIndex(null);
     setIsKeywordModalOpen(true);
   };
 
@@ -268,36 +398,81 @@ export default function PlacePage() {
     setIsKeywordModalOpen(false);
     setSelectedStoreIndex(null);
     setKeywordInput("");
+    setSelectedRecommendedKeywords([]);
     setTempKeywords([]);
+    setDraggingKeywordIndex(null);
   };
 
-  const addTempKeyword = () => {
-    const value = keywordInput.trim();
-    if (!value) return;
+  const addKeywordsToTemp = (keywords: string[]) => {
+    setTempKeywords((prev) => {
+      const set = new Set(prev);
+      keywords.forEach((keyword) => {
+        const trimmed = keyword.trim();
+        if (trimmed) set.add(trimmed);
+      });
+      return Array.from(set);
+    });
+  };
 
-    if (tempKeywords.includes(value)) {
-      alert("이미 추가된 키워드입니다.");
-      return;
-    }
+  const toggleRecommendedKeyword = (keyword: string) => {
+    setSelectedRecommendedKeywords((prev) => {
+      const exists = prev.includes(keyword);
 
-    setTempKeywords((prev) => [...prev, value]);
+      if (exists) {
+        setTempKeywords((current) => current.filter((item) => item !== keyword));
+        return prev.filter((item) => item !== keyword);
+      }
+
+      addKeywordsToTemp([keyword]);
+      return [...prev, keyword];
+    });
+  };
+
+  const addDirectKeywords = () => {
+    const keywords = keywordInput
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (keywords.length === 0) return;
+
+    addKeywordsToTemp(keywords);
     setKeywordInput("");
   };
 
   const removeTempKeyword = (keyword: string) => {
     setTempKeywords((prev) => prev.filter((item) => item !== keyword));
+    setSelectedRecommendedKeywords((prev) =>
+      prev.filter((item) => item !== keyword)
+    );
   };
 
   const saveKeywords = () => {
     if (selectedStoreIndex === null) return;
 
-    const newKeywordItems: KeywordItem[] = tempKeywords.map((keyword) => ({
-      keyword,
-      monthly: "-",
-      mobile: "-",
-      pc: "-",
-      rank: "-",
-    }));
+    const recommendedMap = new Map(
+      getDefaultRecommendedKeywords(stores[selectedStoreIndex]).map((item) => [
+        item.keyword,
+        item.monthly || "-",
+      ])
+    );
+
+    const existingMap = new Map(
+      stores[selectedStoreIndex].keywords.map((item) => [item.keyword, item])
+    );
+
+    const newKeywordItems: KeywordItem[] = tempKeywords.map((keyword) => {
+      const existing = existingMap.get(keyword);
+      if (existing) return existing;
+
+      return {
+        keyword,
+        monthly: recommendedMap.get(keyword) || "-",
+        mobile: "-",
+        pc: "-",
+        rank: "-",
+      };
+    });
 
     setStores((prev) =>
       prev.map((store, index) =>
@@ -312,6 +487,87 @@ export default function PlacePage() {
 
     closeKeywordModal();
   };
+
+  const handleCheckRanks = async (filteredIndex: number) => {
+    const targetStore = filteredStores[filteredIndex];
+    const realIndex = stores.findIndex(
+      (item) =>
+        item.name === targetStore.name && item.address === targetStore.address
+    );
+
+    if (realIndex === -1) return;
+
+    const target = stores[realIndex];
+
+    if (!target.placeId) {
+      alert("placeId가 없어 순위 조회를 할 수 없어요. 매장을 다시 등록해주세요.");
+      return;
+    }
+
+    if (target.keywords.length === 0) {
+      alert("먼저 키워드를 등록해주세요.");
+      return;
+    }
+
+    setCheckingStoreIndex(realIndex);
+
+    try {
+      const updatedKeywords = await Promise.all(
+        target.keywords.map(async (item) => {
+          const response = await fetch("/api/check-place-rank", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              keyword: item.keyword,
+              placeId: target.placeId,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              ...item,
+              monthly: item.monthly || "-",
+              mobile: "-",
+              pc: "-",
+              rank: "오류",
+            };
+          }
+
+          return {
+            ...item,
+            monthly: data.monthly || item.monthly || "-",
+            mobile: data.mobile || "-",
+            pc: data.pc || "-",
+            rank: data.rank || "-",
+          };
+        })
+      );
+
+      setStores((prev) =>
+        prev.map((store, index) =>
+          index === realIndex
+            ? {
+                ...store,
+                keywords: updatedKeywords,
+              }
+            : store
+        )
+      );
+    } catch (error) {
+      console.error(error);
+      alert("순위 조회 중 오류가 났어요.");
+    } finally {
+      setCheckingStoreIndex(null);
+    }
+  };
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
@@ -430,174 +686,192 @@ export default function PlacePage() {
         </div>
 
         <div className="mt-7 space-y-5">
-          {filteredStores.map((store, index) => (
-            <div
-              key={`${store.name}-${store.address}`}
-              className="rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]"
-            >
-              <div className="mb-6 flex flex-col gap-5 2xl:flex-row 2xl:items-start 2xl:justify-between">
-                <div className="flex gap-4">
-                  {store.image ? (
-                    <img
-                      src={store.image}
-                      alt={store.name}
-                      className="h-[72px] w-[72px] rounded-[14px] object-cover"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        console.log("이미지 렌더 실패:", store.image);
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[12px] text-[#9ca3af]">
-                      이미지
+          {filteredStores.map((store, index) => {
+            const realIndex = stores.findIndex(
+              (item) =>
+                item.name === store.name && item.address === store.address
+            );
+
+            return (
+              <div
+                key={`${store.placeId || store.name}-${store.address}-${index}`}
+                className="rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]"
+              >
+                <div className="mb-6 flex flex-col gap-5 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                  <div className="flex gap-4">
+                    {store.image ? (
+                      <img
+                        src={store.image}
+                        alt={store.name}
+                        className="h-[72px] w-[72px] rounded-[14px] object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[12px] text-[#9ca3af]">
+                        이미지
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h3 className="text-[17px] font-black tracking-[-0.01em] text-[#111827]">
+                          {store.name}
+                        </h3>
+                        <span className="text-[14px] text-[#6b7280]">
+                          {store.category}
+                        </span>
+                        <span className="text-[14px] text-[#c6cad3]">|</span>
+                        <span className="text-[14px] text-[#374151]">
+                          {store.address}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-5 text-[13px] text-[#6b7280]">
+                        <span>
+                          검색량{" "}
+                          <strong className="text-[13px] font-bold text-[#111827]">
+                            1,490
+                          </strong>
+                        </span>
+                        <span>📱 1,380</span>
+                        <span>🖥 110</span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
+                        <span className="text-[#6b7280]">매장 바로가기</span>
+
+                        {store.mobilePlaceLink ? (
+                          <a
+                            href={store.mobilePlaceLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-[#111827] underline underline-offset-2"
+                          >
+                            모바일
+                          </a>
+                        ) : (
+                          <span className="text-[#b7bec8]">모바일 없음</span>
+                        )}
+
+                        {store.pcPlaceLink ? (
+                          <a
+                            href={store.pcPlaceLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-[#111827] underline underline-offset-2"
+                          >
+                            PC
+                          </a>
+                        ) : (
+                          <span className="text-[#b7bec8]">PC 없음</span>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </div>
 
-                  <div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h3 className="text-[17px] font-black tracking-[-0.01em] text-[#111827]">
-                        {store.name}
-                      </h3>
-                      <span className="text-[14px] text-[#6b7280]">
-                        {store.category}
-                      </span>
-                      <span className="text-[14px] text-[#c6cad3]">|</span>
-                      <span className="text-[14px] text-[#374151]">
-                        {store.address}
-                      </span>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="px-1 text-[18px] text-[#374151]">📌</div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-5 text-[13px] text-[#6b7280]">
-                      <span>
-                        검색량{" "}
-                        <strong className="text-[13px] font-bold text-[#111827]">
-                          1,490
-                        </strong>
-                      </span>
-                      <span>📱 1,380</span>
-                      <span>🖥 110</span>
-                    </div>
+                    <button
+                      onClick={() => handleCheckRanks(index)}
+                      className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]"
+                    >
+                      {checkingStoreIndex === realIndex ? "조회중..." : "순위 변화 보기"}
+                    </button>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
-                      <span className="text-[#6b7280]">매장 바로가기</span>
+                    <button className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]">
+                      자동 추적 <span className="text-[#ff6b6b]">OFF</span>
+                    </button>
 
-                      {store.mobilePlaceLink ? (
-                        <a
-                          href={store.mobilePlaceLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-semibold text-[#111827] underline underline-offset-2"
-                        >
-                          모바일
-                        </a>
-                      ) : (
-                        <span className="text-[#b7bec8]">모바일 없음</span>
-                      )}
+                    <button
+                      onClick={() => openKeywordModal(index)}
+                      className="rounded-[10px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-95"
+                    >
+                      키워드 관리
+                    </button>
 
-                      {store.pcPlaceLink ? (
-                        <a
-                          href={store.pcPlaceLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-semibold text-[#111827] underline underline-offset-2"
-                        >
-                          PC
-                        </a>
-                      ) : (
-                        <span className="text-[#b7bec8]">PC 없음</span>
-                      )}
-                    </div>
+                    <button className="px-1 text-[20px] text-[#4b5563]">⋮</button>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="px-1 text-[18px] text-[#374151]">📌</div>
-
-                  <button className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]">
-                    순위 변화 보기
-                  </button>
-
-                  <button className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]">
-                    자동 추적 <span className="text-[#ff6b6b]">OFF</span>
-                  </button>
-
-                  <button
-                    onClick={() => openKeywordModal(index)}
-                    className="rounded-[10px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-95"
-                  >
-                    키워드 관리
-                  </button>
-
-                  <button className="px-1 text-[20px] text-[#4b5563]">⋮</button>
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-[16px] border border-[#e5e9f0]">
-                <table className="min-w-full border-collapse">
-                  <thead className="bg-[#f4f6f9]">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
-                        키워드
-                      </th>
-                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
-                        월 검색량
-                      </th>
-                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
-                        📱 모바일
-                      </th>
-                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
-                        🖥 PC
-                      </th>
-                      <th className="px-6 py-3 text-left text-[13px] font-bold text-[#374151]">
-                        검색 순위
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {store.keywords.length === 0 ? (
+                <div className="overflow-hidden rounded-[16px] border border-[#e5e9f0]">
+                  <table className="min-w-full border-collapse">
+                    <thead className="bg-[#f4f6f9]">
                       <tr>
-                        <td
-                          colSpan={5}
-                          className="px-6 py-14 text-center text-[13px] leading-7 text-[#6b7280]"
-                        >
-                          지금 키워드를 등록하고, 내 매장의 키워드 별 순위를
-                          확인해보세요.
-                          <br />
-                          <span className="font-bold text-[#4b5563]">
-                            [키워드 관리]
-                          </span>
-                          버튼을 눌러 시작할 수 있어요.
-                        </td>
+                        <th className="w-[44%] px-7 py-4 text-left text-[13px] font-bold text-[#374151]">
+                          키워드
+                        </th>
+                        <th className="w-[14%] px-4 py-4 text-right text-[13px] font-bold text-[#374151]">
+                          월 검색량
+                        </th>
+                        <th className="w-[14%] px-4 py-4 text-right text-[13px] font-bold text-[#374151]">
+                          📱 모바일
+                        </th>
+                        <th className="w-[14%] px-4 py-4 text-right text-[13px] font-bold text-[#374151]">
+                          🖥 PC
+                        </th>
+                        <th className="w-[14%] px-7 py-4 text-right text-[13px] font-bold text-[#374151]">
+                          검색 순위
+                        </th>
                       </tr>
-                    ) : (
-                      store.keywords.map((item, i) => (
-                        <tr key={i} className="border-t border-[#e5e7eb]">
-                          <td className="px-6 py-3 text-[13px] font-medium text-[#111827]">
-                            {item.keyword}
-                          </td>
-                          <td className="px-6 py-3 text-[13px] text-[#111827]">
-                            {item.monthly}
-                          </td>
-                          <td className="px-6 py-3 text-[13px] text-[#6b7280]">
-                            {item.mobile}
-                          </td>
-                          <td className="px-6 py-3 text-[13px] text-[#6b7280]">
-                            {item.pc}
-                          </td>
-                          <td className="px-6 py-3 text-[13px] font-bold text-[#111827]">
-                            {item.rank}
+                    </thead>
+
+                    <tbody>
+                      {store.keywords.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            className="px-6 py-14 text-center text-[13px] leading-7 text-[#6b7280]"
+                          >
+                            지금 키워드를 등록하고, 내 매장의 키워드 별 순위를
+                            확인해보세요.
+                            <br />
+                            <span className="font-bold text-[#4b5563]">
+                              [키워드 관리]
+                            </span>
+                            버튼을 눌러 시작할 수 있어요.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        store.keywords.map((item, i) => {
+                          const rankMeta = getRankMeta(item.rank);
+
+                          return (
+                            <tr key={`${item.keyword}-${i}`} className="border-t border-[#e5e7eb]">
+                              <td className="px-7 py-5 text-[14px] font-medium text-[#111827]">
+                                {item.keyword}
+                              </td>
+                              <td className="px-4 py-5 text-right text-[14px] font-bold text-[#111827]">
+                                {formatCount(item.monthly)}
+                              </td>
+                              <td className="px-4 py-5 text-right text-[14px] text-[#8b95a1]">
+                                {formatCount(item.mobile)}
+                              </td>
+                              <td className="px-4 py-5 text-right text-[14px] text-[#8b95a1]">
+                                {formatCount(item.pc)}
+                              </td>
+                              <td className="px-7 py-5 text-right">
+                                <div className="text-[14px] font-bold text-[#111827]">
+                                  {rankMeta.main}
+                                </div>
+                                <div className="mt-1 text-[12px] font-medium text-[#98a2b3]">
+                                  {rankMeta.sub}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -649,7 +923,7 @@ export default function PlacePage() {
                     <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb] bg-white">
                       {placeResults.map((item, index) => (
                         <button
-                          key={`${item.title}-${index}`}
+                          key={`${item.title}-${item.address}-${index}`}
                           onClick={() => handleRegisterPlace(item)}
                           className="block w-full border-b border-[#e5e7eb] px-5 py-5 text-left transition last:border-b-0 hover:bg-[#fafafa]"
                         >
@@ -661,9 +935,6 @@ export default function PlacePage() {
                                 className="h-[56px] w-[56px] rounded-[12px] object-cover"
                                 loading="lazy"
                                 referrerPolicy="no-referrer"
-                                onError={() => {
-                                  console.log("검색결과 이미지 렌더 실패:", item.image);
-                                }}
                               />
                             ) : (
                               <div className="flex h-[56px] w-[56px] items-center justify-center rounded-[12px] bg-[#eef0f3] text-[11px] text-[#9ca3af]">
@@ -716,91 +987,196 @@ export default function PlacePage() {
         </div>
       )}
 
-      {isKeywordModalOpen && (
+      {isKeywordModalOpen && selectedStore && (
         <div
           className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]"
           onClick={closeKeywordModal}
         >
           <div className="flex min-h-screen items-center justify-center p-4">
             <div
-              className="w-full max-w-2xl rounded-[20px] bg-white p-6 shadow-2xl"
+              className="w-full max-w-[980px] rounded-[22px] bg-[#f7f7f8] px-10 py-9 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h2 className="text-[22px] font-black tracking-[-0.02em] text-black">
-                    키워드 관리
-                  </h2>
-                  <p className="mt-1 text-[13px] text-[#6b7280]">
-                    추적할 키워드를 추가하고 저장하세요.
-                  </p>
+              <h2 className="text-[48px] font-black leading-none tracking-[-0.04em] text-black">
+                키워드 관리
+              </h2>
+              <p className="mt-4 text-[20px] leading-[1.5] text-[#667085]">
+                해당 키워드로 검색 시 플레이스 순위를 확인할 수 있어요. 키워드를 추가해보세요.
+              </p>
+
+              <div className="mt-8 border-t border-[#e5e7eb] pt-8">
+                <div className="flex items-center gap-6">
+                  {selectedStore.image ? (
+                    <img
+                      src={selectedStore.image}
+                      alt={selectedStore.name}
+                      className="h-[92px] w-[92px] rounded-[14px] object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-[92px] w-[92px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[14px] text-[#9ca3af]">
+                      이미지
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-[28px] font-black tracking-[-0.03em] text-black">
+                      {selectedStore.name}
+                    </div>
+                    <div className="mt-1 text-[18px] text-black">
+                      {selectedStore.category}
+                    </div>
+                  </div>
                 </div>
 
-                <button
-                  onClick={closeKeywordModal}
-                  className="rounded-[10px] bg-[#f1f3f7] px-4 py-2 text-[13px] font-semibold text-[#374151]"
-                >
-                  닫기
-                </button>
-              </div>
+                <div className="mt-10">
+                  <h3 className="text-[24px] font-black tracking-[-0.03em] text-black">
+                    키워드 선택 추가
+                  </h3>
+                  <p className="mt-2 text-[16px] leading-[1.5] text-[#667085]">
+                    플레이스에서 추천하는 키워드입니다. 원하는 키워드를 선택하여 추가하세요.
+                  </p>
 
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={keywordInput}
-                  onChange={(e) => setKeywordInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") addTempKeyword();
-                  }}
-                  placeholder="예: 연남동 피자"
-                  className="h-[44px] flex-1 rounded-[12px] border border-[#d1d5db] bg-white px-4 text-[14px] text-black outline-none placeholder:text-[#9ca3af] focus:border-[#8b2cf5] focus:ring-4 focus:ring-[#f0e7ff]"
-                />
-                <button
-                  onClick={addTempKeyword}
-                  className="rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[14px] font-semibold text-white"
-                >
-                  추가
-                </button>
-              </div>
+                  <div className="mt-5 border-t border-[#e5e7eb] pt-5">
+                    <div className="grid grid-cols-3 gap-x-8 gap-y-6">
+                      {recommendedKeywords.map((item) => {
+                        const checked = selectedRecommendedKeywords.includes(
+                          item.keyword
+                        );
 
-              <div className="mt-5 max-h-[260px] space-y-3 overflow-y-auto pr-1">
-                {tempKeywords.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[#d1d5db] px-6 py-8 text-center text-[13px] text-[#9ca3af]">
-                    아직 추가된 키워드가 없습니다.
-                  </div>
-                ) : (
-                  tempKeywords.map((keyword) => (
-                    <div
-                      key={keyword}
-                      className="flex items-center justify-between rounded-[14px] border border-[#e5e7eb] px-4 py-3"
-                    >
-                      <span className="text-[14px] font-medium text-black">
-                        {keyword}
-                      </span>
-                      <button
-                        onClick={() => removeTempKeyword(keyword)}
-                        className="rounded-[8px] bg-[#f3f4f6] px-3 py-1.5 text-[12px] font-semibold text-[#374151]"
-                      >
-                        삭제
-                      </button>
+                        return (
+                          <label
+                            key={item.keyword}
+                            className="flex cursor-pointer items-center gap-3"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleRecommendedKeyword(item.keyword)}
+                              className="h-[18px] w-[18px] rounded border-[#94a3b8]"
+                            />
+                            <span className="text-[16px] font-medium text-black">
+                              {item.keyword}
+                            </span>
+                            {item.monthly && (
+                              <span className="text-[13px] font-semibold text-[#98a2b3]">
+                                월 검색량 {formatCount(item.monthly)}
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
                     </div>
-                  ))
-                )}
-              </div>
+                  </div>
+                </div>
 
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  onClick={closeKeywordModal}
-                  className="rounded-[10px] border border-[#d1d5db] bg-white px-4 py-2 text-[13px] font-semibold text-[#374151]"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={saveKeywords}
-                  className="rounded-[10px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-4 py-2 text-[13px] font-semibold text-white"
-                >
-                  저장하기
-                </button>
+                <div className="mt-8">
+                  <h3 className="text-[24px] font-black tracking-[-0.03em] text-black">
+                    키워드 직접 추가
+                  </h3>
+
+                  <div className="mt-4 flex overflow-hidden rounded-[16px] border border-[#d7dce5] bg-white">
+                    <input
+                      type="text"
+                      value={keywordInput}
+                      onChange={(e) => setKeywordInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addDirectKeywords();
+                      }}
+                      placeholder="키워드를 콤마(,)로 구분하여 입력 (키워드당 최대 20자)"
+                      className="h-[72px] flex-1 px-6 text-[18px] text-[#111827] outline-none placeholder:text-[#b0b7c3]"
+                    />
+                    <button
+                      onClick={addDirectKeywords}
+                      className="min-w-[150px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-6 text-[18px] font-black text-white"
+                    >
+                      추가
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-10">
+                  <h3 className="text-[24px] font-black tracking-[-0.03em] text-black">
+                    키워드 순서 변경
+                  </h3>
+                  <p className="mt-2 text-[16px] leading-[1.5] text-[#667085]">
+                    키워드를 드래그 앤 드롭하여 순서를 변경하세요.
+                    <br />
+                    상위 3개의 키워드는 전체 목록에서도 검색량과 순위를 쉽게 확인하실 수 있습니다.
+                  </p>
+
+                  <div className="mt-5 border-t border-[#e5e7eb]">
+                    {tempKeywords.length === 0 ? (
+                      <div className="py-10 text-[16px] text-[#98a2b3]">
+                        추가된 키워드가 없습니다.
+                      </div>
+                    ) : (
+                      tempKeywords.map((keyword, index) => (
+                        <div
+                          key={`${keyword}-${index}`}
+                          draggable
+                          onDragStart={() => setDraggingKeywordIndex(index)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            if (
+                              draggingKeywordIndex === null ||
+                              draggingKeywordIndex === index
+                            ) {
+                              return;
+                            }
+
+                            setTempKeywords((prev) =>
+                              moveItem(prev, draggingKeywordIndex, index)
+                            );
+                            setDraggingKeywordIndex(null);
+                          }}
+                          className="flex items-center justify-between border-b border-[#e5e7eb] py-6"
+                        >
+                          <div className="flex items-center gap-4">
+                            <button
+                              type="button"
+                              className="text-[22px] text-[#98a2b3]"
+                            >
+                              ⠿
+                            </button>
+
+                            <div className="flex items-center gap-3">
+                              <span className="text-[18px] font-bold text-black">
+                                {keyword}
+                              </span>
+                              {index < 3 && (
+                                <span className="text-[14px] font-bold text-[#7c3aed]">
+                                  전체 상품 목록에 표시됨
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => removeTempKeyword(keyword)}
+                            className="text-[22px] text-[#374151]"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-10 flex justify-end gap-4">
+                  <button
+                    onClick={closeKeywordModal}
+                    className="h-[72px] min-w-[120px] rounded-[16px] bg-[#efeff3] px-8 text-[18px] font-black text-[#222]"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={saveKeywords}
+                    className="h-[72px] min-w-[120px] rounded-[16px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-8 text-[18px] font-black text-white"
+                  >
+                    저장
+                  </button>
+                </div>
               </div>
             </div>
           </div>
