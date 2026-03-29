@@ -1,17 +1,37 @@
 "use client";
 
-import { useSession } from "next-auth/react";
-import LogoutButton from "./logout-button";
+import { signOut } from "next-auth/react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 export default function UserMenu() {
-  const { data: session } = useSession();
+  const router = useRouter();
 
   return (
     <div className="flex items-center gap-3">
-      <div className="text-[14px] font-semibold text-[#4b5563]">
-        {session?.user?.name || "사용자"}
-      </div>
-      <LogoutButton />
+
+      {/* 마이페이지 */}
+      <button onClick={() => router.push("/mypage")}>
+        <Image
+          src="/icons/user.png"
+          alt="user"
+          width={30}
+          height={24}
+          className="hover:opacity-70"
+        />
+      </button>
+
+      {/* 로그아웃 */}
+      <button onClick={() => signOut({ callbackUrl: "/" })}>
+        <Image
+          src="/icons/logout.png"
+          alt="logout"
+          width={30}
+          height={24}
+          className="hover:opacity-70"
+        />
+      </button>
+
     </div>
   );
 }

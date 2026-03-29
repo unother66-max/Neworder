@@ -166,43 +166,8 @@ export default function PlacePage() {
   }, []);
 
   const [stores, setStores] = useState<Store[]>([
-    {
-      name: "키코필라테스 앤 발레",
-      category: "필라테스",
-      address: "서울특별시 용산구 만리재로 134 7층",
-      placeId: "1234567890",
-      mobilePlaceLink: "https://m.place.naver.com/place/1234567890/home",
-      pcPlaceLink:
-        "https://map.naver.com/p/entry/place/1234567890?placePath=/home",
-      image: "",
-      keywords: [
-        {
-          keyword: "서울역 필라테스",
-          monthly: "-",
-          mobile: "-",
-          pc: "-",
-          rank: "-",
-        },
-        {
-          keyword: "숙대입구 필라테스",
-          monthly: "-",
-          mobile: "-",
-          pc: "-",
-          rank: "-",
-        },
-      ],
-    },
-    {
-      name: "뉴오더클럽 연남",
-      category: "피자",
-      address: "서울 마포구 연남동 260-31",
-      placeId: "1173480601",
-      mobilePlaceLink: "https://m.place.naver.com/restaurant/1173480601/home",
-      pcPlaceLink:
-        "https://map.naver.com/p/entry/place/1173480601?c=15.00,0,0,0,dh",
-      image: "",
-      keywords: [],
-    },
+    
+
   ]);
 
   const [searchText, setSearchText] = useState("");
