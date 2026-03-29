@@ -988,200 +988,198 @@ export default function PlacePage() {
       )}
 
       {isKeywordModalOpen && selectedStore && (
-        <div
-          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]"
-          onClick={closeKeywordModal}
-        >
-          <div className="flex min-h-screen items-center justify-center p-4">
-            <div
-              className="w-full max-w-[980px] rounded-[22px] bg-[#f7f7f8] px-10 py-9 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-[48px] font-black leading-none tracking-[-0.04em] text-black">
-                키워드 관리
-              </h2>
-              <p className="mt-4 text-[20px] leading-[1.5] text-[#667085]">
-                해당 키워드로 검색 시 플레이스 순위를 확인할 수 있어요. 키워드를 추가해보세요.
-              </p>
+  <div
+    className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]"
+    onClick={closeKeywordModal}
+  >
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <div
+        className="w-full max-w-[860px] rounded-[18px] bg-[#f7f7f8] px-8 py-8 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-[34px] font-black leading-none tracking-[-0.03em] text-black">
+          키워드 관리
+        </h2>
+        <p className="mt-3 text-[16px] leading-[1.5] text-[#667085]">
+          해당 키워드로 검색 시 플레이스 순위를 확인할 수 있어요. 키워드를 추가해보세요.
+        </p>
 
-              <div className="mt-8 border-t border-[#e5e7eb] pt-8">
-                <div className="flex items-center gap-6">
-                  {selectedStore.image ? (
-                    <img
-                      src={selectedStore.image}
-                      alt={selectedStore.name}
-                      className="h-[92px] w-[92px] rounded-[14px] object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-[92px] w-[92px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[14px] text-[#9ca3af]">
-                      이미지
-                    </div>
-                  )}
+        <div className="mt-6 border-t border-[#e5e7eb] pt-6">
+          <div className="flex items-center gap-5">
+            {selectedStore.image ? (
+              <img
+                src={selectedStore.image}
+                alt={selectedStore.name}
+                className="h-[84px] w-[84px] rounded-[14px] object-cover"
+              />
+            ) : (
+              <div className="flex h-[84px] w-[84px] items-center justify-center rounded-[14px] bg-[#eef0f3] text-[13px] text-[#9ca3af]">
+                이미지
+              </div>
+            )}
 
-                  <div>
-                    <div className="text-[28px] font-black tracking-[-0.03em] text-black">
-                      {selectedStore.name}
-                    </div>
-                    <div className="mt-1 text-[18px] text-black">
-                      {selectedStore.category}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-10">
-                  <h3 className="text-[24px] font-black tracking-[-0.03em] text-black">
-                    키워드 선택 추가
-                  </h3>
-                  <p className="mt-2 text-[16px] leading-[1.5] text-[#667085]">
-                    플레이스에서 추천하는 키워드입니다. 원하는 키워드를 선택하여 추가하세요.
-                  </p>
-
-                  <div className="mt-5 border-t border-[#e5e7eb] pt-5">
-                    <div className="grid grid-cols-3 gap-x-8 gap-y-6">
-                      {recommendedKeywords.map((item) => {
-                        const checked = selectedRecommendedKeywords.includes(
-                          item.keyword
-                        );
-
-                        return (
-                          <label
-                            key={item.keyword}
-                            className="flex cursor-pointer items-center gap-3"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleRecommendedKeyword(item.keyword)}
-                              className="h-[18px] w-[18px] rounded border-[#94a3b8]"
-                            />
-                            <span className="text-[16px] font-medium text-black">
-                              {item.keyword}
-                            </span>
-                            {item.monthly && (
-                              <span className="text-[13px] font-semibold text-[#98a2b3]">
-                                월 검색량 {formatCount(item.monthly)}
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8">
-                  <h3 className="text-[24px] font-black tracking-[-0.03em] text-black">
-                    키워드 직접 추가
-                  </h3>
-
-                  <div className="mt-4 flex overflow-hidden rounded-[16px] border border-[#d7dce5] bg-white">
-                    <input
-                      type="text"
-                      value={keywordInput}
-                      onChange={(e) => setKeywordInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") addDirectKeywords();
-                      }}
-                      placeholder="키워드를 콤마(,)로 구분하여 입력 (키워드당 최대 20자)"
-                      className="h-[72px] flex-1 px-6 text-[18px] text-[#111827] outline-none placeholder:text-[#b0b7c3]"
-                    />
-                    <button
-                      onClick={addDirectKeywords}
-                      className="min-w-[150px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-6 text-[18px] font-black text-white"
-                    >
-                      추가
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-10">
-                  <h3 className="text-[24px] font-black tracking-[-0.03em] text-black">
-                    키워드 순서 변경
-                  </h3>
-                  <p className="mt-2 text-[16px] leading-[1.5] text-[#667085]">
-                    키워드를 드래그 앤 드롭하여 순서를 변경하세요.
-                    <br />
-                    상위 3개의 키워드는 전체 목록에서도 검색량과 순위를 쉽게 확인하실 수 있습니다.
-                  </p>
-
-                  <div className="mt-5 border-t border-[#e5e7eb]">
-                    {tempKeywords.length === 0 ? (
-                      <div className="py-10 text-[16px] text-[#98a2b3]">
-                        추가된 키워드가 없습니다.
-                      </div>
-                    ) : (
-                      tempKeywords.map((keyword, index) => (
-                        <div
-                          key={`${keyword}-${index}`}
-                          draggable
-                          onDragStart={() => setDraggingKeywordIndex(index)}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => {
-                            if (
-                              draggingKeywordIndex === null ||
-                              draggingKeywordIndex === index
-                            ) {
-                              return;
-                            }
-
-                            setTempKeywords((prev) =>
-                              moveItem(prev, draggingKeywordIndex, index)
-                            );
-                            setDraggingKeywordIndex(null);
-                          }}
-                          className="flex items-center justify-between border-b border-[#e5e7eb] py-6"
-                        >
-                          <div className="flex items-center gap-4">
-                            <button
-                              type="button"
-                              className="text-[22px] text-[#98a2b3]"
-                            >
-                              ⠿
-                            </button>
-
-                            <div className="flex items-center gap-3">
-                              <span className="text-[18px] font-bold text-black">
-                                {keyword}
-                              </span>
-                              {index < 3 && (
-                                <span className="text-[14px] font-bold text-[#7c3aed]">
-                                  전체 상품 목록에 표시됨
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => removeTempKeyword(keyword)}
-                            className="text-[22px] text-[#374151]"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-10 flex justify-end gap-4">
-                  <button
-                    onClick={closeKeywordModal}
-                    className="h-[72px] min-w-[120px] rounded-[16px] bg-[#efeff3] px-8 text-[18px] font-black text-[#222]"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={saveKeywords}
-                    className="h-[72px] min-w-[120px] rounded-[16px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-8 text-[18px] font-black text-white"
-                  >
-                    저장
-                  </button>
-                </div>
+            <div>
+              <div className="text-[22px] font-black tracking-[-0.02em] text-black">
+                {selectedStore.name}
+              </div>
+              <div className="mt-1 text-[16px] text-black">
+                {selectedStore.category}
               </div>
             </div>
           </div>
+
+          <div className="mt-8">
+            <h3 className="text-[18px] font-black tracking-[-0.02em] text-black">
+              키워드 선택 추가
+            </h3>
+            <p className="mt-2 text-[14px] leading-[1.5] text-[#667085]">
+              플레이스에서 추천하는 키워드입니다. 원하는 키워드를 선택하여 추가하세요.
+            </p>
+
+            <div className="mt-4 border-t border-[#e5e7eb] pt-4">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4 lg:grid-cols-3">
+                {recommendedKeywords.map((item) => {
+                  const checked = selectedRecommendedKeywords.includes(item.keyword);
+
+                  return (
+                    <label
+                      key={item.keyword}
+                      className="flex cursor-pointer items-center gap-3"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRecommendedKeyword(item.keyword)}
+                        className="h-[18px] w-[18px] rounded border-[#94a3b8]"
+                      />
+                      <span className="text-[15px] font-medium text-black">
+                        {item.keyword}
+                      </span>
+                      {item.monthly && (
+                        <span className="text-[12px] font-semibold text-[#98a2b3]">
+                          월 검색량 {formatCount(item.monthly)}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <h3 className="text-[18px] font-black tracking-[-0.02em] text-black">
+              키워드 직접 추가
+            </h3>
+
+            <div className="mt-3 flex overflow-hidden rounded-[14px] border border-[#d7dce5] bg-white">
+              <input
+                type="text"
+                value={keywordInput}
+                onChange={(e) => setKeywordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addDirectKeywords();
+                }}
+                placeholder="키워드를 콤마(,)로 구분하여 입력 (키워드당 최대 20자)"
+                className="h-[60px] flex-1 px-5 text-[15px] text-[#111827] outline-none placeholder:text-[#b0b7c3]"
+              />
+              <button
+                onClick={addDirectKeywords}
+                className="min-w-[120px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[16px] font-black text-white"
+              >
+                추가
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <h3 className="text-[18px] font-black tracking-[-0.02em] text-black">
+              키워드 순서 변경
+            </h3>
+            <p className="mt-2 text-[14px] leading-[1.5] text-[#667085]">
+              키워드를 드래그 앤 드롭하여 순서를 변경하세요.
+              <br />
+              상위 3개의 키워드는 전체 목록에서도 검색량과 순위를 쉽게 확인하실 수 있습니다.
+            </p>
+
+            <div className="mt-4 border-t border-[#e5e7eb]">
+              {tempKeywords.length === 0 ? (
+                <div className="py-8 text-[14px] text-[#98a2b3]">
+                  추가된 키워드가 없습니다.
+                </div>
+              ) : (
+                tempKeywords.map((keyword, index) => (
+                  <div
+                    key={`${keyword}-${index}`}
+                    draggable
+                    onDragStart={() => setDraggingKeywordIndex(index)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (
+                        draggingKeywordIndex === null ||
+                        draggingKeywordIndex === index
+                      ) {
+                        return;
+                      }
+
+                      setTempKeywords((prev) =>
+                        moveItem(prev, draggingKeywordIndex, index)
+                      );
+                      setDraggingKeywordIndex(null);
+                    }}
+                    className="flex items-center justify-between border-b border-[#e5e7eb] py-5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        className="text-[18px] text-[#98a2b3]"
+                      >
+                        ⠿
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[16px] font-bold text-black">
+                          {keyword}
+                        </span>
+                        {index < 3 && (
+                          <span className="text-[12px] font-bold text-[#7c3aed]">
+                            전체 상품 목록에 표시됨
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => removeTempKeyword(keyword)}
+                      className="text-[20px] text-[#374151]"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-end gap-3">
+            <button
+              onClick={closeKeywordModal}
+              className="h-[56px] min-w-[96px] rounded-[14px] bg-[#efeff3] px-6 text-[16px] font-black text-[#222]"
+            >
+              취소
+            </button>
+            <button
+              onClick={saveKeywords}
+              className="h-[56px] min-w-[96px] rounded-[14px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-6 text-[16px] font-black text-white"
+            >
+              저장
+            </button>
+          </div>
         </div>
-      )}
+      </div>
+    </div>
+  </div>
+)}
     </main>
   );
 }

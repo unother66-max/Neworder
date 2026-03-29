@@ -15,6 +15,10 @@ function normalizeText(value: string) {
     .trim();
 }
 
+function normalizeKeywordForVolume(value: string) {
+  return normalizeText(value).replace(/\s+/g, "");
+}
+
 async function fetchHtml(url: string) {
   const response = await fetch(url, {
     method: "GET",
@@ -38,7 +42,6 @@ async function fetchHtml(url: string) {
     ok: response.ok,
     status: response.status,
     html,
-    finalUrl: response.url || url,
   };
 }
 
@@ -94,9 +97,7 @@ async function getMobileRank(keyword: string, placeId: string) {
       if (!ids.length) continue;
 
       const rank = findRank(ids, placeId);
-      if (rank !== "-") {
-        return rank;
-      }
+      if (rank !== "-") return rank;
     } catch (error) {
       console.error("getMobileRank error:", error);
     }
@@ -121,9 +122,7 @@ async function getPcRank(keyword: string, placeId: string) {
       if (!ids.length) continue;
 
       const rank = findRank(ids, placeId);
-      if (rank !== "-") {
-        return rank;
-      }
+      if (rank !== "-") return rank;
     } catch (error) {
       console.error("getPcRank error:", error);
     }
@@ -146,31 +145,13 @@ function createSignature(
     .digest("base64");
 }
 
-function formatCountValue(value: string | number | undefined) {
-  if (value === undefined || value === null) return "-";
-
-  const raw = String(value).trim();
-  if (!raw) return "-";
-
-  if (raw.includes("<")) {
-    return "10 미만";
-  }
-
-  const numeric = Number(raw.replace(/,/g, ""));
-  if (Number.isNaN(numeric)) return raw;
-
-  return numeric.toLocaleString("ko-KR");
-}
-
 function parseCountValue(value: string | number | undefined) {
   if (value === undefined || value === null) return null;
 
   const raw = String(value).trim();
   if (!raw) return null;
 
-  if (raw.includes("<")) {
-    return 0;
-  }
+  if (raw.includes("<")) return 0;
 
   const numeric = Number(raw.replace(/,/g, ""));
   if (Number.isNaN(numeric)) return null;
@@ -178,21 +159,28 @@ function parseCountValue(value: string | number | undefined) {
   return numeric;
 }
 
-async function getKeywordVolume(keyword: string) {
+function formatCountValue(value: string | number | undefined) {
+  if (value === undefined || value === null) return "-";
+
+  const raw = String(value).trim();
+  if (!raw) return "-";
+
+  if (raw.includes("<")) return "10 미만";
+
+  const numeric = Number(raw.replace(/,/g, ""));
+  if (Number.isNaN(numeric)) return raw;
+
+  return numeric.toLocaleString("ko-KR");
+}
+
+async function requestKeywordVolume(keywordForVolume: string) {
   const apiKey = process.env.NAVER_SEARCHAD_ACCESS_KEY || "";
-const secretKey = process.env.NAVER_SEARCHAD_SECRET_KEY || "";
-const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID || "";
+  const secretKey = process.env.NAVER_SEARCHAD_SECRET_KEY || "";
+  const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID || "";
 
   if (!apiKey || !secretKey || !customerId) {
-    console.warn(
-      "NAVER_AD_API_KEY / NAVER_AD_SECRET_KEY / NAVER_AD_CUSTOMER_ID 중 하나가 없습니다."
-    );
-
-    return {
-      monthly: "-",
-      mobile: "-",
-      pc: "-",
-    };
+    console.warn("NAVER_SEARCHAD 환경변수가 비어있습니다.");
+    return null;
   }
 
   const method = "GET";
@@ -200,18 +188,23 @@ const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID || "";
   const timestamp = Date.now().toString();
   const signature = createSignature(timestamp, method, uri, secretKey);
 
-  const url = `https://api.searchad.naver.com${uri}?hintKeywords=${encodeURIComponent(
-    keyword
-  )}&showDetail=1`;
+  const params = new URLSearchParams();
+  params.set("hintKeywords", keywordForVolume);
+  params.set("showDetail", "1");
+
+  const url = `https://api.searchad.naver.com${uri}?${params.toString()}`;
+
+  console.log("keyword volume request keyword:", keywordForVolume);
+  console.log("keyword volume request url:", url);
 
   const response = await fetch(url, {
     method,
     headers: {
       "X-Timestamp": timestamp,
       "X-API-KEY": apiKey,
-      "X-API-SECRET": secretKey,
       "X-Customer": customerId,
       "X-Signature": signature,
+      Accept: "application/json",
     },
     cache: "no-store",
   });
@@ -219,7 +212,20 @@ const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID || "";
   if (!response.ok) {
     const text = await response.text();
     console.error("keyword volume api error:", response.status, text);
+    return null;
+  }
 
+  const data = await response.json();
+  console.log("keyword volume raw response:", JSON.stringify(data));
+
+  return data;
+}
+
+async function getKeywordVolume(keyword: string) {
+  const normalizedKeyword = normalizeText(keyword);
+  const compactKeyword = normalizeKeywordForVolume(keyword);
+
+  if (!compactKeyword) {
     return {
       monthly: "-",
       mobile: "-",
@@ -227,17 +233,32 @@ const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID || "";
     };
   }
 
-  const data = await response.json();
+  const data =
+    (await requestKeywordVolume(compactKeyword)) ||
+    (compactKeyword !== normalizedKeyword
+      ? await requestKeywordVolume(normalizedKeyword)
+      : null);
 
   const keywordList: SearchAdKeywordItem[] = Array.isArray(data?.keywordList)
     ? data.keywordList
     : [];
 
-  const exact = keywordList.find(
-    (item) => normalizeText(item.relKeyword || "") === normalizeText(keyword)
-  );
+  if (!keywordList.length) {
+    return {
+      monthly: "-",
+      mobile: "-",
+      pc: "-",
+    };
+  }
 
-  const target = exact || keywordList[0];
+  const target =
+    keywordList.find(
+      (item) => normalizeKeywordForVolume(item.relKeyword || "") === compactKeyword
+    ) ||
+    keywordList.find((item) =>
+      normalizeKeywordForVolume(item.relKeyword || "").includes(compactKeyword)
+    ) ||
+    keywordList[0];
 
   if (!target) {
     return {
@@ -257,8 +278,7 @@ const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID || "";
     pcNumber !== null && mobileNumber !== null ? pcNumber + mobileNumber : null;
 
   return {
-    monthly:
-      total !== null ? total.toLocaleString("ko-KR") : formatCountValue(undefined),
+    monthly: total !== null ? total.toLocaleString("ko-KR") : "-",
     mobile: formatCountValue(mobileRaw),
     pc: formatCountValue(pcRaw),
   };
