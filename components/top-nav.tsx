@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import UserMenu from "@/components/user-menu";
+import { useSession } from "next-auth/react";
+
 
 type TopNavProps = {
   active?: "blog" | "place";
@@ -29,6 +32,8 @@ export default function TopNav({ active = "place" }: TopNavProps) {
     key && active === key
       ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[15px] font-bold text-[#7c3aed]"
       : "block rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]";
+
+  const { data: session } = useSession();
 
   return (
     <>
@@ -78,15 +83,20 @@ export default function TopNav({ active = "place" }: TopNavProps) {
               </Link>
             </nav>
           </div>
-
+          
           {/* PC 우측: 기존 그대로 유지 */}
-          <div className="hidden items-center gap-5 lg:flex">
-            <div className="text-[13px] font-semibold text-[#4b5563]">
-              전체 1 / 사용 1 / <span className="text-[#7c3aed]">잔여 0</span>
-            </div>
-            <div className="text-[22px]">👤</div>
-          </div>
-
+         <div className="flex items-center gap-3">
+         {session?.user ? (
+          <UserMenu />
+           ) : (
+            <Link
+            href="/login"
+             className="inline-flex h-[48px] items-center justify-center rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-6 text-[14px] font-bold text-white"
+             >
+              로그인/가입
+              </Link>
+             )}
+        </div>
           {/* 모바일 우측 프로필 */}
           <div className="flex items-center gap-3 lg:hidden">
             <div className="text-[20px]">👤</div>

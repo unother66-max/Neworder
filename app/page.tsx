@@ -3,6 +3,9 @@
 import { useState } from "react";
 import PageHeader from "@/components/page-header";
 import TopNav from "@/components/top-nav";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import UserMenu from "@/components/user-menu";
 
 type Post = {
   title: string;

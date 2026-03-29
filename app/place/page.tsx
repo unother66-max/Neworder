@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TopNav from "@/components/top-nav";
 
+
 type KeywordItem = {
   keyword: string;
   monthly: string;
@@ -157,7 +158,7 @@ function moveItem<T>(arr: T[], from: number, to: number) {
   return copy;
 }
 
-export default function PlacePage() {
+export default function PlacePage() { 
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
