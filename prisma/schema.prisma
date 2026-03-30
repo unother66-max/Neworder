@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Track {
+  id        String   @id @default(cuid())
+  keyword   String
+  placeUrl  String
+  createdAt DateTime @default(now())
+  records   Record[]
+}
+
+model Record {
+  id        String   @id @default(cuid())
+  rank      Int
+  createdAt DateTime @default(now())
+  trackId   String
+  track     Track    @relation(fields: [trackId], references: [id])
+}
+
+model Place {
+  id        String         @id @default(cuid())
+  userId    String
+  name      String
+  category  String?
+  address   String?
+  placeUrl  String?
+  imageUrl  String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  keywords  PlaceKeyword[]
+}
+
+model PlaceKeyword {
+  id           String             @id @default(cuid())
+  placeId      String
+  keyword      String
+  mobileVolume Int?
+  pcVolume     Int?
+  totalVolume  Int?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  place        Place              @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  histories    PlaceRankHistory[]
+isTracking Boolean @default(false) // 👈 추가
+
+
+
+  @@unique([placeId, keyword])
+}
+
+model PlaceRankHistory {
+  id             String       @id @default(cuid())
+  placeKeywordId String
+  rank           Int?
+  checkedAt      DateTime     @default(now())
+  placeKeyword   PlaceKeyword @relation(fields: [placeKeywordId], references: [id], onDelete: Cascade)
+}

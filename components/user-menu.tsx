@@ -15,7 +15,7 @@ export default function UserMenu() {
         <Image
           src="/icons/user.png"
           alt="user"
-          width={30}
+          width={24}
           height={24}
           className="hover:opacity-70"
         />
@@ -26,7 +26,7 @@ export default function UserMenu() {
         <Image
           src="/icons/logout.png"
           alt="logout"
-          width={30}
+          width={24}
           height={24}
           className="hover:opacity-70"
         />

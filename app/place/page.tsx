@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
-
 
 type KeywordItem = {
   keyword: string;
@@ -10,9 +10,12 @@ type KeywordItem = {
   mobile: string;
   pc: string;
   rank: string;
+  placeKeywordId?: string;
+  isTracking?: boolean;
 };
 
 type Store = {
+  dbId?: string;
   name: string;
   category: string;
   address: string;
@@ -36,7 +39,32 @@ type RecommendedKeyword = {
   monthly?: string;
 };
 
+type PlaceKeywordItem = {
+  id: string;
+  keyword: string;
+  mobileVolume: number | null;
+  pcVolume: number | null;
+  totalVolume: number | null;
+  isTracking: boolean;
+  histories: {
+    id: string;
+    rank: number | null;
+    checkedAt: string;
+  }[];
+};
+
+type PlaceItem = {
+  id: string;
+  name: string;
+  category: string | null;
+  address: string | null;
+  placeUrl: string | null;
+  imageUrl: string | null;
+  keywords: PlaceKeywordItem[];
+};
+
 const PAGE_SIZE = 15;
+const DEMO_USER_ID = "test-user";
 
 function normalizeImageUrl(image?: string) {
   if (!image) return "";
@@ -62,11 +90,19 @@ function getProxyImageUrl(image?: string) {
   return `/api/place-image?url=${encodeURIComponent(normalized)}`;
 }
 
-function formatCount(value?: string) {
-  if (!value || value === "-") return "-";
+function formatCount(value?: string | number | null) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    value === "-" ||
+    value === "null"
+  ) {
+    return "-";
+  }
 
   const onlyNumber = String(value).replace(/,/g, "").trim();
-  if (!/^\d+$/.test(onlyNumber)) return value;
+  if (!/^\d+$/.test(onlyNumber)) return String(value);
 
   return Number(onlyNumber).toLocaleString("ko-KR");
 }
@@ -158,17 +194,85 @@ function moveItem<T>(arr: T[], from: number, to: number) {
   return copy;
 }
 
-export default function PlacePage() { 
+function extractPublicPlaceId(placeUrl?: string | null) {
+  if (!placeUrl) return "";
+
+  const matched =
+    placeUrl.match(/restaurant\/(\d+)/) ||
+    placeUrl.match(/place\/(\d+)/) ||
+    placeUrl.match(/placeId=(\d+)/) ||
+    placeUrl.match(/entry\/place\/(\d+)/);
+
+  return matched?.[1] ?? "";
+}
+
+function buildPlaceLinks(publicPlaceId: string, name: string) {
+  const encodedQuery = encodeURIComponent(name.trim());
+
+  return {
+    mobilePlaceLink: publicPlaceId
+      ? `https://m.place.naver.com/restaurant/${publicPlaceId}/home`
+      : `https://m.map.naver.com/search2/search.naver?query=${encodedQuery}`,
+    pcPlaceLink: publicPlaceId
+      ? `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`
+      : `https://map.naver.com/p/search/${encodedQuery}`,
+  };
+}
+
+function getLatestRankString(histories?: PlaceKeywordItem["histories"]) {
+  if (!histories || histories.length === 0) return "-";
+
+  const sorted = [...histories].sort((a, b) => {
+    return new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime();
+  });
+
+  const latest = sorted[0];
+  if (latest?.rank === null || latest?.rank === undefined) return "-";
+
+  return String(latest.rank);
+}
+
+function mapPlaceToStore(place: PlaceItem): Store {
+  const publicPlaceId = extractPublicPlaceId(place.placeUrl);
+  const links = buildPlaceLinks(publicPlaceId, place.name);
+
+  return {
+    dbId: place.id,
+    name: place.name,
+    category: place.category ?? "",
+    address: place.address ?? "",
+    placeId: publicPlaceId,
+    mobilePlaceLink: links.mobilePlaceLink,
+    pcPlaceLink: links.pcPlaceLink,
+    image: place.imageUrl ? getProxyImageUrl(place.imageUrl) : "",
+    keywords: (place.keywords || []).map((keyword) => ({
+      keyword: keyword.keyword,
+      monthly:
+        keyword.totalVolume === null || keyword.totalVolume === undefined
+          ? "-"
+          : String(keyword.totalVolume),
+      mobile:
+        keyword.mobileVolume === null || keyword.mobileVolume === undefined
+          ? "-"
+          : String(keyword.mobileVolume),
+      pc:
+        keyword.pcVolume === null || keyword.pcVolume === undefined
+          ? "-"
+          : String(keyword.pcVolume),
+      rank: getLatestRankString(keyword.histories),
+      placeKeywordId: keyword.id,
+      isTracking: keyword.isTracking,
+    })),
+  };
+}
+
+export default function PlacePage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const [stores, setStores] = useState<Store[]>([
-    
-
-  ]);
+  const [deletingStoreId, setDeletingStoreId] = useState<string | null>(null);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [placeLoading, setPlaceLoading] = useState(false);
+ 
 
   const [searchText, setSearchText] = useState("");
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -192,6 +296,45 @@ export default function PlacePage() {
   const [checkingStoreIndex, setCheckingStoreIndex] = useState<number | null>(
     null
   );
+  const [trackingLoadingKeywordId, setTrackingLoadingKeywordId] = useState<
+    string | null
+  >(null);
+  const [deletingKeywordKey, setDeletingKeywordKey] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const fetchPlaces = async () => {
+    try {
+      setPlaceLoading(true);
+
+      const res = await fetch("/api/place-list", { cache: "no-store" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "매장 목록 불러오기 실패");
+        return;
+      }
+
+      const nextStores = (data.places || []).map((place: PlaceItem) =>
+        mapPlaceToStore(place)
+      );
+      setStores(nextStores);
+    } catch (e) {
+      console.error(e);
+      alert("에러 발생");
+    } finally {
+      setPlaceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mounted) return;
+    fetchPlaces();
+  }, [mounted]);
 
   const filteredStores = useMemo(() => {
     const text = searchText.trim().toLowerCase();
@@ -208,6 +351,14 @@ export default function PlacePage() {
 
   const selectedStore =
     selectedStoreIndex !== null ? stores[selectedStoreIndex] : null;
+
+  const selectedStoreSavedKeywordMap = useMemo(() => {
+    if (!selectedStore) return new Map<string, KeywordItem>();
+
+    return new Map(
+      selectedStore.keywords.map((item) => [item.keyword, item] as const)
+    );
+  }, [selectedStore]);
 
   const recommendedKeywords = useMemo(() => {
     if (!selectedStore) return [];
@@ -295,7 +446,6 @@ export default function PlacePage() {
 
       const rawImage = normalizeImageUrl(data.image || item.image || "");
       const publicPlaceId = String(data.placeId || "").trim();
-      const encodedQuery = encodeURIComponent(item.title.trim());
 
       const alreadyExists = stores.some(
         (store) =>
@@ -308,33 +458,31 @@ export default function PlacePage() {
         return;
       }
 
-      const newStore: Store = {
-        name: item.title,
-        category: item.category.split(">").pop()?.trim() || item.category,
-        address: item.address,
-        placeId: publicPlaceId,
-        mobilePlaceLink: publicPlaceId
-          ? `https://m.place.naver.com/restaurant/${publicPlaceId}/home`
-          : `https://m.map.naver.com/search2/search.naver?query=${encodedQuery}`,
-        pcPlaceLink: publicPlaceId
-          ? `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`
-          : `https://map.naver.com/p/search/${encodedQuery}`,
-        image: rawImage ? getProxyImageUrl(rawImage) : "",
-        keywords: [],
-      };
+      const links = buildPlaceLinks(publicPlaceId, item.title);
 
-      setStores((prev) => {
-        const filtered = prev.filter((store) => {
-          if (publicPlaceId && store.placeId === publicPlaceId) return false;
-          if (store.name === item.title && store.address === item.address) {
-            return false;
-          }
-          return true;
-        });
-
-        return [newStore, ...filtered];
+      const saveRes = await fetch("/api/place-save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: DEMO_USER_ID,
+          name: item.title,
+          category: item.category.split(">").pop()?.trim() || item.category,
+          address: item.address,
+          placeUrl: links.mobilePlaceLink || item.link,
+          imageUrl: rawImage || "",
+        }),
       });
 
+      const saveData = await saveRes.json();
+
+      if (!saveRes.ok) {
+        alert(saveData.error || "매장 저장 실패");
+        return;
+      }
+
+      await fetchPlaces();
       closeRegisterModal();
     } catch (error) {
       console.error(error);
@@ -346,7 +494,9 @@ export default function PlacePage() {
     const targetStore = filteredStores[storeIndex];
     const realIndex = stores.findIndex(
       (item) =>
-        item.name === targetStore.name && item.address === targetStore.address
+        item.name === targetStore.name &&
+        item.address === targetStore.address &&
+        item.dbId === targetStore.dbId
     );
 
     if (realIndex === -1) return;
@@ -364,6 +514,7 @@ export default function PlacePage() {
     );
     setKeywordInput("");
     setDraggingKeywordIndex(null);
+    setDeletingKeywordKey(null);
     setIsKeywordModalOpen(true);
   };
 
@@ -374,6 +525,7 @@ export default function PlacePage() {
     setSelectedRecommendedKeywords([]);
     setTempKeywords([]);
     setDraggingKeywordIndex(null);
+    setDeletingKeywordKey(null);
   };
 
   const addKeywordsToTemp = (keywords: string[]) => {
@@ -405,7 +557,8 @@ export default function PlacePage() {
     const keywords = keywordInput
       .split(",")
       .map((item) => item.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((item) => item.slice(0, 20));
 
     if (keywords.length === 0) return;
 
@@ -413,59 +566,144 @@ export default function PlacePage() {
     setKeywordInput("");
   };
 
-  const removeTempKeyword = (keyword: string) => {
+  const removeTempKeyword = async (keyword: string) => {
+    if (!selectedStore) return;
+
+    const existingKeyword = selectedStoreSavedKeywordMap.get(keyword);
+
     setTempKeywords((prev) => prev.filter((item) => item !== keyword));
     setSelectedRecommendedKeywords((prev) =>
       prev.filter((item) => item !== keyword)
     );
+
+    if (!existingKeyword?.placeKeywordId) {
+      return;
+    }
+
+    try {
+      setDeletingKeywordKey(keyword);
+
+      const res = await fetch("/api/place-keyword-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeKeywordId: existingKeyword.placeKeywordId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "키워드 삭제 실패");
+      }
+
+      await fetchPlaces();
+
+      if (selectedStoreIndex !== null) {
+        setTimeout(() => {
+          setSelectedStoreIndex((currentIndex) => {
+            if (currentIndex === null) return null;
+            return currentIndex;
+          });
+        }, 0);
+      }
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "키워드 삭제 중 오류가 났어요."
+      );
+      await fetchPlaces();
+
+      if (selectedStoreIndex !== null) {
+        const latestStore = stores[selectedStoreIndex];
+        const latestKeywords = latestStore?.keywords.map((item) => item.keyword) ?? [];
+        setTempKeywords(latestKeywords);
+        setSelectedRecommendedKeywords(
+          getDefaultRecommendedKeywords(latestStore || selectedStore)
+            .map((item) => item.keyword)
+            .filter((item) => latestKeywords.includes(item))
+        );
+      }
+    } finally {
+      setDeletingKeywordKey(null);
+    }
   };
 
-  const saveKeywords = () => {
+  const saveKeywords = async () => {
     if (selectedStoreIndex === null) return;
 
+    const targetStore = stores[selectedStoreIndex];
+    if (!targetStore?.dbId) {
+      alert("매장 정보가 올바르지 않습니다.");
+      return;
+    }
+
     const recommendedMap = new Map(
-      getDefaultRecommendedKeywords(stores[selectedStoreIndex]).map((item) => [
+      getDefaultRecommendedKeywords(targetStore).map((item) => [
         item.keyword,
-        item.monthly || "-",
+        item.monthly || "",
       ])
     );
 
-    const existingMap = new Map(
-      stores[selectedStoreIndex].keywords.map((item) => [item.keyword, item])
-    );
+    try {
+      const existingKeywordSet = new Set(targetStore.keywords.map((k) => k.keyword));
 
-    const newKeywordItems: KeywordItem[] = tempKeywords.map((keyword) => {
-      const existing = existingMap.get(keyword);
-      if (existing) return existing;
+      const keywordsToCreate = tempKeywords.filter(
+        (keyword) => !existingKeywordSet.has(keyword)
+      );
 
-      return {
-        keyword,
-        monthly: recommendedMap.get(keyword) || "-",
-        mobile: "-",
-        pc: "-",
-        rank: "-",
-      };
-    });
+      await Promise.all(
+        keywordsToCreate.map(async (keyword) => {
+          const monthly = recommendedMap.get(keyword) || "";
+          const totalVolume =
+            monthly && /^\d+$/.test(monthly.replace(/,/g, ""))
+              ? Number(monthly.replace(/,/g, ""))
+              : null;
 
-    setStores((prev) =>
-      prev.map((store, index) =>
-        index === selectedStoreIndex
-          ? {
-              ...store,
-              keywords: newKeywordItems,
-            }
-          : store
-      )
-    );
+          const res = await fetch("/api/place-keyword-save", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              placeId: targetStore.dbId,
+              keyword,
+              mobileVolume: null,
+              pcVolume: null,
+              totalVolume,
+            }),
+          });
 
-    closeKeywordModal();
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || `${keyword} 저장 실패`);
+          }
+        })
+      );
+
+      await fetchPlaces();
+      closeKeywordModal();
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "키워드 저장 중 오류가 났어요."
+      );
+    }
   };
 
   const handleCheckRanks = async (filteredIndex: number) => {
     const targetStore = filteredStores[filteredIndex];
     const realIndex = stores.findIndex(
       (item) =>
-        item.name === targetStore.name && item.address === targetStore.address
+        item.name === targetStore.name &&
+        item.address === targetStore.address &&
+        item.dbId === targetStore.dbId
     );
 
     if (realIndex === -1) return;
@@ -510,6 +748,23 @@ export default function PlacePage() {
             };
           }
 
+          if (item.placeKeywordId && data.rank && data.rank !== "-") {
+            try {
+              await fetch("/api/place-rank-history-save", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  placeKeywordId: item.placeKeywordId,
+                  rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+                }),
+              });
+            } catch (historyError) {
+              console.error("rank history save error", historyError);
+            }
+          }
+
           return {
             ...item,
             monthly: data.monthly || item.monthly || "-",
@@ -534,7 +789,128 @@ export default function PlacePage() {
       console.error(error);
       alert("순위 조회 중 오류가 났어요.");
     } finally {
+      await fetchPlaces();
       setCheckingStoreIndex(null);
+    }
+  };
+
+
+const goToPlaceDetail = (filteredIndex: number) => {
+  const targetStore = filteredStores[filteredIndex];
+
+  const realIndex = stores.findIndex(
+    (item) =>
+      item.name === targetStore.name &&
+      item.address === targetStore.address &&
+      item.dbId === targetStore.dbId
+  );
+
+  if (realIndex === -1) return;
+
+  const store = stores[realIndex];
+  if (!store.dbId) {
+    alert("상세 페이지로 이동할 매장 ID가 없어요.");
+    return;
+  }
+
+  router.push(`/place/${store.dbId}`);
+};
+
+  const handleDeleteStore = async (store: Store) => {
+    if (!store.dbId) {
+      alert("삭제할 매장 ID가 없어요.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `[${store.name}] 매장을 삭제할까요?\n삭제하면 연결된 키워드/순위 데이터도 함께 사라질 수 있어요.`
+    );
+
+    if (!ok) return;
+
+    try {
+      setDeletingStoreId(store.dbId);
+
+      const res = await fetch("/api/place-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId: store.dbId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "매장 삭제 실패");
+        return;
+      }
+
+      await fetchPlaces();
+    } catch (error) {
+      console.error(error);
+      alert("매장 삭제 중 오류가 났어요.");
+    } finally {
+      setDeletingStoreId(null);
+    }
+  };
+
+  const handleToggleTrackingByStore = async (store: Store) => {
+    const firstKeyword = store.keywords[0];
+
+    if (!firstKeyword?.placeKeywordId) {
+      alert("먼저 키워드를 등록해주세요.");
+      return;
+    }
+
+    const placeKeywordId = firstKeyword.placeKeywordId;
+    const nextValue = !firstKeyword.isTracking;
+
+    try {
+      setTrackingLoadingKeywordId(placeKeywordId);
+
+      const res = await fetch("/api/toggle-tracking", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeKeywordId,
+          isTracking: nextValue,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "자동추적 상태 변경 실패");
+        return;
+      }
+
+      setStores((prev) =>
+        prev.map((item) => {
+          if (item.dbId !== store.dbId) return item;
+
+          return {
+            ...item,
+            keywords: item.keywords.map((keyword, index) =>
+              index === 0
+                ? {
+                    ...keyword,
+                    isTracking: nextValue,
+                  }
+                : keyword
+            ),
+          };
+        })
+      );
+    } catch (e) {
+      console.error(e);
+      alert("에러 발생");
+    } finally {
+      setTrackingLoadingKeywordId(null);
     }
   };
 
@@ -584,7 +960,7 @@ export default function PlacePage() {
               </div>
 
               <p className="mt-5 text-[13px] text-[#6b7280]">
-                📍 기준 순위 조회중
+                {placeLoading ? "📍 매장 목록 불러오는 중..." : "📍 기준 순위 조회중"}
               </p>
             </div>
 
@@ -612,12 +988,17 @@ export default function PlacePage() {
             {filteredStores.map((store, index) => {
               const realIndex = stores.findIndex(
                 (item) =>
-                  item.name === store.name && item.address === store.address
+                  item.name === store.name &&
+                  item.address === store.address &&
+                  item.dbId === store.dbId
               );
+
+              const summaryKeyword = store.keywords[0];
+              const trackingLabel = summaryKeyword?.isTracking ? "ON" : "OFF";
 
               return (
                 <div
-                  key={`${store.placeId || store.name}-${store.address}-${index}`}
+                  key={`${store.dbId || store.placeId || store.name}-${store.address}-${index}`}
                   className="rounded-[20px] border border-[#e5e9f0] bg-white p-6 shadow-[0_6px_20px_rgba(15,23,42,0.04)]"
                 >
                   <div className="mb-6 flex flex-col gap-5 2xl:flex-row 2xl:items-start 2xl:justify-between">
@@ -657,11 +1038,17 @@ export default function PlacePage() {
                           <span>
                             검색량{" "}
                             <strong className="text-[13px] font-bold text-[#111827]">
-                              1,490
+                              {summaryKeyword
+                                ? formatCount(summaryKeyword.monthly)
+                                : "-"}
                             </strong>
                           </span>
-                          <span>📱 1,380</span>
-                          <span>🖥 110</span>
+                          <span>
+                            📱 {summaryKeyword ? formatCount(summaryKeyword.mobile) : "-"}
+                          </span>
+                          <span>
+                            🖥 {summaryKeyword ? formatCount(summaryKeyword.pc) : "-"}
+                          </span>
                         </div>
 
                         <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
@@ -700,7 +1087,7 @@ export default function PlacePage() {
                       <div className="px-1 text-[18px] text-[#374151]">📌</div>
 
                       <button
-                        onClick={() => handleCheckRanks(index)}
+                        onClick={() => goToPlaceDetail(index)}
                         className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]"
                       >
                         {checkingStoreIndex === realIndex
@@ -708,8 +1095,26 @@ export default function PlacePage() {
                           : "순위 변화 보기"}
                       </button>
 
-                      <button className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3]">
-                        자동 추적 <span className="text-[#ff6b6b]">OFF</span>
+                      <button
+                        onClick={() => handleToggleTrackingByStore(store)}
+                        disabled={
+                          !store.keywords[0]?.placeKeywordId ||
+                          trackingLoadingKeywordId === store.keywords[0]?.placeKeywordId
+                        }
+                        className="rounded-[10px] bg-[#f1f3f6] px-4 py-2.5 text-[13px] font-semibold text-[#374151] transition hover:bg-[#e9edf3] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        자동 추적{" "}
+                        <span
+                          className={
+                            trackingLabel === "ON"
+                              ? "text-[#10b981]"
+                              : "text-[#ff6b6b]"
+                          }
+                        >
+                          {trackingLoadingKeywordId === store.keywords[0]?.placeKeywordId
+                            ? "변경중..."
+                            : trackingLabel}
+                        </span>
                       </button>
 
                       <button
@@ -719,8 +1124,13 @@ export default function PlacePage() {
                         키워드 관리
                       </button>
 
-                      <button className="px-1 text-[20px] text-[#4b5563]">
-                        ⋮
+                      <button
+                        onClick={() => handleDeleteStore(store)}
+                        disabled={deletingStoreId === store.dbId}
+                        className="px-1 text-[20px] text-[#4b5563] disabled:cursor-not-allowed disabled:opacity-50"
+                        title="매장 삭제"
+                      >
+                        {deletingStoreId === store.dbId ? "…" : "⋮"}
                       </button>
                     </div>
                   </div>
@@ -802,6 +1212,14 @@ export default function PlacePage() {
                 </div>
               );
             })}
+
+            {!placeLoading && filteredStores.length === 0 && (
+              <div className="rounded-[20px] border border-dashed border-[#d7dce5] bg-white px-6 py-14 text-center text-[14px] text-[#6b7280]">
+                등록된 매장이 없습니다.
+                <br />
+                우측 상단의 <span className="font-bold text-[#111827]">[매장 등록]</span> 버튼으로 시작해보세요.
+              </div>
+            )}
           </div>
         </section>
 
@@ -1045,55 +1463,71 @@ export default function PlacePage() {
                           추가된 키워드가 없습니다.
                         </div>
                       ) : (
-                        tempKeywords.map((keyword, index) => (
-                          <div
-                            key={`${keyword}-${index}`}
-                            draggable
-                            onDragStart={() => setDraggingKeywordIndex(index)}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={() => {
-                              if (
-                                draggingKeywordIndex === null ||
-                                draggingKeywordIndex === index
-                              ) {
-                                return;
-                              }
+                        tempKeywords.map((keyword, index) => {
+                          const existingKeyword =
+                            selectedStoreSavedKeywordMap.get(keyword);
+                          const isDeleting = deletingKeywordKey === keyword;
 
-                              setTempKeywords((prev) =>
-                                moveItem(prev, draggingKeywordIndex, index)
-                              );
-                              setDraggingKeywordIndex(null);
-                            }}
-                            className="flex items-center justify-between border-b border-[#e5e7eb] py-5"
-                          >
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                className="text-[18px] text-[#98a2b3]"
-                              >
-                                ⠿
-                              </button>
+                          return (
+                            <div
+                              key={`${keyword}-${index}`}
+                              draggable={!isDeleting}
+                              onDragStart={() => setDraggingKeywordIndex(index)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={() => {
+                                if (
+                                  draggingKeywordIndex === null ||
+                                  draggingKeywordIndex === index ||
+                                  isDeleting
+                                ) {
+                                  return;
+                                }
 
-                              <div className="flex items-center gap-2">
-                                <span className="text-[16px] font-bold text-black">
-                                  {keyword}
-                                </span>
-                                {index < 3 && (
-                                  <span className="text-[12px] font-bold text-[#7c3aed]">
-                                    전체 상품 목록에 표시됨
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => removeTempKeyword(keyword)}
-                              className="text-[20px] text-[#374151]"
+                                setTempKeywords((prev) =>
+                                  moveItem(prev, draggingKeywordIndex, index)
+                                );
+                                setDraggingKeywordIndex(null);
+                              }}
+                              onDragEnd={() => setDraggingKeywordIndex(null)}
+                              className="flex items-center justify-between border-b border-[#e5e7eb] py-5"
                             >
-                              ✕
-                            </button>
-                          </div>
-                        ))
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  className="text-[18px] text-[#98a2b3]"
+                                >
+                                  ⠿
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[16px] font-bold text-black">
+                                    {keyword}
+                                  </span>
+
+                                  {index < 3 && (
+                                    <span className="text-[12px] font-bold text-[#7c3aed]">
+                                      전체 상품 목록에 표시됨
+                                    </span>
+                                  )}
+
+                                  {existingKeyword?.placeKeywordId && (
+                                    <span className="text-[12px] font-semibold text-[#94a3b8]">
+                                      저장됨
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => removeTempKeyword(keyword)}
+                                disabled={isDeleting}
+                                className="text-[20px] text-[#374151] disabled:opacity-50"
+                              >
+                                {isDeleting ? "…" : "✕"}
+                              </button>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -1117,6 +1551,7 @@ export default function PlacePage() {
             </div>
           </div>
         )}
+     
       </main>
     </>
   );

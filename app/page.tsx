@@ -165,13 +165,47 @@ export default function Home() {
     }
   };
 
+  const saveTrack = async (index: number) => {
+    const targetPost = posts[index];
+
+    if (!targetPost.keyword.trim()) {
+      alert("키워드를 먼저 입력해주세요.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/track", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          keyword: targetPost.keyword,
+          placeUrl: targetPost.link,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "저장 중 오류가 발생했어요.");
+        return;
+      }
+
+      alert("추적 저장 완료");
+    } catch (error) {
+      console.error(error);
+      alert("저장 중 오류가 발생했어요.");
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
       <TopNav active="blog" />
 
       <section className="mx-auto max-w-[1280px] px-6 py-8">
         <PageHeader
-          title="상위 노출 블로그 찾기"
+          title="상위 블로그 찾기"
           description="블로그 상위노출, 감으로 하지 마세요. 지금 상위에 노출되는 포스트를 확인하고, 포스트별 키워드 순위와 검색량을 기준으로 체험단용 블로그를 더 빠르게 고를 수 있습니다."
         />
 
@@ -287,6 +321,7 @@ export default function Home() {
                     <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[13px] font-bold text-[#374151]">
                       검색량
                     </th>
+      
                   </tr>
                 </thead>
 
@@ -338,6 +373,7 @@ export default function Home() {
                       <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px] text-[#6b7280]">
                         {post.searchVolume || "-"}
                       </td>
+
                     </tr>
                   ))}
                 </tbody>
