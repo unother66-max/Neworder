@@ -315,9 +315,9 @@ export default function PlacePage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.message || "매장 목록 불러오기 실패");
-        return;
-      }
+  console.error(data.message || "매장 목록 불러오기 실패");
+  return;
+}
 
       const nextStores = (data.places || []).map((place: PlaceItem) =>
         mapPlaceToStore(place)
