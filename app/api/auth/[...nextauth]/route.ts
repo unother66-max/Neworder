@@ -1,8 +1,8 @@
-import NextAuth, { type NextAuthOptions, type Session, type User } from "next-auth";
+import NextAuth, { type Session, type User } from "next-auth";
 import KakaoProvider from "next-auth/providers/kakao";
 import type { JWT } from "next-auth/jwt";
 
-export const authOptions: NextAuthOptions = {
+const authOptions = {
   secret: process.env.AUTH_SECRET,
   providers: [
     KakaoProvider({
