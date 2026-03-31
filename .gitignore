@@ -43,3 +43,6 @@ next-env.d.ts
 
 /generated/prisma
 prisma/dev.db
+
+node_modules
+--template/node_modules
