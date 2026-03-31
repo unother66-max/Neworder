@@ -16,7 +16,15 @@ function extractPublicPlaceId(placeUrl?: string | null) {
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
+const cronSecret = process.env.CRON_SECRET;
 
+if (authHeader && authHeader === `Bearer ${cronSecret}`) {
+  // OK
+} else if (req.headers.get("x-vercel-cron") === "1") {
+  // OK
+} else {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
