@@ -2,10 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/place-tracking",
-      "schedule": "0 * * * *",
-      "headers": {
-        "Authorization": "Bearer dev-secret"
-      }
+      "schedule": "0 * * * *"
     }
   ]
 }

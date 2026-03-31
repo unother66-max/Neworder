@@ -21,11 +21,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-
     const trackedKeywords = await prisma.placeKeyword.findMany({
-  where: {}, // 👉 테스트용
-  include: { place: true },
-});
+      where: {
+        isTracking: true,
+      },
+      include: {
+        place: true,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
 
     const origin = req.nextUrl.origin;
 
@@ -41,14 +47,16 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // 👉 랭크 조회
         const rankRes = await fetch(`${origin}/api/check-place-rank`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             keyword: keyword.keyword,
             placeId: publicPlaceId,
           }),
+          cache: "no-store",
         });
 
         const rankData = await rankRes.json();
@@ -67,7 +75,6 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // ✅ DB 저장
         await prisma.rankHistory.create({
           data: {
             placeId: keyword.placeId,
@@ -78,7 +85,7 @@ export async function GET(req: NextRequest) {
 
         successCount++;
       } catch (error) {
-        console.error("cron error", keyword.keyword, error);
+        console.error("cron keyword update error", keyword.keyword, error);
         failCount++;
       }
     }
@@ -90,9 +97,9 @@ export async function GET(req: NextRequest) {
       failCount,
     });
   } catch (error) {
-    console.error("cron error", error);
+    console.error("place-tracking cron error", error);
     return NextResponse.json(
-      { error: "자동 업데이트 중 오류" },
+      { error: "자동 업데이트 중 오류가 발생했습니다." },
       { status: 500 }
     );
   }
