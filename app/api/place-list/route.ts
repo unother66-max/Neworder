@@ -11,13 +11,10 @@ export async function GET() {
           orderBy: {
             createdAt: "asc",
           },
-          include: {
-            histories: {
-              orderBy: {
-                checkedAt: "desc",
-              },
-              take: 1,
-            },
+        },
+        rankHistory: {
+          orderBy: {
+            createdAt: "desc",
           },
         },
       },
@@ -29,10 +26,12 @@ export async function GET() {
     });
   } catch (error) {
     console.error("place-list error:", error);
+
     return Response.json(
       {
         ok: false,
-        message: "매장 목록 불러오기 실패",
+        message:
+          error instanceof Error ? error.message : "매장 목록 불러오기 실패",
       },
       { status: 500 }
     );

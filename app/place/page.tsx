@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
+import { useSession } from "next-auth/react";
 
 type KeywordItem = {
   keyword: string;
@@ -46,25 +47,37 @@ type PlaceKeywordItem = {
   pcVolume: number | null;
   totalVolume: number | null;
   isTracking: boolean;
-  histories: {
+  rankHistory: {
     id: string;
-    rank: number | null;
-    checkedAt: string;
+    rank: number;
+    createdAt: string;
   }[];
 };
 
 type PlaceItem = {
   id: string;
+  userId: string;
   name: string;
   category: string | null;
   address: string | null;
   placeUrl: string | null;
   imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
   keywords: PlaceKeywordItem[];
+  rankHistory: {
+    id: string;
+    placeId: string;
+    keyword: string;
+    rank: number;
+    createdAt: string;
+  }[];
 };
 
 const PAGE_SIZE = 15;
 const DEMO_USER_ID = "test-user";
+
+
 
 function normalizeImageUrl(image?: string) {
   if (!image) return "";
@@ -219,11 +232,19 @@ function buildPlaceLinks(publicPlaceId: string, name: string) {
   };
 }
 
-function getLatestRankString(histories?: PlaceKeywordItem["histories"]) {
-  if (!histories || histories.length === 0) return "-";
+function getLatestRankString(
+  rankHistory?: {
+    id: string;
+    placeId: string;
+    keyword: string;
+    rank: number;
+    createdAt: string;
+  }[]
+) {
+  if (!rankHistory || rankHistory.length === 0) return "-";
 
-  const sorted = [...histories].sort((a, b) => {
-    return new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime();
+  const sorted = [...rankHistory].sort((a, b) => {
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
   const latest = sorted[0];
@@ -259,7 +280,11 @@ function mapPlaceToStore(place: PlaceItem): Store {
         keyword.pcVolume === null || keyword.pcVolume === undefined
           ? "-"
           : String(keyword.pcVolume),
-      rank: getLatestRankString(keyword.histories),
+      rank: getLatestRankString(
+  (place.rankHistory || []).filter(
+    (history) => history.keyword === keyword.keyword
+  )
+),
       placeKeywordId: keyword.id,
       isTracking: keyword.isTracking,
     })),
@@ -267,12 +292,13 @@ function mapPlaceToStore(place: PlaceItem): Store {
 }
 
 export default function PlacePage() {
+  const { data: session, status } = useSession();
   const router = useRouter();
+
   const [mounted, setMounted] = useState(false);
   const [deletingStoreId, setDeletingStoreId] = useState<string | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [placeLoading, setPlaceLoading] = useState(false);
- 
 
   const [searchText, setSearchText] = useState("");
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -304,66 +330,102 @@ export default function PlacePage() {
   );
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
+  setMounted(true);
+}, []);
 
-  const fetchPlaces = async () => {
-    try {
-      setPlaceLoading(true);
 
-      const res = await fetch("/api/place-list", { cache: "no-store" });
-      const data = await res.json();
 
-      if (!res.ok) {
-  console.error(data.message || "매장 목록 불러오기 실패");
-  return;
+useEffect(() => {
+  if (!mounted) return;
+  if (!session) return;
+  fetchPlaces();
+}, [mounted, session]);
+
+useEffect(() => {
+  if (status === "loading") return;
+
+  if (!session) {
+    router.replace("/login");
+  }
+}, [session, status, router]);
+
+const fetchPlaces = async () => {
+  try {
+    setPlaceLoading(true);
+
+    const res = await fetch("/api/place-list", { cache: "no-store" });
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error(data?.message || "매장 목록 불러오기 실패");
+      return;
+    }
+
+    const nextStores = (data.places || []).map((place: PlaceItem) =>
+      mapPlaceToStore(place)
+    );
+    setStores(nextStores);
+  } catch (e) {
+    console.error(e);
+    alert("에러 발생");
+  } finally {
+    setPlaceLoading(false);
+  }
+};
+
+
+const filteredStores = useMemo(() => {
+  const text = searchText.trim().toLowerCase();
+  if (!text) return stores;
+
+  return stores.filter((store) => {
+    return (
+      store.name.toLowerCase().includes(text) ||
+      store.category.toLowerCase().includes(text) ||
+      store.address.toLowerCase().includes(text)
+    );
+  });
+}, [searchText, stores]);
+
+const selectedStore =
+  selectedStoreIndex !== null ? stores[selectedStoreIndex] : null;
+
+const selectedStoreSavedKeywordMap = useMemo(() => {
+  if (!selectedStore) return new Map<string, KeywordItem>();
+
+  return new Map(
+    selectedStore.keywords.map((item) => [item.keyword, item] as const)
+  );
+}, [selectedStore]);
+
+const recommendedKeywords = useMemo(() => {
+  if (!selectedStore) return [];
+  return getDefaultRecommendedKeywords(selectedStore);
+}, [selectedStore]);
+
+if (!mounted || status === "loading") {
+  return (
+    <>
+      <TopNav active="place" />
+      <main className="min-h-screen bg-[#f3f5f9] flex items-center justify-center">
+        <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
+      </main>
+    </>
+  );
 }
 
-      const nextStores = (data.places || []).map((place: PlaceItem) =>
-        mapPlaceToStore(place)
-      );
-      setStores(nextStores);
-    } catch (e) {
-      console.error(e);
-      alert("에러 발생");
-    } finally {
-      setPlaceLoading(false);
-    }
-  };
+if (!session) {
+  return (
+    <>
+      <TopNav active="place" />
+      <main className="min-h-screen bg-[#f3f5f9] flex items-center justify-center">
+        <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
+      </main>
+    </>
+  );
+}
 
-  useEffect(() => {
-    if (!mounted) return;
-    fetchPlaces();
-  }, [mounted]);
 
-  const filteredStores = useMemo(() => {
-    const text = searchText.trim().toLowerCase();
-    if (!text) return stores;
-
-    return stores.filter((store) => {
-      return (
-        store.name.toLowerCase().includes(text) ||
-        store.category.toLowerCase().includes(text) ||
-        store.address.toLowerCase().includes(text)
-      );
-    });
-  }, [searchText, stores]);
-
-  const selectedStore =
-    selectedStoreIndex !== null ? stores[selectedStoreIndex] : null;
-
-  const selectedStoreSavedKeywordMap = useMemo(() => {
-    if (!selectedStore) return new Map<string, KeywordItem>();
-
-    return new Map(
-      selectedStore.keywords.map((item) => [item.keyword, item] as const)
-    );
-  }, [selectedStore]);
-
-  const recommendedKeywords = useMemo(() => {
-    if (!selectedStore) return [];
-    return getDefaultRecommendedKeywords(selectedStore);
-  }, [selectedStore]);
 
   const openRegisterModal = () => {
     setIsRegisterModalOpen(true);
@@ -856,73 +918,73 @@ const goToPlaceDetail = (filteredIndex: number) => {
       setDeletingStoreId(null);
     }
   };
+const handleToggleTrackingByStore = async (store: Store) => {
+  const firstKeyword = store.keywords[0];
 
-  const handleToggleTrackingByStore = async (store: Store) => {
-    const firstKeyword = store.keywords[0];
+  if (!firstKeyword?.placeKeywordId) {
+    alert("먼저 키워드를 등록해주세요.");
+    return;
+  }
 
-    if (!firstKeyword?.placeKeywordId) {
-      alert("먼저 키워드를 등록해주세요.");
+  const placeKeywordId = firstKeyword.placeKeywordId;
+  const nextValue = !firstKeyword.isTracking;
+
+  try {
+    setTrackingLoadingKeywordId(placeKeywordId);
+
+    const res = await fetch("/api/toggle-tracking", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        placeKeywordId,
+        isTracking: nextValue,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.message || "자동추적 상태 변경 실패");
       return;
     }
 
-    const placeKeywordId = firstKeyword.placeKeywordId;
-    const nextValue = !firstKeyword.isTracking;
+    setStores((prev) =>
+      prev.map((item) => {
+        if (item.dbId !== store.dbId) return item;
 
-    try {
-      setTrackingLoadingKeywordId(placeKeywordId);
-
-      const res = await fetch("/api/toggle-tracking", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          placeKeywordId,
-          isTracking: nextValue,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.message || "자동추적 상태 변경 실패");
-        return;
-      }
-
-      setStores((prev) =>
-        prev.map((item) => {
-          if (item.dbId !== store.dbId) return item;
-
-          return {
-            ...item,
-            keywords: item.keywords.map((keyword, index) =>
-              index === 0
-                ? {
-                    ...keyword,
-                    isTracking: nextValue,
-                  }
-                : keyword
-            ),
-          };
-        })
-      );
-    } catch (e) {
-      console.error(e);
-      alert("에러 발생");
-    } finally {
-      setTrackingLoadingKeywordId(null);
-    }
-  };
-
-  if (!mounted) {
-    return null;
+        return {
+          ...item,
+          keywords: item.keywords.map((keyword, index) =>
+            index === 0
+              ? {
+                  ...keyword,
+                  isTracking: nextValue,
+                }
+              : keyword
+          ),
+        };
+      })
+    );
+  } catch (e) {
+    console.error(e);
+    alert("에러 발생");
+  } finally {
+    setTrackingLoadingKeywordId(null);
   }
+};
 
-  return (
-    <>
-      <TopNav active="place" />
 
-      <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
+
+
+
+
+return (
+  <>
+    <TopNav active="place" />
+
+      <main className="min-h-screen b‹g-[#f3f5f9] text-[#111827]">
         <section className="mx-auto max-w-[1280px] px-6 py-8">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>

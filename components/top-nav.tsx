@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { useSession } from "next-auth/react";
-
 
 type TopNavProps = {
   active?: "blog" | "place";
@@ -22,6 +21,12 @@ const menuItems = [
 
 export default function TopNav({ active = "place" }: TopNavProps) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const getClassName = (key: "blog" | "place") =>
     active === key
@@ -33,14 +38,34 @@ export default function TopNav({ active = "place" }: TopNavProps) {
       ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[15px] font-bold text-[#7c3aed]"
       : "block rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]";
 
-  const { data: session } = useSession();
+  const renderAuthArea = () => {
+    if (!mounted || status === "loading") {
+      return (
+        <div className="inline-flex h-[48px] items-center justify-center rounded-[12px] bg-[#f3f4f6] px-6 text-[14px] font-bold text-[#9ca3af]">
+          불러오는 중
+        </div>
+      );
+    }
+
+    if (session?.user) {
+      return <UserMenu />;
+    }
+
+    return (
+      <Link
+        href="/login"
+        className="inline-flex h-[48px] items-center justify-center rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-6 text-[14px] font-bold text-white"
+      >
+        로그인/가입
+      </Link>
+    );
+  };
 
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-[#e8ebf2] bg-white">
         <div className="mx-auto flex max-w-[1280px] items-center justify-between px-4 py-4 md:px-6">
           <div className="flex items-center gap-3 md:gap-8">
-            {/* 모바일 햄버거 */}
             <button
               type="button"
               onClick={() => setOpen(true)}
@@ -58,7 +83,6 @@ export default function TopNav({ active = "place" }: TopNavProps) {
               />
             </Link>
 
-            {/* PC 메뉴: 기존 그대로 유지 */}
             <nav className="hidden items-center gap-7 lg:flex">
               <Link href="/" className="text-[14px] font-semibold text-[#111827]">
                 스마트스토어
@@ -83,28 +107,17 @@ export default function TopNav({ active = "place" }: TopNavProps) {
               </Link>
             </nav>
           </div>
-          
-          {/* PC 우측: 기존 그대로 유지 */}
-         <div className="flex items-center gap-3">
-         {session?.user ? (
-          <UserMenu />
-           ) : (
-            <Link
-            href="/login"
-             className="inline-flex h-[48px] items-center justify-center rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-6 text-[14px] font-bold text-white"
-             >
-              로그인/가입
-              </Link>
-             )}
-        </div>
-          {/* 모바일 우측 프로필 */}
+
+          <div className="hidden items-center gap-3 lg:flex">
+            {renderAuthArea()}
+          </div>
+
           <div className="flex items-center gap-3 lg:hidden">
             <div className="text-[20px]">👤</div>
           </div>
         </div>
       </header>
 
-      {/* breadcrumb: 기존 그대로 */}
       <div className="border-b border-[#e8ebf2] bg-white/80">
         <div className="mx-auto max-w-[1280px] px-4 py-3 text-[13px] text-[#6b7280] md:px-6">
           홈 &gt; 네이버지도 &gt;{" "}
@@ -114,7 +127,6 @@ export default function TopNav({ active = "place" }: TopNavProps) {
         </div>
       </div>
 
-      {/* 모바일 오버레이 */}
       {open && (
         <div
           className="fixed inset-0 z-[60] bg-black/35 lg:hidden"
@@ -122,7 +134,6 @@ export default function TopNav({ active = "place" }: TopNavProps) {
         />
       )}
 
-      {/* 모바일 사이드 메뉴 */}
       <aside
         className={`fixed left-0 top-0 z-[70] h-full w-[290px] bg-white shadow-2xl transition-transform duration-300 lg:hidden ${
           open ? "translate-x-0" : "-translate-x-full"
