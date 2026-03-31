@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-url      = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 model Track {
@@ -24,40 +24,41 @@ model Record {
 }
 
 model Place {
-  id        String         @id @default(cuid())
-  userId    String
-  name      String
-  category  String?
-  address   String?
-  placeUrl  String?
-  imageUrl  String?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  keywords  PlaceKeyword[]
+  id          String         @id @default(cuid())
+  userId      String
+  name        String
+  category    String?
+  address     String?
+  placeUrl    String?
+  imageUrl    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  keywords    PlaceKeyword[]
+  rankHistory RankHistory[]
 }
 
 model PlaceKeyword {
-  id           String             @id @default(cuid())
+  id           String   @id @default(cuid())
   placeId      String
   keyword      String
   mobileVolume Int?
   pcVolume     Int?
   totalVolume  Int?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  place        Place              @relation(fields: [placeId], references: [id], onDelete: Cascade)
-  histories    PlaceRankHistory[]
-isTracking Boolean @default(false) // 👈 추가
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isTracking   Boolean  @default(false)
 
-
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@unique([placeId, keyword])
 }
 
-model PlaceRankHistory {
-  id             String       @id @default(cuid())
-  placeKeywordId String
-  rank           Int?
-  checkedAt      DateTime     @default(now())
-  placeKeyword   PlaceKeyword @relation(fields: [placeKeywordId], references: [id], onDelete: Cascade)
+model RankHistory {
+  id        String   @id @default(cuid())
+  placeId   String
+  keyword   String
+  rank      Int
+  createdAt DateTime @default(now())
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
 }

@@ -17,28 +17,15 @@ export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
 
-    if (!process.env.CRON_SECRET) {
-      return NextResponse.json(
-        { error: "CRON_SECRET이 설정되지 않았습니다." },
-        { status: 500 }
-      );
-    }
-
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+
     const trackedKeywords = await prisma.placeKeyword.findMany({
-      where: {
-        isTracking: true,
-      },
-      include: {
-        place: true,
-      },
-      orderBy: {
-        updatedAt: "asc",
-      },
-    });
+  where: {}, // 👉 테스트용
+  include: { place: true },
+});
 
     const origin = req.nextUrl.origin;
 
@@ -54,16 +41,14 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
+        // 👉 랭크 조회
         const rankRes = await fetch(`${origin}/api/check-place-rank`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             keyword: keyword.keyword,
             placeId: publicPlaceId,
           }),
-          cache: "no-store",
         });
 
         const rankData = await rankRes.json();
@@ -82,26 +67,18 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        const saveRes = await fetch(`${origin}/api/place-rank-history-save`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            placeKeywordId: keyword.id,
+        // ✅ DB 저장
+        await prisma.rankHistory.create({
+          data: {
+            placeId: keyword.placeId,
+            keyword: keyword.keyword,
             rank: numericRank,
-          }),
-          cache: "no-store",
+          },
         });
-
-        if (!saveRes.ok) {
-          failCount++;
-          continue;
-        }
 
         successCount++;
       } catch (error) {
-        console.error("cron keyword update error", keyword.keyword, error);
+        console.error("cron error", keyword.keyword, error);
         failCount++;
       }
     }
@@ -113,9 +90,9 @@ export async function GET(req: NextRequest) {
       failCount,
     });
   } catch (error) {
-    console.error("place-tracking cron error", error);
+    console.error("cron error", error);
     return NextResponse.json(
-      { error: "자동 업데이트 중 오류가 발생했습니다." },
+      { error: "자동 업데이트 중 오류" },
       { status: 500 }
     );
   }

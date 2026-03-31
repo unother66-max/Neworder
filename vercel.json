@@ -1,9 +1,11 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
       "path": "/api/cron/place-tracking",
-      "schedule": "0 1 * * *"
+      "schedule": "0 * * * *",
+      "headers": {
+        "Authorization": "Bearer dev-secret"
+      }
     }
   ]
 }
