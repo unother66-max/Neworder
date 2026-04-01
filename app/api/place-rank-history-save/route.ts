@@ -1,89 +1,59 @@
-import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const body = await req.json();
-
     const placeKeywordId = String(body.placeKeywordId || "").trim();
-    const rawRank = body.rank;
+    const rank = Number(body.rank);
 
     if (!placeKeywordId) {
-      return NextResponse.json(
-        { error: "placeKeywordId가 없습니다." },
+      return Response.json(
+        { ok: false, message: "placeKeywordId가 없습니다." },
         { status: 400 }
       );
     }
 
-    const rank =
-      rawRank === null || rawRank === undefined || rawRank === ""
-        ? null
-        : Number(rawRank);
-
-    if (rank !== null && Number.isNaN(rank)) {
-      return NextResponse.json(
-        { error: "rank 값이 올바르지 않습니다." },
+    if (!Number.isFinite(rank)) {
+      return Response.json(
+        { ok: false, message: "rank 값이 올바르지 않습니다." },
         { status: 400 }
       );
     }
 
-    const now = new Date();
-
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const existingToday = await prisma.placeRankHistory.findFirst({
+    const placeKeyword = await prisma.placeKeyword.findUnique({
       where: {
-        placeKeywordId,
-        checkedAt: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      },
-      orderBy: {
-        checkedAt: "desc",
+        id: placeKeywordId,
       },
     });
 
-    if (existingToday) {
-      const updated = await prisma.placeRankHistory.update({
-        where: {
-          id: existingToday.id,
-        },
-        data: {
-          rank,
-          checkedAt: now,
-        },
-      });
-
-      return NextResponse.json({
-        ok: true,
-        mode: "updated",
-        history: updated,
-      });
+    if (!placeKeyword) {
+      return Response.json(
+        { ok: false, message: "키워드를 찾을 수 없습니다." },
+        { status: 404 }
+      );
     }
 
-    const created = await prisma.placeRankHistory.create({
+    await prisma.rankHistory.create({
       data: {
-        placeKeywordId,
+        placeId: placeKeyword.placeId,
+        keyword: placeKeyword.keyword,
         rank,
-        checkedAt: now,
       },
     });
 
-    return NextResponse.json({
+    return Response.json({
       ok: true,
-      mode: "created",
-      history: created,
+      message: "순위 히스토리 저장 완료",
     });
   } catch (error) {
-    console.error("place-rank-history-save error", error);
+    console.error("place-rank-history-save error:", error);
 
-    return NextResponse.json(
-      { error: "순위 히스토리 저장 중 오류가 발생했습니다." },
+    return Response.json(
+      {
+        ok: false,
+        message:
+          error instanceof Error ? error.message : "순위 히스토리 저장 실패",
+      },
       { status: 500 }
     );
   }
