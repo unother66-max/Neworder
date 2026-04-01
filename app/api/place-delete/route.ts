@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
@@ -7,25 +6,11 @@ export async function POST(req: Request) {
     const placeId = String(body.placeId || "").trim();
 
     if (!placeId) {
-      return NextResponse.json(
-        { error: "placeId가 없습니다." },
+      return Response.json(
+        { ok: false, error: "placeId가 없습니다." },
         { status: 400 }
       );
     }
-
-    await prisma.placeRankHistory.deleteMany({
-      where: {
-        placeKeyword: {
-          placeId,
-        },
-      },
-    });
-
-    await prisma.placeKeyword.deleteMany({
-      where: {
-        placeId,
-      },
-    });
 
     await prisma.place.delete({
       where: {
@@ -33,11 +18,18 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ ok: true });
+    return Response.json({
+      ok: true,
+      message: "매장이 삭제되었습니다.",
+    });
   } catch (error) {
-    console.error("place-delete error", error);
-    return NextResponse.json(
-      { error: "매장 삭제 중 오류가 발생했습니다." },
+    console.error("place-delete error:", error);
+
+    return Response.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "매장 삭제 실패",
+      },
       { status: 500 }
     );
   }
