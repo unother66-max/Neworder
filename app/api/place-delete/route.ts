@@ -1,34 +1,54 @@
 import { prisma } from "@/lib/prisma";
 
-export async function POST(req: Request) {
+export async function GET(req: Request) {
   try {
-    const body = await req.json();
-    const placeId = String(body.placeId || "").trim();
+    const { searchParams } = new URL(req.url);
+    const placeId = searchParams.get("placeId");
 
     if (!placeId) {
       return Response.json(
-        { ok: false, error: "placeId가 없습니다." },
+        { ok: false, message: "placeId가 없습니다." },
         { status: 400 }
       );
     }
 
-    await prisma.place.delete({
+    const place = await prisma.place.findUnique({
       where: {
         id: placeId,
       },
+      include: {
+        keywords: {
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
+        rankHistory: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
     });
+
+    if (!place) {
+      return Response.json(
+        { ok: false, message: "매장을 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
 
     return Response.json({
       ok: true,
-      message: "매장이 삭제되었습니다.",
+      place,
     });
   } catch (error) {
-    console.error("place-delete error:", error);
+    console.error("place-detail error:", error);
 
     return Response.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "매장 삭제 실패",
+        message:
+          error instanceof Error ? error.message : "매장 상세 조회 실패",
       },
       { status: 500 }
     );
