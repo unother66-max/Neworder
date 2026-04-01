@@ -75,7 +75,6 @@ type PlaceItem = {
 };
 
 const PAGE_SIZE = 15;
-const DEMO_USER_ID = "test-user";
 
 
 
@@ -528,7 +527,6 @@ if (!session) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: DEMO_USER_ID,
           name: item.title,
           category: item.category.split(">").pop()?.trim() || item.category,
           address: item.address,
@@ -918,19 +916,23 @@ const goToPlaceDetail = (filteredIndex: number) => {
       setDeletingStoreId(null);
     }
   };
-const handleToggleTrackingByStore = async (store: Store) => {
-  const firstKeyword = store.keywords[0];
 
-  if (!firstKeyword?.placeKeywordId) {
+
+const handleToggleTrackingByStore = async (store: Store) => {
+  if (!store.dbId) {
+    alert("placeId가 없습니다.");
+    return;
+  }
+
+  if (!store.keywords.length) {
     alert("먼저 키워드를 등록해주세요.");
     return;
   }
 
-  const placeKeywordId = firstKeyword.placeKeywordId;
-  const nextValue = !firstKeyword.isTracking;
+  const nextValue = !store.keywords.every((k) => k.isTracking);
 
   try {
-    setTrackingLoadingKeywordId(placeKeywordId);
+    setTrackingLoadingKeywordId(store.dbId);
 
     const res = await fetch("/api/toggle-tracking", {
       method: "POST",
@@ -938,7 +940,7 @@ const handleToggleTrackingByStore = async (store: Store) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        placeKeywordId,
+        placeId: store.dbId,
         isTracking: nextValue,
       }),
     });
@@ -950,22 +952,19 @@ const handleToggleTrackingByStore = async (store: Store) => {
       return;
     }
 
+    // ✅ 모든 키워드 ON/OFF
     setStores((prev) =>
-      prev.map((item) => {
-        if (item.dbId !== store.dbId) return item;
-
-        return {
-          ...item,
-          keywords: item.keywords.map((keyword, index) =>
-            index === 0
-              ? {
-                  ...keyword,
-                  isTracking: nextValue,
-                }
-              : keyword
-          ),
-        };
-      })
+      prev.map((item) =>
+        item.dbId === store.dbId
+          ? {
+              ...item,
+              keywords: item.keywords.map((keyword) => ({
+                ...keyword,
+                isTracking: nextValue,
+              })),
+            }
+          : item
+      )
     );
   } catch (e) {
     console.error(e);
@@ -974,8 +973,6 @@ const handleToggleTrackingByStore = async (store: Store) => {
     setTrackingLoadingKeywordId(null);
   }
 };
-
-
 
 
 

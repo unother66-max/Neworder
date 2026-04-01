@@ -234,14 +234,12 @@ export default function PlaceDetailPage() {
 const handleToggleTracking = async () => {
   if (!place) return;
 
-  const firstKeyword = place.keywords[0];
-
-  if (!firstKeyword?.id) {
+  if (!place.keywords.length) {
     alert("먼저 키워드를 등록해주세요.");
     return;
   }
 
-  const nextValue = !firstKeyword.isTracking;
+  const nextValue = !place.keywords.every((keyword) => keyword.isTracking);
 
   try {
     setTrackingUpdating(true);
@@ -252,7 +250,7 @@ const handleToggleTracking = async () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        placeKeywordId: firstKeyword.id,
+        placeId: place.id,
         isTracking: nextValue,
       }),
     });
@@ -269,14 +267,10 @@ const handleToggleTracking = async () => {
 
       return {
         ...prev,
-        keywords: prev.keywords.map((keyword, index) =>
-          index === 0
-            ? {
-                ...keyword,
-                isTracking: nextValue,
-              }
-            : keyword
-        ),
+        keywords: prev.keywords.map((keyword) => ({
+          ...keyword,
+          isTracking: nextValue,
+        })),
       };
     });
   } catch (error) {
@@ -301,6 +295,10 @@ const handleToggleTracking = async () => {
   }, [place]);
 
   const summaryKeyword = place?.keywords?.[0] ?? null;
+
+const isAllTrackingOn =
+  !!place?.keywords?.length &&
+  place.keywords.every((keyword) => keyword.isTracking);
 
   const allHistoryRows = useMemo(() => {
   if (!place) return [];
@@ -468,22 +466,22 @@ const chartData = useMemo(() => {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                   <button
+                  <button
   onClick={handleToggleTracking}
-  disabled={trackingUpdating || !summaryKeyword}
+  disabled={trackingUpdating || !place?.keywords?.length}
   className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-60"
 >
   자동 추적{" "}
   <span
     className={
-      summaryKeyword?.isTracking
+      isAllTrackingOn
         ? "text-[#10b981]"
         : "text-[#ff6b6b]"
     }
   >
     {trackingUpdating
       ? "변경중..."
-      : summaryKeyword?.isTracking
+      : isAllTrackingOn
         ? "ON"
         : "OFF"}
   </span>

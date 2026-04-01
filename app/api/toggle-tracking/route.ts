@@ -1,30 +1,44 @@
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { placeKeywordId, isTracking } = body ?? {};
+    const placeId = String(body.placeId || "").trim();
+    const isTracking = Boolean(body.isTracking);
 
-    if (!placeKeywordId || typeof isTracking !== "boolean") {
-      return Response.json(
-        { ok: false, message: "placeKeywordId와 isTracking이 필요합니다." },
+    if (!placeId) {
+      return NextResponse.json(
+        { ok: false, message: "placeId가 없습니다." },
         { status: 400 }
       );
     }
 
-    const updated = await prisma.placeKeyword.update({
-      where: { id: placeKeywordId },
-      data: { isTracking },
+    const result = await prisma.placeKeyword.updateMany({
+      where: {
+        placeId,
+      },
+      data: {
+        isTracking,
+      },
     });
 
-    return Response.json({
+    return NextResponse.json({
       ok: true,
-      item: updated,
+      updatedCount: result.count,
+      isTracking,
     });
   } catch (error) {
     console.error("toggle-tracking error:", error);
-    return Response.json(
-      { ok: false, message: "자동추적 상태 변경 실패" },
+
+    return NextResponse.json(
+      {
+        ok: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "자동추적 상태 변경 실패",
+      },
       { status: 500 }
     );
   }
