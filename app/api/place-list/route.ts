@@ -1,8 +1,23 @@
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/auth";
 
 export async function GET() {
   try {
+    const session = (await getServerSession(authOptions as any)) as any;
+    const userId = session?.user?.id as string | undefined;
+
+    if (!userId) {
+      return Response.json(
+        { ok: false, message: "로그인이 필요합니다." },
+        { status: 401 }
+      );
+    }
+
     const places = await prisma.place.findMany({
+      where: {
+        userId,
+      },
       orderBy: {
         createdAt: "desc",
       },

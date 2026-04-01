@@ -1,5 +1,4 @@
 // @ts-nocheck
-import NextAuth from "next-auth";
 import KakaoProvider from "next-auth/providers/kakao";
 
 export const authOptions = {
@@ -45,7 +44,3 @@ export const authOptions = {
     },
   },
 };
-
-const handler = NextAuth(authOptions);
-
-export { handler as GET, handler as POST };

@@ -16,16 +16,18 @@ function extractPublicPlaceId(placeUrl?: string | null) {
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
-const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = process.env.CRON_SECRET;
 
-if (authHeader && authHeader === `Bearer ${cronSecret}`) {
-  // OK
-} else if (req.headers.get("x-vercel-cron") === "1") {
-  // OK
-} else {
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-}
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    // 수동 테스트 허용
+    if (authHeader && authHeader === `Bearer ${cronSecret}`) {
+      // 통과
+    }
+    // Vercel cron 허용
+    else if (req.headers.get("x-vercel-cron") === "1") {
+      // 통과
+    }
+    // 그 외 차단
+    else {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

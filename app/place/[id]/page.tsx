@@ -16,7 +16,7 @@ import {
 type PlaceRankHistory = {
   id: string;
   rank: number | null;
-  checkedAt: string;
+  createdAt: string;
 };
 
 type PlaceKeyword = {
@@ -37,6 +37,13 @@ type PlaceDetail = {
   placeUrl: string | null;
   imageUrl: string | null;
   keywords: PlaceKeyword[];
+  rankHistory: {
+    id: string;
+    placeId: string;
+    keyword: string;
+    rank: number | null;
+    createdAt: string;
+  }[];
 };
 
 function formatDateLabel(value: string) {
@@ -296,45 +303,46 @@ const handleToggleTracking = async () => {
   const summaryKeyword = place?.keywords?.[0] ?? null;
 
   const allHistoryRows = useMemo(() => {
-    if (!place) return [];
+  if (!place) return [];
 
-    const map = new Map<
-      string,
-      {
-        checkedAt: string;
-        values: Record<
-          string,
-          {
-            rank: number | null;
-            historyId: string;
-          }
-        >;
+  const map = new Map<
+    string,
+    {
+      createdAt: string;
+      values: Record<
+        string,
+        {
+          rank: number | null;
+          historyId: string;
+        }
+      >;
+    }
+  >();
+
+  place.keywords.forEach((keyword) => {
+    (keyword.histories || []).forEach((history) => {
+      const key = getDateKey(history.createdAt);
+
+      if (!map.has(key)) {
+        map.set(key, {
+          createdAt: key,
+          values: {},
+        });
       }
-    >();
 
-    place.keywords.forEach((keyword) => {
-      keyword.histories.forEach((history) => {
-        const key = getDateKey(history.checkedAt);
-
-        if (!map.has(key)) {
-  map.set(key, {
-    checkedAt: key,
-    values: {},
-  });
-}
-
-        map.get(key)!.values[keyword.id] = {
-          rank: history.rank,
-          historyId: history.id,
-        };
-      });
+      map.get(key)!.values[keyword.id] = {
+        rank: history.rank,
+        historyId: history.id,
+      };
     });
+  });
 
-    return Array.from(map.values()).sort(
-      (a, b) =>
-        new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime()
-    );
-  }, [place]);
+  return Array.from(map.values()).sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() -
+      new Date(a.createdAt).getTime()
+  );
+}, [place]);
 
   const selectedKeyword = useMemo(() => {
     if (!place) return null;
@@ -343,22 +351,27 @@ const handleToggleTracking = async () => {
     );
   }, [place, selectedKeywordId]);
 
-  const chartData = useMemo(() => {
-    if (!selectedKeyword) return [];
+const chartData = useMemo(() => {
+  if (!selectedKeyword || !place) return [];
 
-    return [...selectedKeyword.histories]
-      .filter((item) => item.rank !== null && item.rank !== undefined)
-      .sort(
-        (a, b) =>
-          new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime()
-      )
-      .map((item) => ({
-        label: formatDateLabel(item.checkedAt),
-        shortLabel: formatDateLabel(item.checkedAt).slice(0, 5),
-        rank: item.rank as number,
-        fullDate: item.checkedAt,
-      }));
-  }, [selectedKeyword]);
+  return (place.rankHistory || [])
+    .filter(
+      (item) =>
+        item.keyword === selectedKeyword.keyword &&
+        item.rank !== null &&
+        item.rank !== undefined
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    )
+    .map((item) => ({
+      label: formatDateLabel(item.createdAt),
+      shortLabel: formatDateLabel(item.createdAt).slice(0, 5),
+      rank: item.rank as number,
+      fullDate: item.createdAt,
+    }));
+}, [selectedKeyword, place]);
 
   const rankValues = chartData.map((item) => item.rank);
   const yMin = rankValues.length ? Math.max(1, Math.min(...rankValues) - 2) : 1;
@@ -535,9 +548,9 @@ const handleToggleTracking = async () => {
                         </tr>
                       ) : (
                         allHistoryRows.map((row) => (
-                          <tr key={row.checkedAt} className="border-t border-[#ececf1]">
+                          <tr key={row.createdAt} className="border-t border-[#ececf1]">
                             <td className="whitespace-nowrap px-5 py-4 align-top text-[12px] text-[#3a3a3c]">
-                              {formatDateLabel(row.checkedAt)}
+                              {formatDateLabel(row.createdAt)}
                             </td>
 
                             {place.keywords.map((keyword) => {
@@ -546,9 +559,9 @@ const handleToggleTracking = async () => {
 
                               const rankMeta = getRankMeta(currentRank);
 
-                              const keywordHistories = keyword.histories;
+                              const keywordHistories = keyword.histories || [];
                               const currentIndex = keywordHistories.findIndex(
-  (item) => getDateKey(item.checkedAt) === row.checkedAt
+  (item) => getDateKey(item.createdAt) === row.createdAt
 );
 
                               const previousRank =
@@ -569,7 +582,7 @@ const handleToggleTracking = async () => {
 
                               return (
                                 <td
-                                  key={`${row.checkedAt}-${keyword.id}`}
+                                  key={`${row.createdAt}-${keyword.id}`}
                                   className="border-l border-[#ececf1] px-4 py-4 align-top"
                                 >
                                   <div className="flex items-start justify-between gap-3">
