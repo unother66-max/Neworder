@@ -26,6 +26,10 @@ type Store = {
   image?: string;
   keywords: KeywordItem[];
   latestUpdatedAtText?: string;
+
+  placeMonthlyVolume?: number;
+  placeMobileVolume?: number;
+  placePcVolume?: number;
 };
 
 type SearchPlaceItem = {
@@ -267,7 +271,11 @@ function mapPlaceToStore(place: PlaceItem): Store {
     pcPlaceLink: links.pcPlaceLink,
     image: place.imageUrl ? getProxyImageUrl(place.imageUrl) : "",
 
-    // 🔥 여기 추가 (최근 업데이트)
+    // ✅ 추가 (API에서 받은 매장 검색량)
+    placeMonthlyVolume: (place as any).placeMonthlyVolume ?? 0,
+    placeMobileVolume: (place as any).placeMobileVolume ?? 0,
+    placePcVolume: (place as any).placePcVolume ?? 0,
+
     latestUpdatedAtText: (place as any).latestUpdatedAtText ?? null,
 
     keywords: (place.keywords || []).map((keyword) => ({
@@ -1102,16 +1110,14 @@ return (
                           <span>
                             검색량{" "}
                             <strong className="text-[13px] font-bold text-[#111827]">
-                              {summaryKeyword
-                                ? formatCount(summaryKeyword.monthly)
-                                : "-"}
+                              {formatCount(store.placeMonthlyVolume)}
                             </strong>
                           </span>
                           <span>
-                            📱 {summaryKeyword ? formatCount(summaryKeyword.mobile) : "-"}
+                            📱 {formatCount(store.placeMobileVolume)}
                           </span>
                           <span>
-                            🖥 {summaryKeyword ? formatCount(summaryKeyword.pc) : "-"}
+                            🖥 {formatCount(store.placePcVolume)}
                           </span>
                         </div>
 

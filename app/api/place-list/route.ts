@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
+import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 function formatUpdatedAt(value: unknown) {
   if (!value) return null;
@@ -50,20 +51,41 @@ export async function GET() {
       },
     });
 
-    const normalizedPlaces = places.map((place) => {
-      const latestUpdatedAt =
-        [...place.keywords]
-          .sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-          )[0]?.updatedAt ?? null;
+    const normalizedPlaces = await Promise.all(
+      places.map(async (place) => {
+        const latestUpdatedAt =
+          [...place.keywords]
+            .sort(
+              (a, b) =>
+                new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            )[0]?.updatedAt ?? null;
 
-      return {
-        ...place,
-        latestUpdatedAt,
-        latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
-      };
-    });
+        let placeMonthlyVolume = 0;
+        let placeMobileVolume = 0;
+        let placePcVolume = 0;
+
+        try {
+          const placeSearchVolume = await getKeywordSearchVolume(place.name);
+          placeMonthlyVolume = placeSearchVolume.total ?? 0;
+          placeMobileVolume = placeSearchVolume.mobile ?? 0;
+          placePcVolume = placeSearchVolume.pc ?? 0;
+        } catch (volumeError) {
+          console.error(
+            `[place-list] 매장명 검색량 조회 실패: ${place.name}`,
+            volumeError
+          );
+        }
+
+        return {
+          ...place,
+          latestUpdatedAt,
+          latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
+          placeMonthlyVolume,
+          placeMobileVolume,
+          placePcVolume,
+        };
+      })
+    );
 
     return Response.json({
       ok: true,
