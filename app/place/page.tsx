@@ -25,6 +25,7 @@ type Store = {
   pcPlaceLink?: string;
   image?: string;
   keywords: KeywordItem[];
+  latestUpdatedAtText?: string;
 };
 
 type SearchPlaceItem = {
@@ -265,6 +266,10 @@ function mapPlaceToStore(place: PlaceItem): Store {
     mobilePlaceLink: links.mobilePlaceLink,
     pcPlaceLink: links.pcPlaceLink,
     image: place.imageUrl ? getProxyImageUrl(place.imageUrl) : "",
+
+    // 🔥 여기 추가 (최근 업데이트)
+    latestUpdatedAtText: (place as any).latestUpdatedAtText ?? null,
+
     keywords: (place.keywords || []).map((keyword) => ({
       keyword: keyword.keyword,
       monthly:
@@ -280,10 +285,10 @@ function mapPlaceToStore(place: PlaceItem): Store {
           ? "-"
           : String(keyword.pcVolume),
       rank: getLatestRankString(
-  (place.rankHistory || []).filter(
-    (history) => history.keyword === keyword.keyword
-  )
-),
+        (place.rankHistory || []).filter(
+          (history) => history.keyword === keyword.keyword
+        )
+      ),
       placeKeywordId: keyword.id,
       isTracking: keyword.isTracking,
     })),
@@ -1267,6 +1272,11 @@ return (
                         )}
                       </tbody>
                     </table>
+
+<div className="mt-4 text-right text-[13px] text-[#9ca3af]">
+  최근 업데이트: {store.latestUpdatedAtText ?? "-"}
+</div>
+
                   </div>
                 </div>
               );
