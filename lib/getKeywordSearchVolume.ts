@@ -36,11 +36,7 @@ export async function getKeywordSearchVolume(keyword: string) {
   const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID;
 
   if (!accessKey || !secretKey || !customerId) {
-    return {
-      mobile: 0,
-      pc: 0,
-      total: 0,
-    };
+    return { mobile: 0, pc: 0, total: 0 };
   }
 
   const method = "GET";
@@ -68,22 +64,14 @@ export async function getKeywordSearchVolume(keyword: string) {
   });
 
   if (!res.ok) {
-    return {
-      mobile: 0,
-      pc: 0,
-      total: 0,
-    };
+    return { mobile: 0, pc: 0, total: 0 };
   }
 
   const data = await res.json();
   const list = (data.keywordList || []) as KeywordToolItem[];
 
   if (!list.length) {
-    return {
-      mobile: 0,
-      pc: 0,
-      total: 0,
-    };
+    return { mobile: 0, pc: 0, total: 0 };
   }
 
   const exact =

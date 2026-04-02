@@ -2,6 +2,21 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 
+function formatUpdatedAt(value: unknown) {
+  if (!value) return null;
+
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mi = String(date.getMinutes()).padStart(2, "0");
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}
+
 export async function GET() {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
@@ -35,9 +50,24 @@ export async function GET() {
       },
     });
 
+    const normalizedPlaces = places.map((place) => {
+      const latestUpdatedAt =
+        [...place.keywords]
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          )[0]?.updatedAt ?? null;
+
+      return {
+        ...place,
+        latestUpdatedAt,
+        latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
+      };
+    });
+
     return Response.json({
       ok: true,
-      places,
+      places: normalizedPlaces,
     });
   } catch (error) {
     console.error("place-list error:", error);
