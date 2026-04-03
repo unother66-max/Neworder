@@ -44,6 +44,10 @@ type PlaceDetail = {
     rank: number | null;
     createdAt: string;
   }[];
+
+  placeMonthlyVolume?: number | null;
+  placeMobileVolume?: number | null;
+  placePcVolume?: number | null;
 };
 
 function formatDateLabel(value: string) {
@@ -430,16 +434,16 @@ const chartData = useMemo(() => {
                         <span>{place.address || "-"}</span>
                       </div>
 
-                      <div className="mt-2 flex flex-wrap items-center gap-4 text-[12px] text-[#6e6e73]">
-                        <span>
-                          월 검색량{" "}
-                          <strong className="font-semibold text-[#1d1d1f]">
-                            {formatCount(summaryKeyword?.totalVolume)}
-                          </strong>
-                        </span>
-                        <span>📱 {formatCount(summaryKeyword?.mobileVolume)}</span>
-                        <span>🖥 {formatCount(summaryKeyword?.pcVolume)}</span>
-                      </div>
+                     <div className="mt-2 flex flex-wrap items-center gap-4 text-[12px] text-[#6e6e73]">
+  <span>
+    월 검색량{" "}
+    <strong className="font-semibold text-[#1d1d1f]">
+      {formatCount(place.placeMonthlyVolume)}
+    </strong>
+  </span>
+  <span>📱 {formatCount(place.placeMobileVolume)}</span>
+  <span>🖥 {formatCount(place.placePcVolume)}</span>
+</div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px]">
                         <span className="text-[#6e6e73]">매장 바로가기</span>

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 function toNumber(value: unknown) {
   if (typeof value === "number") return value;
@@ -106,6 +107,22 @@ export async function GET(req: Request) {
 
     const latestUpdatedAtText = formatUpdatedAt(latestUpdatedAtRaw);
 
+    let placeMonthlyVolume = 0;
+    let placeMobileVolume = 0;
+    let placePcVolume = 0;
+
+    try {
+      const placeSearchVolume = await getKeywordSearchVolume(place.name);
+      placeMonthlyVolume = placeSearchVolume.total ?? 0;
+      placeMobileVolume = placeSearchVolume.mobile ?? 0;
+      placePcVolume = placeSearchVolume.pc ?? 0;
+    } catch (volumeError) {
+      console.error(
+        `[place-detail] 매장명 검색량 조회 실패: ${place.name}`,
+        volumeError
+      );
+    }
+
     return Response.json({
       ok: true,
       place: {
@@ -113,6 +130,9 @@ export async function GET(req: Request) {
         keywords: normalizedKeywords,
         latestUpdatedAt: latestUpdatedAtRaw,
         latestUpdatedAtText,
+        placeMonthlyVolume,
+        placeMobileVolume,
+        placePcVolume,
       },
     });
   } catch (error) {
