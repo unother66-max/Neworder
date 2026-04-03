@@ -45,8 +45,37 @@ async function fetchHtml(url: string) {
   };
 }
 
-function extractOrderedPlaceIds(html: string) {
-  const orderedIds: string[] = [];
+async function fetchMobileHtml(url: string) {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",
+    },
+    cache: "no-store",
+  });
+
+  return {
+    ok: res.ok,
+    html: await res.text(),
+  };
+}
+
+async function fetchPcHtml(url: string) {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+    },
+    cache: "no-store",
+  });
+
+  return {
+    ok: res.ok,
+    html: await res.text(),
+  };
+}
+
+function extractIdsFromChunk(chunk: string) {
+  const ids: string[] = [];
   const seen = new Set<string>();
 
   const patterns = [
@@ -54,19 +83,81 @@ function extractOrderedPlaceIds(html: string) {
     /https?:\/\/m\.place\.naver\.com\/place\/(\d+)\/home/gi,
     /https?:\\\/\\\/m\.place\.naver\.com\\\/restaurant\\\/(\d+)\\\/home/gi,
     /https?:\\\/\\\/m\.place\.naver\.com\\\/place\\\/(\d+)\\\/home/gi,
-    /"placeId":"(\d+)"/gi,
-    /"businessId":"(\d+)"/gi,
     /\/restaurant\/(\d+)\/home/gi,
     /\/place\/(\d+)\/home/gi,
     /\/entry\/place\/(\d+)/gi,
+    /"placeId":"(\d+)"/gi,
+    /"businessId":"(\d+)"/gi,
   ];
 
   for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
+    for (const match of chunk.matchAll(pattern)) {
       const id = match?.[1];
       if (!id) continue;
       if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  }
 
+  return ids;
+}
+
+function extractOrderedPlaceIds(html: string) {
+  const orderedIds: string[] = [];
+  const seen = new Set<string>();
+
+  // 1) 검색 결과 영역 후보를 먼저 좁힘
+  const sections: string[] = [];
+
+  const listSectionMatch =
+    html.match(/<ul[^>]*class="[^"]*list_place[^"]*"[^>]*>([\s\S]*?)<\/ul>/i) ||
+    html.match(/<div[^>]*id="place-main-section-root"[^>]*>([\s\S]*?)<\/div>/i) ||
+    html.match(/<div[^>]*class="[^"]*place_section[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+
+  if (listSectionMatch?.[1]) {
+    sections.push(listSectionMatch[1]);
+  }
+
+  // 2) 블록 단위로 먼저 추출 (순서 보존)
+  const blockPatterns = [
+    /<li\b[^>]*>[\s\S]*?<\/li>/gi,
+    /<div\b[^>]*class="[^"]*(?:item|place|list_item)[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+  ];
+
+  for (const section of sections) {
+    for (const blockPattern of blockPatterns) {
+      const blocks = section.match(blockPattern) || [];
+      for (const block of blocks) {
+        const idsInBlock = extractIdsFromChunk(block);
+        if (!idsInBlock.length) continue;
+
+        const firstId = idsInBlock[0];
+        if (!seen.has(firstId)) {
+          seen.add(firstId);
+          orderedIds.push(firstId);
+        }
+      }
+    }
+  }
+
+  // 3) 블록 추출이 약하면 섹션 전체에서 fallback
+  if (!orderedIds.length) {
+    for (const section of sections) {
+      const ids = extractIdsFromChunk(section);
+      for (const id of ids) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        orderedIds.push(id);
+      }
+    }
+  }
+
+  // 4) 그래도 없으면 전체 html fallback
+  if (!orderedIds.length) {
+    const ids = extractIdsFromChunk(html);
+    for (const id of ids) {
+      if (seen.has(id)) continue;
       seen.add(id);
       orderedIds.push(id);
     }
@@ -75,31 +166,78 @@ function extractOrderedPlaceIds(html: string) {
   return orderedIds;
 }
 
+function isValidRankList(ids: string[]) {
+  if (!ids.length) return false;
+
+  // 너무 적으면 실패로 보되, 너무 많다고 버리지는 않음
+  // "한남동 맛집" 같은 넓은 키워드는 id가 많이 섞일 수 있어서
+  // 기존 50개 초과 필터가 오히려 정상 후보를 버렸을 가능성이 큼
+  return true;
+}
+
 function findRank(placeIds: string[], targetPlaceId: string) {
-  const index = placeIds.findIndex((id) => id === targetPlaceId);
+  const normalizedTarget = String(targetPlaceId).trim();
+
+  const index = placeIds.findIndex((id) => {
+    const current = String(id).trim();
+    return current === normalizedTarget;
+  });
+
   if (index === -1) return "-";
   return `${index + 1}위`;
 }
 
 async function getMobileRank(keyword: string, placeId: string) {
   const encoded = encodeURIComponent(normalizeText(keyword));
-  const urls = [
-    `https://m.map.naver.com/search2/search.naver?query=${encoded}`,
-    `https://m.search.naver.com/search.naver?query=${encoded}`,
-  ];
 
-  for (const url of urls) {
-    try {
-      const result = await fetchHtml(url);
-      if (!result.ok) continue;
+  for (let page = 1; page <= 20; page++) {
+    const urls = [
+      `https://m.map.naver.com/search2/search.naver?query=${encoded}&page=${page}`,
+      `https://m.search.naver.com/search.naver?query=${encoded}&where=m&sm=mtb_hty&page=${page}`,
+    ];
 
-      const ids = extractOrderedPlaceIds(result.html);
-      if (!ids.length) continue;
+    for (const url of urls) {
+      try {
+        const result = await fetchMobileHtml(url);
+        if (!result.ok) continue;
 
-      const rank = findRank(ids, placeId);
-      if (rank !== "-") return rank;
-    } catch (error) {
-      console.error("getMobileRank error:", error);
+        let ids = extractOrderedPlaceIds(result.html);
+
+        if (!ids.length) {
+          const jsonIds = extractPlaceIdsFromNextData(result.html);
+          ids = jsonIds;
+        }
+
+        if (!isValidRankList(ids)) continue;
+
+        const rank = findRank(ids, placeId);
+
+        if (rank !== "-") {
+          const currentRank = Number(rank.replace("위", ""));
+          const globalRank = (page - 1) * 15 + currentRank;
+
+          console.log("[check-place-rank][mobile] matched", {
+            keyword,
+            placeId,
+            page,
+            url,
+            rank: globalRank,
+          });
+
+          return `${globalRank}위`;
+        }
+
+        console.log("[check-place-rank][mobile] not found", {
+          keyword,
+          placeId,
+          page,
+          url,
+          idsCount: ids.length,
+          sampleIds: ids.slice(0, 20),
+        });
+      } catch (error) {
+        console.error("getMobileRank error:", error);
+      }
     }
   }
 
@@ -108,21 +246,45 @@ async function getMobileRank(keyword: string, placeId: string) {
 
 async function getPcRank(keyword: string, placeId: string) {
   const encoded = encodeURIComponent(normalizeText(keyword));
-  const urls = [
-    `https://map.naver.com/p/search/${encoded}`,
-    `https://pcmap.place.naver.com/restaurant/list?query=${encoded}`,
-  ];
 
-  for (const url of urls) {
+  for (let page = 1; page <= 20; page++) {
+    const url = `https://map.naver.com/p/search/${encoded}?page=${page}`;
+
     try {
-      const result = await fetchHtml(url);
+      const result = await fetchPcHtml(url);
       if (!result.ok) continue;
 
-      const ids = extractOrderedPlaceIds(result.html);
-      if (!ids.length) continue;
+      let ids = extractOrderedPlaceIds(result.html);
+
+      if (!ids.length) {
+        const jsonIds = extractPlaceIdsFromNextData(result.html);
+        ids = jsonIds;
+      }
+
+      if (!isValidRankList(ids)) continue;
 
       const rank = findRank(ids, placeId);
-      if (rank !== "-") return rank;
+
+      if (rank !== "-") {
+        const currentRank = Number(rank.replace("위", ""));
+        const globalRank = (page - 1) * 15 + currentRank;
+
+        console.log("[check-place-rank][pc] matched", {
+          keyword,
+          placeId,
+          page,
+          rank: globalRank,
+        });
+
+        return `${globalRank}위`;
+      }
+
+      console.log("[check-place-rank][pc] not found", {
+        keyword,
+        placeId,
+        page,
+        idsCount: ids.length,
+      });
     } catch (error) {
       console.error("getPcRank error:", error);
     }
@@ -157,6 +319,26 @@ function parseCountValue(value: string | number | undefined) {
   if (Number.isNaN(numeric)) return null;
 
   return numeric;
+}
+
+function extractPlaceIdsFromNextData(html: string) {
+  const match = html.match(
+    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/
+  );
+
+  if (!match) return [];
+
+  try {
+    const json = JSON.parse(match[1]);
+
+    const text = JSON.stringify(json);
+
+    const ids = [...text.matchAll(/"placeId":"(\d+)"/g)].map((m) => m[1]);
+
+    return [...new Set(ids)];
+  } catch (e) {
+    return [];
+  }
 }
 
 function formatCountValue(value: string | number | undefined) {
@@ -298,17 +480,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const [mobileRank, pcRank, volume] = await Promise.all([
-      getMobileRank(keyword, placeId),
-      getPcRank(keyword, placeId),
-      getKeywordVolume(keyword),
-    ]);
+    const [mobileRank, volume] = await Promise.all([
+  getMobileRank(keyword, placeId),
+  getKeywordVolume(keyword),
+]);
 
     return Response.json({
       monthly: volume.monthly || "-",
       mobile: volume.mobile || "-",
       pc: volume.pc || "-",
-      rank: mobileRank !== "-" ? mobileRank : pcRank,
+      rank: mobileRank,
     });
   } catch (error) {
     console.error("check-place-rank error:", error);

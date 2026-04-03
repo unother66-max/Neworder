@@ -27,6 +27,7 @@ type PlaceKeyword = {
   totalVolume: number | null;
   isTracking: boolean;
   histories: PlaceRankHistory[];
+  currentRank?: string;
 };
 
 type PlaceDetail = {
@@ -44,7 +45,6 @@ type PlaceDetail = {
     rank: number | null;
     createdAt: string;
   }[];
-
   placeMonthlyVolume?: number | null;
   placeMobileVolume?: number | null;
   placePcVolume?: number | null;
@@ -101,13 +101,20 @@ function getRankMeta(rank: number | null) {
   };
 }
 
-
 function getDateKey(value: string) {
   const date = new Date(value);
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseRankStringToNumber(rank?: string) {
+  if (!rank || rank === "-" || rank === "오류") return null;
+  const matched = String(rank).match(/\d+/);
+  if (!matched) return null;
+  const num = Number(matched[0]);
+  return Number.isFinite(num) ? num : null;
 }
 
 export default function PlaceDetailPage() {
@@ -163,127 +170,171 @@ export default function PlaceDetailPage() {
   }, [place, selectedKeywordId]);
 
   const handleUpdateRanks = async () => {
-  if (!place) return;
+    if (!place) return;
 
-  const publicPlaceId = extractPublicPlaceId(place.placeUrl);
+    const publicPlaceId = extractPublicPlaceId(place.placeUrl);
 
-  if (!publicPlaceId) {
-    alert("placeId가 없어 업데이트할 수 없어요.");
-    return;
-  }
+    if (!publicPlaceId) {
+      alert("placeId가 없어 업데이트할 수 없어요.");
+      return;
+    }
 
-  if (!place.keywords.length) {
-    alert("등록된 키워드가 없어요.");
-    return;
-  }
+    if (!place.keywords.length) {
+      alert("등록된 키워드가 없어요.");
+      return;
+    }
 
+    try {
+      setUpdating(true);
 
-  try {
-    setUpdating(true);
-
-    await Promise.all(
-      place.keywords.map(async (keyword) => {
-        const response = await fetch("/api/check-place-rank", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            keyword: keyword.keyword,
-            placeId: publicPlaceId,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          return;
-        }
-
-        if (keyword.id && data.rank && data.rank !== "-") {
-          await fetch("/api/place-rank-history-save", {
+      const keywordResults = await Promise.all(
+        place.keywords.map(async (keyword) => {
+          const response = await fetch("/api/check-place-rank", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              placeKeywordId: keyword.id,
-              rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+              keyword: keyword.keyword,
+              placeId: publicPlaceId,
             }),
           });
-        }
-      })
-    );
 
-    const res = await fetch(`/api/place-detail?id=${id}`, {
-      cache: "no-store",
-    });
-    const data = await res.json();
+          const data = await response.json();
 
-    if (!res.ok) {
-      alert(data.error || "업데이트 후 새로고침 실패");
+          if (!response.ok) {
+            return {
+              keywordId: keyword.id,
+              monthly: keyword.totalVolume,
+              mobile: keyword.mobileVolume,
+              pc: keyword.pcVolume,
+              currentRank: "오류",
+            };
+          }
+
+          if (keyword.id && data.rank && data.rank !== "-") {
+            await fetch("/api/place-rank-history-save", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                placeKeywordId: keyword.id,
+                rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+              }),
+            });
+          }
+
+          return {
+            keywordId: keyword.id,
+            monthly:
+              data.monthly === undefined ||
+              data.monthly === null ||
+              data.monthly === "-"
+                ? keyword.totalVolume
+                : Number(String(data.monthly).replace(/,/g, "")),
+            mobile:
+              data.mobile === undefined ||
+              data.mobile === null ||
+              data.mobile === "-"
+                ? keyword.mobileVolume
+                : Number(String(data.mobile).replace(/,/g, "")),
+            pc:
+              data.pc === undefined || data.pc === null || data.pc === "-"
+                ? keyword.pcVolume
+                : Number(String(data.pc).replace(/,/g, "")),
+            currentRank: data.rank ?? "-",
+          };
+        })
+      );
+
+      setPlace((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          keywords: prev.keywords.map((keyword) => {
+            const found = keywordResults.find((item) => item.keywordId === keyword.id);
+            if (!found) return keyword;
+
+            return {
+              ...keyword,
+              totalVolume:
+                found.monthly === null || found.monthly === undefined
+                  ? keyword.totalVolume
+                  : found.monthly,
+              mobileVolume:
+                found.mobile === null || found.mobile === undefined
+                  ? keyword.mobileVolume
+                  : found.mobile,
+              pcVolume:
+                found.pc === null || found.pc === undefined
+                  ? keyword.pcVolume
+                  : found.pc,
+              currentRank: found.currentRank,
+            };
+          }),
+        };
+      });
+
+      alert("순위 업데이트 완료");
+    } catch (error) {
+      console.error(error);
+      alert("업데이트 중 오류가 발생했습니다.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleToggleTracking = async () => {
+    if (!place) return;
+
+    if (!place.keywords.length) {
+      alert("먼저 키워드를 등록해주세요.");
       return;
     }
 
-    setPlace(data.place || null);
-    alert("순위 업데이트 완료");
-  } catch (error) {
-    console.error(error);
-    alert("업데이트 중 오류가 발생했습니다.");
-  } finally {
-    setUpdating(false);
-  }
-};
+    const nextValue = !place.keywords.every((keyword) => keyword.isTracking);
 
-const handleToggleTracking = async () => {
-  if (!place) return;
+    try {
+      setTrackingUpdating(true);
 
-  if (!place.keywords.length) {
-    alert("먼저 키워드를 등록해주세요.");
-    return;
-  }
-
-  const nextValue = !place.keywords.every((keyword) => keyword.isTracking);
-
-  try {
-    setTrackingUpdating(true);
-
-    const res = await fetch("/api/toggle-tracking", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        placeId: place.id,
-        isTracking: nextValue,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.message || "자동추적 상태 변경 실패");
-      return;
-    }
-
-    setPlace((prev) => {
-      if (!prev) return prev;
-
-      return {
-        ...prev,
-        keywords: prev.keywords.map((keyword) => ({
-          ...keyword,
+      const res = await fetch("/api/toggle-tracking", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId: place.id,
           isTracking: nextValue,
-        })),
-      };
-    });
-  } catch (error) {
-    console.error(error);
-    alert("자동추적 상태 변경 중 오류가 발생했습니다.");
-  } finally {
-    setTrackingUpdating(false);
-  }
-};
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "자동추적 상태 변경 실패");
+        return;
+      }
+
+      setPlace((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          keywords: prev.keywords.map((keyword) => ({
+            ...keyword,
+            isTracking: nextValue,
+          })),
+        };
+      });
+    } catch (error) {
+      console.error(error);
+      alert("자동추적 상태 변경 중 오류가 발생했습니다.");
+    } finally {
+      setTrackingUpdating(false);
+    }
+  };
 
   const placeLinks = useMemo(() => {
     if (!place) {
@@ -293,58 +344,54 @@ const handleToggleTracking = async () => {
       };
     }
 
-
     const publicPlaceId = extractPublicPlaceId(place.placeUrl);
     return buildPlaceLinks(publicPlaceId, place.name);
   }, [place]);
 
-  const summaryKeyword = place?.keywords?.[0] ?? null;
-
-const isAllTrackingOn =
-  !!place?.keywords?.length &&
-  place.keywords.every((keyword) => keyword.isTracking);
+  const isAllTrackingOn =
+    !!place?.keywords?.length &&
+    place.keywords.every((keyword) => keyword.isTracking);
 
   const allHistoryRows = useMemo(() => {
-  if (!place) return [];
+    if (!place) return [];
 
-  const map = new Map<
-    string,
-    {
-      createdAt: string;
-      values: Record<
-        string,
-        {
-          rank: number | null;
-          historyId: string;
-        }
-      >;
-    }
-  >();
-
-  place.keywords.forEach((keyword) => {
-    (keyword.histories || []).forEach((history) => {
-      const key = getDateKey(history.createdAt);
-
-      if (!map.has(key)) {
-        map.set(key, {
-          createdAt: key,
-          values: {},
-        });
+    const map = new Map<
+      string,
+      {
+        createdAt: string;
+        values: Record<
+          string,
+          {
+            rank: number | null;
+            historyId: string;
+          }
+        >;
       }
+    >();
 
-      map.get(key)!.values[keyword.id] = {
-        rank: history.rank,
-        historyId: history.id,
-      };
+    place.keywords.forEach((keyword) => {
+      (keyword.histories || []).forEach((history) => {
+        const key = getDateKey(history.createdAt);
+
+        if (!map.has(key)) {
+          map.set(key, {
+            createdAt: key,
+            values: {},
+          });
+        }
+
+        map.get(key)!.values[keyword.id] = {
+          rank: history.rank,
+          historyId: history.id,
+        };
+      });
     });
-  });
 
-  return Array.from(map.values()).sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() -
-      new Date(a.createdAt).getTime()
-  );
-}, [place]);
+    return Array.from(map.values()).sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [place]);
 
   const selectedKeyword = useMemo(() => {
     if (!place) return null;
@@ -353,27 +400,32 @@ const isAllTrackingOn =
     );
   }, [place, selectedKeywordId]);
 
-const chartData = useMemo(() => {
-  if (!selectedKeyword || !place) return [];
+  const selectedKeywordCurrentRank = useMemo(() => {
+    if (!selectedKeyword) return null;
+    return parseRankStringToNumber(selectedKeyword.currentRank);
+  }, [selectedKeyword]);
 
-  return (place.rankHistory || [])
-    .filter(
-      (item) =>
-        item.keyword === selectedKeyword.keyword &&
-        item.rank !== null &&
-        item.rank !== undefined
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    )
-    .map((item) => ({
-      label: formatDateLabel(item.createdAt),
-      shortLabel: formatDateLabel(item.createdAt).slice(0, 5),
-      rank: item.rank as number,
-      fullDate: item.createdAt,
-    }));
-}, [selectedKeyword, place]);
+  const chartData = useMemo(() => {
+    if (!selectedKeyword || !place) return [];
+
+    return (place.rankHistory || [])
+      .filter(
+        (item) =>
+          item.keyword === selectedKeyword.keyword &&
+          item.rank !== null &&
+          item.rank !== undefined
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+      .map((item) => ({
+        label: formatDateLabel(item.createdAt),
+        shortLabel: formatDateLabel(item.createdAt).slice(0, 5),
+        rank: item.rank as number,
+        fullDate: item.createdAt,
+      }));
+  }, [selectedKeyword, place]);
 
   const rankValues = chartData.map((item) => item.rank);
   const yMin = rankValues.length ? Math.max(1, Math.min(...rankValues) - 2) : 1;
@@ -434,16 +486,16 @@ const chartData = useMemo(() => {
                         <span>{place.address || "-"}</span>
                       </div>
 
-                     <div className="mt-2 flex flex-wrap items-center gap-4 text-[12px] text-[#6e6e73]">
-  <span>
-    월 검색량{" "}
-    <strong className="font-semibold text-[#1d1d1f]">
-      {formatCount(place.placeMonthlyVolume)}
-    </strong>
-  </span>
-  <span>📱 {formatCount(place.placeMobileVolume)}</span>
-  <span>🖥 {formatCount(place.placePcVolume)}</span>
-</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-4 text-[12px] text-[#6e6e73]">
+                        <span>
+                          월 검색량{" "}
+                          <strong className="font-semibold text-[#1d1d1f]">
+                            {formatCount(place.placeMonthlyVolume)}
+                          </strong>
+                        </span>
+                        <span>📱 {formatCount(place.placeMobileVolume)}</span>
+                        <span>🖥 {formatCount(place.placePcVolume)}</span>
+                      </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px]">
                         <span className="text-[#6e6e73]">매장 바로가기</span>
@@ -470,38 +522,36 @@ const chartData = useMemo(() => {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                  <button
-  onClick={handleToggleTracking}
-  disabled={trackingUpdating || !place?.keywords?.length}
-  className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-60"
->
-  자동 추적{" "}
-  <span
-    className={
-      isAllTrackingOn
-        ? "text-[#10b981]"
-        : "text-[#ff6b6b]"
-    }
-  >
-    {trackingUpdating
-      ? "변경중..."
-      : isAllTrackingOn
-        ? "ON"
-        : "OFF"}
-  </span>
-</button>
+                    <button
+                      onClick={handleToggleTracking}
+                      disabled={trackingUpdating || !place?.keywords?.length}
+                      className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      자동 추적{" "}
+                      <span
+                        className={
+                          isAllTrackingOn ? "text-[#10b981]" : "text-[#ff6b6b]"
+                        }
+                      >
+                        {trackingUpdating
+                          ? "변경중..."
+                          : isAllTrackingOn
+                            ? "ON"
+                            : "OFF"}
+                      </span>
+                    </button>
 
                     <button className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f]">
                       키워드 관리
                     </button>
 
                     <button
-  onClick={handleUpdateRanks}
-  disabled={updating}
-  className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-60"
->
-  {updating ? "업데이트중..." : "업데이트"}
-</button>
+                      onClick={handleUpdateRanks}
+                      disabled={updating}
+                      className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {updating ? "업데이트중..." : "업데이트"}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -558,13 +608,12 @@ const chartData = useMemo(() => {
                             {place.keywords.map((keyword) => {
                               const current = row.values[keyword.id];
                               const currentRank = current?.rank ?? null;
-
                               const rankMeta = getRankMeta(currentRank);
 
                               const keywordHistories = keyword.histories || [];
                               const currentIndex = keywordHistories.findIndex(
-  (item) => getDateKey(item.createdAt) === row.createdAt
-);
+                                (item) => getDateKey(item.createdAt) === row.createdAt
+                              );
 
                               const previousRank =
                                 currentIndex >= 0 &&
@@ -650,7 +699,7 @@ const chartData = useMemo(() => {
                   </div>
                 </div>
 
-                {selectedKeyword && chartData.length > 0 ? (
+                {selectedKeyword && selectedKeyword.currentRank !== "-" && chartData.length > 0 ? (
                   <div className="space-y-4">
                     <div className="grid gap-3 md:grid-cols-4">
                       <div className="rounded-[14px] bg-[#f7f7fa] px-4 py-3">
@@ -663,14 +712,19 @@ const chartData = useMemo(() => {
                       <div className="rounded-[14px] bg-[#f7f7fa] px-4 py-3">
                         <div className="text-[11px] text-[#8e8e93]">현재 순위</div>
                         <div className="mt-1 text-[13px] font-semibold text-[#1d1d1f]">
-                          {chartData[chartData.length - 1]?.rank ?? "-"}위
+                          {selectedKeyword.currentRank ?? (chartData[chartData.length - 1]?.rank ?? "-")}
+                          {selectedKeyword.currentRank ? "" : "위"}
                         </div>
                       </div>
 
                       <div className="rounded-[14px] bg-[#f7f7fa] px-4 py-3">
                         <div className="text-[11px] text-[#8e8e93]">최고 순위</div>
                         <div className="mt-1 text-[13px] font-semibold text-[#1d1d1f]">
-                          {Math.min(...chartData.map((item) => item.rank))}위
+                          {selectedKeywordCurrentRank !== null
+                            ? `${selectedKeywordCurrentRank}위`
+                            : chartData.length
+                              ? `${Math.min(...chartData.map((item) => item.rank))}위`
+                              : "-"}
                         </div>
                       </div>
 
@@ -725,7 +779,7 @@ const chartData = useMemo(() => {
                   </div>
                 ) : (
                   <div className="flex h-[220px] items-center justify-center rounded-[14px] bg-[#fafafa] text-[12px] text-[#8e8e93]">
-                    그래프로 표시할 순위 이력이 없습니다.
+                    현재 조회 결과로는 노출 순위를 찾지 못했어요.
                   </div>
                 )}
               </div>

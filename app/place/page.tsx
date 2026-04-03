@@ -56,6 +56,7 @@ type PlaceKeywordItem = {
     id: string;
     rank: number;
     createdAt: string;
+    currentRank?: string;
   }[];
 };
 
@@ -293,12 +294,13 @@ function mapPlaceToStore(place: PlaceItem): Store {
           ? "-"
           : String(keyword.pcVolume),
       rank: getLatestRankString(
-        (place.rankHistory || []).filter(
-          (history) => history.keyword === keyword.keyword
-        )
-      ),
-      placeKeywordId: keyword.id,
-      isTracking: keyword.isTracking,
+  (place.rankHistory || []).filter(
+    (history) => history.keyword === keyword.keyword
+  )
+),
+currentRank: undefined,
+placeKeywordId: keyword.id,
+isTracking: keyword.isTracking,
     })),
   };
 }
@@ -771,101 +773,104 @@ if (!session) {
   };
 
   const handleCheckRanks = async (filteredIndex: number) => {
-    const targetStore = filteredStores[filteredIndex];
-    const realIndex = stores.findIndex(
-      (item) =>
-        item.name === targetStore.name &&
-        item.address === targetStore.address &&
-        item.dbId === targetStore.dbId
-    );
+  const targetStore = filteredStores[filteredIndex];
 
-    if (realIndex === -1) return;
+  const realIndex = stores.findIndex(
+    (item) =>
+      item.name === targetStore.name &&
+      item.address === targetStore.address &&
+      item.dbId === targetStore.dbId
+  );
 
-    const target = stores[realIndex];
+  if (realIndex === -1) return;
 
-    if (!target.placeId) {
-      alert("placeId가 없어 순위 조회를 할 수 없어요. 매장을 다시 등록해주세요.");
-      return;
-    }
+  const target = stores[realIndex];
 
-    if (target.keywords.length === 0) {
-      alert("먼저 키워드를 등록해주세요.");
-      return;
-    }
+  if (!target.placeId) {
+    alert("placeId가 없어 순위 조회를 할 수 없어요. 매장을 다시 등록해주세요.");
+    return;
+  }
 
-    setCheckingStoreIndex(realIndex);
+  if (target.keywords.length === 0) {
+    alert("먼저 키워드를 등록해주세요.");
+    return;
+  }
 
-    try {
-      const updatedKeywords = await Promise.all(
-        target.keywords.map(async (item) => {
-          const response = await fetch("/api/check-place-rank", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              keyword: item.keyword,
-              placeId: target.placeId,
-            }),
-          });
+  setCheckingStoreIndex(realIndex);
 
-          const data = await response.json();
+  try {
+    const updatedKeywords = await Promise.all(
+      target.keywords.map(async (item) => {
+        const response = await fetch("/api/check-place-rank", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            keyword: item.keyword,
+            placeId: target.placeId,
+          }),
+        });
 
-          if (!response.ok) {
-            return {
-              ...item,
-              monthly: item.monthly || "-",
-              mobile: "-",
-              pc: "-",
-              rank: "오류",
-            };
-          }
+        const data = await response.json();
 
-          if (item.placeKeywordId && data.rank && data.rank !== "-") {
-            try {
-              await fetch("/api/place-rank-history-save", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  placeKeywordId: item.placeKeywordId,
-                  rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
-                }),
-              });
-            } catch (historyError) {
-              console.error("rank history save error", historyError);
-            }
-          }
-
+        if (!response.ok) {
           return {
             ...item,
-            monthly: data.monthly || item.monthly || "-",
-            mobile: data.mobile || "-",
-            pc: data.pc || "-",
-            rank: data.rank || "-",
+            monthly: item.monthly || "-",
+            mobile: "-",
+            pc: "-",
+            rank: "오류",
           };
-        })
-      );
+        }
 
-      setStores((prev) =>
-        prev.map((store, index) =>
-          index === realIndex
-            ? {
-                ...store,
-                keywords: updatedKeywords,
-              }
-            : store
-        )
-      );
-    } catch (error) {
-      console.error(error);
-      alert("순위 조회 중 오류가 났어요.");
-    } finally {
-      await fetchPlaces();
-      setCheckingStoreIndex(null);
-    }
-  };
+        // 숫자 순위일 때만 히스토리 저장
+        if (item.placeKeywordId && data.rank && data.rank !== "-") {
+          try {
+            await fetch("/api/place-rank-history-save", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                placeKeywordId: item.placeKeywordId,
+                rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+              }),
+            });
+          } catch (historyError) {
+            console.error("rank history save error", historyError);
+          }
+        }
+
+        // ✅ 화면에는 현재 조회 결과를 그대로 반영
+        return {
+  ...item,
+  monthly: data.monthly || item.monthly || "-",
+  mobile: data.mobile || "-",
+  pc: data.pc || "-",
+  currentRank: data.rank ?? "-",
+};
+      })
+    );
+
+    setStores((prev) =>
+      prev.map((store, index) =>
+        index === realIndex
+          ? {
+              ...store,
+              keywords: updatedKeywords,
+            }
+          : store
+      )
+    );
+  } catch (error) {
+    console.error(error);
+    alert("순위 조회 중 오류가 났어요.");
+  } finally {
+    // ❌ 여기서 fetchPlaces() 하면 예전 rankHistory 값이 다시 덮일 수 있음
+    setCheckingStoreIndex(null);
+  }
+};
 
 
 const goToPlaceDetail = (filteredIndex: number) => {
