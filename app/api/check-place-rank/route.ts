@@ -3,14 +3,11 @@ export const dynamic = "force-dynamic";
 
 import { chromium } from "playwright";
 
-type RestaurantItem = {
+type SearchResultItem = {
   id: string;
   name: string;
-};
-
-type CapturedGraphql = {
-  headers: Record<string, string>;
-  payload: any[];
+  rank: number | null;
+  index: number | null;
 };
 
 function normalizeText(text: string) {
@@ -40,96 +37,145 @@ function makeNameCandidates(name: string) {
   return [...set].filter(Boolean);
 }
 
-function extractItemsFromBatch(json: any): RestaurantItem[] {
-  const batch = Array.isArray(json) ? json : [json];
-
-  const items =
-    batch.find((entry) => Array.isArray(entry?.data?.restaurants?.items))?.data
-      ?.restaurants?.items ?? [];
-
-  if (!Array.isArray(items)) return [];
-
-  return items
-    .map((item: any) => ({
-      id: String(item?.id || "").trim(),
-      name: String(item?.name || "").trim(),
-    }))
-    .filter((item: RestaurantItem) => item.id || item.name);
+function toNumberOrNull(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const n = Number(String(value).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
 }
 
-function buildReplayPayload(
-  basePayload: any[],
-  keyword: string,
-  start: number
+function pushUnique(
+  target: SearchResultItem[],
+  seen: Set<string>,
+  item: SearchResultItem
 ) {
-  const cloned = JSON.parse(JSON.stringify(basePayload));
-  const compactKeyword = keyword.replace(/\s+/g, "");
-
-  const restaurantOp = cloned.find(
-    (item: any) => item?.operationName === "getRestaurants"
-  );
-
-  if (restaurantOp?.variables?.restaurantListInput) {
-    restaurantOp.variables.restaurantListInput.query = compactKeyword;
-    restaurantOp.variables.restaurantListInput.start = start;
-  }
-
-  if (restaurantOp?.variables?.restaurantListFilterInput) {
-    restaurantOp.variables.restaurantListFilterInput.query = compactKeyword;
-    restaurantOp.variables.restaurantListFilterInput.start = start;
-  }
-
-  const adOp = cloned.find(
-    (item: any) => item?.operationName === "getAdBusinessList"
-  );
-
-  if (adOp?.variables?.input) {
-    adOp.variables.input.query = compactKeyword;
-    adOp.variables.input.start = Math.floor((start - 1) / 70) + 1;
-  }
-
-  return cloned;
+  const key = `${item.id}__${item.name}__${item.rank ?? ""}__${item.index ?? ""}`;
+  if (!item.id && !item.name) return;
+  if (seen.has(key)) return;
+  seen.add(key);
+  target.push(item);
 }
 
-function cleanReplayHeaders(headers: Record<string, string>) {
-  const nextHeaders: Record<string, string> = {};
-
-  for (const [key, value] of Object.entries(headers || {})) {
-    const lower = key.toLowerCase();
-
-    if (
-      [
-        "host",
-        "content-length",
-        "connection",
-        "sec-fetch-dest",
-        "sec-fetch-mode",
-        "sec-fetch-site",
-        "priority",
-      ].includes(lower)
-    ) {
-      continue;
+function collectItemsDeep(
+  value: any,
+  out: SearchResultItem[],
+  seen: Set<string>
+) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectItemsDeep(item, out, seen);
     }
-
-    nextHeaders[lower] = value;
+    return;
   }
 
-  nextHeaders["content-type"] = "application/json";
-  nextHeaders["accept"] = "*/*";
-  nextHeaders["accept-language"] = nextHeaders["accept-language"] || "ko";
-  nextHeaders["origin"] = "https://pcmap.place.naver.com";
+  if (!value || typeof value !== "object") return;
 
-  return nextHeaders;
+  const id = String(value.id ?? "").trim();
+  const name = String(value.name ?? value.display ?? "").trim();
+  const rank = toNumberOrNull(value.rank);
+  const index = toNumberOrNull(value.index);
+
+  if (id && name) {
+    pushUnique(out, seen, {
+      id,
+      name,
+      rank,
+      index,
+    });
+  }
+
+  for (const nested of Object.values(value)) {
+    collectItemsDeep(nested, out, seen);
+  }
 }
 
-async function findRankWithPlaywright(
-  keyword: string,
+function extractItemsFromAllSearch(json: any) {
+  const out: SearchResultItem[] = [];
+  const seen = new Set<string>();
+
+  collectItemsDeep(json, out, seen);
+
+  return out;
+}
+
+function findRankFromItems(
+  items: SearchResultItem[],
   placeId: string,
   placeName: string
 ) {
   const targetId = String(placeId || "").trim();
   const targetNames = makeNameCandidates(placeName);
 
+  if (targetId) {
+    const foundById = items.find(
+      (item) => String(item.id).trim() === targetId
+    );
+
+    if (foundById) {
+      return foundById.rank ?? foundById.index ?? items.indexOf(foundById) + 1;
+    }
+  }
+
+  if (targetNames.length) {
+    const foundByName = items.find((item) => {
+      const normalized = normalizeText(item.name);
+      if (!normalized) return false;
+
+      return targetNames.some(
+        (target) =>
+          target &&
+          (normalized === target ||
+            normalized.includes(target) ||
+            target.includes(normalized))
+      );
+    });
+
+    if (foundByName) {
+      return foundByName.rank ?? foundByName.index ?? items.indexOf(foundByName) + 1;
+    }
+  }
+
+  return "-";
+}
+
+async function forceScrollLeftList(page: any) {
+  await page.evaluate(() => {
+    const all = Array.from(
+      document.querySelectorAll("div, section, aside, main")
+    ) as HTMLElement[];
+
+    const scrollables = all.filter((el) => {
+      const style = getComputedStyle(el);
+      return (
+        el.scrollHeight > el.clientHeight + 150 &&
+        style.overflowY !== "visible"
+      );
+    });
+
+    // 가장 왼쪽/좁은 리스트 후보 우선
+    scrollables.sort((a, b) => {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+
+      const aScore = ar.left + ar.width;
+      const bScore = br.left + br.width;
+
+      return aScore - bScore;
+    });
+
+    const target = scrollables[0];
+    if (target) {
+      target.scrollTop += Math.max(1200, target.clientHeight);
+    }
+
+    window.scrollBy(0, 800);
+  });
+}
+
+async function findRankWithAllSearch(
+  keyword: string,
+  placeId: string,
+  placeName: string
+) {
   const browser = await chromium.launch({
     headless: true,
   });
@@ -143,263 +189,134 @@ async function findRankWithPlaywright(
 
   const page = await context.newPage();
 
-  const collected: RestaurantItem[] = [];
+  const collected: SearchResultItem[] = [];
   const seen = new Set<string>();
-  let capturedGraphql: CapturedGraphql | null = null;
+  const allSearchUrls = new Set<string>();
 
-  const pushItems = (items: RestaurantItem[]) => {
+  const mergeItems = (items: SearchResultItem[]) => {
     for (const item of items) {
-      const key = item.id || item.name;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      collected.push(item);
+      pushUnique(collected, seen, item);
     }
   };
 
-  // 디버그용: 주요 요청 로그
   page.on("request", (request) => {
     const url = request.url();
-    if (
-      url.includes("graphql") ||
-      url.includes("search") ||
-      url.includes("place") ||
-      url.includes("list")
-    ) {
-      console.log("[PW-RANK request]", url);
+
+    if (url.includes("/p/api/search/allSearch")) {
+      allSearchUrls.add(url);
+      console.log("[ALLSEARCH request]", url);
     }
   });
 
-  // GraphQL request 캡처
-  page.on("request", async (request) => {
-    try {
-      const url = request.url();
-      if (!url.includes("graphql")) return;
-      if (!url.includes("pcmap-api.place.naver.com")) return;
-
-      const postData = request.postData();
-      if (!postData) return;
-
-      let parsed: any;
-      try {
-        parsed = JSON.parse(postData);
-      } catch {
-        return;
-      }
-
-      const batch = Array.isArray(parsed) ? parsed : [parsed];
-
-      const hasGetRestaurants = batch.some(
-        (item: any) => item?.operationName === "getRestaurants"
-      );
-
-      if (!hasGetRestaurants) return;
-
-      if (!capturedGraphql) {
-        capturedGraphql = {
-          headers: request.headers(),
-          payload: batch,
-        };
-
-        console.log(
-          "[PW-RANK] graphql request captured:",
-          capturedGraphql.payload.map((item: any) => item?.operationName)
-        );
-      }
-    } catch (error) {
-      console.error("[PW-RANK] request capture error:", error);
-    }
-  });
-
-  // 주요 response 로그 + GraphQL 응답 수집
   page.on("response", async (response) => {
     try {
       const url = response.url();
 
-      if (
-        url.includes("graphql") ||
-        url.includes("search") ||
-        url.includes("place") ||
-        url.includes("list")
-      ) {
-        console.log("[PW-RANK response]", response.status(), url);
-      }
+      if (!url.includes("/p/api/search/allSearch")) return;
 
-      if (!url.includes("graphql")) return;
-      if (!url.includes("pcmap-api.place.naver.com")) return;
+      console.log("[ALLSEARCH response]", response.status(), url);
 
       const json = await response.json().catch(() => null);
       if (!json) return;
 
-      const items = extractItemsFromBatch(json);
+      const items = extractItemsFromAllSearch(json);
       if (!items.length) return;
 
-      pushItems(items);
+      mergeItems(items);
 
       console.log(
-        "[PW-RANK] live sample:",
-        items.slice(0, 10).map((v) => `${v.id}:${v.name}`)
+        "[ALLSEARCH sample]",
+        items.slice(0, 10).map((item) => ({
+          id: item.id,
+          name: item.name,
+          rank: item.rank,
+          index: item.index,
+        }))
       );
+
+      console.log("[ALLSEARCH totalCollected]", collected.length);
     } catch (error) {
-      console.error("[PW-RANK] response parse error:", error);
+      console.error("[ALLSEARCH parse error]", error);
     }
   });
 
   try {
-    const searchUrl = `https://map.naver.com/p/search/${encodeURIComponent(
+    const url = `https://map.naver.com/p/search/${encodeURIComponent(
       keyword
-    )}`;
+    )}?c=12.00,0,0,0,dh`;
 
-    await page.goto(searchUrl, {
+    await page.goto(url, {
       waitUntil: "networkidle",
       timeout: 30000,
     });
 
-    console.log("[PW-RANK] final url:", page.url());
-    console.log("[PW-RANK] title:", await page.title());
+    console.log("[ALLSEARCH final url]", page.url());
+    console.log("[ALLSEARCH title]", await page.title());
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
-    const htmlPreview = await page.content();
-    console.log("[PW-RANK] html preview:", htmlPreview.slice(0, 500));
-
-    await page.waitForTimeout(7000);
-
-    if (!capturedGraphql) {
-      console.log("[PW-RANK] initial graphql not captured");
+    // 1차: 초기 응답 확인
+    let rank = findRankFromItems(collected, placeId, placeName);
+    if (rank !== "-") {
+      return {
+        rank,
+        source: "allsearch-initial",
+        debug: {
+          totalCollected: collected.length,
+          allSearchCount: allSearchUrls.size,
+          sample: collected.slice(0, 20),
+        },
+      };
     }
 
-    // 1차: 초기 live 응답에서 바로 찾기
-    if (targetId) {
-      const liveIndex = collected.findIndex(
-        (item) => String(item.id).trim() === targetId
-      );
+    // 2차: 리스트를 더 깊게 스크롤
+    let stableCount = 0;
+    let previousCount = collected.length;
 
-      if (liveIndex !== -1) {
+    for (let i = 0; i < 35; i++) {
+      await forceScrollLeftList(page);
+      await page.waitForTimeout(1500);
+
+      rank = findRankFromItems(collected, placeId, placeName);
+      if (rank !== "-") {
         return {
-          rank: liveIndex + 1,
-          source: "playwright-live",
+          rank,
+          source: "allsearch-scroll",
           debug: {
-            matchedBy: "id",
             totalCollected: collected.length,
-            sample: collected.slice(0, 10),
+            allSearchCount: allSearchUrls.size,
+            sample: collected.slice(0, 20),
           },
         };
       }
-    }
 
-    // 2차: 캡처한 성공 GraphQL 요청으로 브라우저 안에서 페이지별 재호출
-    const captured = capturedGraphql as CapturedGraphql | null;
+      if (collected.length === previousCount) {
+        stableCount += 1;
+      } else {
+        stableCount = 0;
+        previousCount = collected.length;
+      }
 
-if (captured) {
-  const replayHeaders = cleanReplayHeaders(captured.headers);
+      console.log(
+        `[ALLSEARCH scroll] step=${i + 1}, totalCollected=${collected.length}, stableCount=${stableCount}`
+      );
 
-  for (let start = 1; start <= 351; start += 70) {
-    const replayPayload = buildReplayPayload(
-      captured.payload,
-      keyword,
-      start
-    );
-
-        const replayJson = await page.evaluate(
-          async ({ headers, payload }) => {
-            const res = await fetch("https://pcmap-api.place.naver.com/graphql", {
-              method: "POST",
-              headers,
-              body: JSON.stringify(payload),
-              credentials: "include",
-            });
-
-            const text = await res.text();
-
-            try {
-              return JSON.parse(text);
-            } catch {
-              return { __rawText: text };
-            }
-          },
-          {
-            headers: replayHeaders,
-            payload: replayPayload,
-          }
-        );
-
-        if ((replayJson as any)?.__rawText) {
-          console.log(
-            `[PW-RANK] replay start=${start} non-json:`,
-            String((replayJson as any).__rawText).slice(0, 200)
-          );
-          continue;
-        }
-
-        const items = extractItemsFromBatch(replayJson);
-        pushItems(items);
-
-        console.log(
-          `[PW-RANK] replay start=${start} sampleIds:`,
-          items.slice(0, 10).map((item) => item.id)
-        );
-
-        console.log(
-          `[PW-RANK] replay start=${start} sampleNames:`,
-          items.slice(0, 10).map((item) => item.name)
-        );
-
-        if (targetId) {
-          const indexById = collected.findIndex(
-            (item) => String(item.id).trim() === targetId
-          );
-
-          if (indexById !== -1) {
-            return {
-              rank: indexById + 1,
-              source: "playwright-replay-id",
-              debug: {
-                matchedBy: "id",
-                totalCollected: collected.length,
-                sample: collected.slice(0, 10),
-              },
-            };
-          }
-        }
-
-        if (targetNames.length) {
-          const indexByName = collected.findIndex((item) => {
-            const name = normalizeText(item.name);
-            if (!name) return false;
-
-            return targetNames.some(
-              (target) =>
-                target &&
-                (name === target ||
-                  name.includes(target) ||
-                  target.includes(name))
-            );
-          });
-
-          if (indexByName !== -1) {
-            return {
-              rank: indexByName + 1,
-              source: "playwright-replay-name",
-              debug: {
-                matchedBy: "name",
-                totalCollected: collected.length,
-                sample: collected.slice(0, 10),
-              },
-            };
-          }
-        }
+      // 여러 번 연속으로 더 안 늘어나면 중단
+      if (stableCount >= 5) {
+        break;
       }
     }
 
+    // 3차: 마지막 이름 fallback
+    rank = findRankFromItems(collected, placeId, placeName);
+
     return {
-      rank: "-",
-      source: "playwright-not-found",
+      rank,
+      source: rank === "-" ? "allsearch-not-found" : "allsearch-fallback",
       debug: {
-        placeId: targetId,
-        placeName,
         totalCollected: collected.length,
-        capturedGraphql: Boolean(capturedGraphql),
-        sample: collected.slice(0, 20),
+        allSearchCount: allSearchUrls.size,
+        sample: collected.slice(0, 30),
       },
     };
   } finally {
@@ -456,7 +373,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await findRankWithPlaywright(keyword, placeId, placeName);
+    const result = await findRankWithAllSearch(keyword, placeId, placeName);
 
     console.log(
       `[check-place-rank] 결과: ${keyword} / ${placeName} / rank=${result.rank} / source=${result.source}`
@@ -480,7 +397,7 @@ export async function POST(req: Request) {
       monthly: "-",
       mobile: "-",
       pc: "-",
-      source: "playwright-error",
+      source: "allsearch-error",
     });
   }
 }
