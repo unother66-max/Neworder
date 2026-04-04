@@ -1,33 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-function extractPublicPlaceId(placeUrl?: string | null) {
-  if (!placeUrl) return "";
-
-  const matched =
-    placeUrl.match(/restaurant\/(\d+)/) ||
-    placeUrl.match(/place\/(\d+)/) ||
-    placeUrl.match(/placeId=(\d+)/) ||
-    placeUrl.match(/entry\/place\/(\d+)/);
-
-  return matched?.[1] ?? "";
-}
-
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
 
-    // 수동 테스트 허용
     if (authHeader && authHeader === `Bearer ${cronSecret}`) {
       // 통과
-    }
-    // Vercel cron 허용
-    else if (req.headers.get("x-vercel-cron") === "1") {
+    } else if (req.headers.get("x-vercel-cron") === "1") {
       // 통과
-    }
-    // 그 외 차단
-    else {
+    } else {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -50,9 +33,7 @@ export async function GET(req: NextRequest) {
 
     for (const keyword of trackedKeywords) {
       try {
-        const publicPlaceId = extractPublicPlaceId(keyword.place?.placeUrl);
-
-        if (!publicPlaceId) {
+        if (!keyword.place?.name) {
           failCount++;
           continue;
         }
@@ -61,17 +42,32 @@ export async function GET(req: NextRequest) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: cronSecret ? `Bearer ${cronSecret}` : "",
           },
           body: JSON.stringify({
             keyword: keyword.keyword,
-            placeId: publicPlaceId,
+            targetName: keyword.place.name,
           }),
           cache: "no-store",
         });
 
-        const rankData = await rankRes.json();
+        const text = await rankRes.text();
 
-        if (!rankRes.ok || !rankData.rank || rankData.rank === "-") {
+        let rankData: any = null;
+        try {
+          rankData = text ? JSON.parse(text) : null;
+        } catch (error) {
+          console.error(
+            "cron JSON parse 실패:",
+            keyword.keyword,
+            text.slice(0, 300)
+          );
+          failCount++;
+          continue;
+        }
+
+        if (!rankRes.ok || !rankData?.rank || rankData.rank === "-") {
+          console.error("cron rank 조회 실패:", keyword.keyword, rankData);
           failCount++;
           continue;
         }
