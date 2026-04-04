@@ -188,66 +188,80 @@ export default function PlaceDetailPage() {
       setUpdating(true);
 
       const keywordResults = await Promise.all(
-        place.keywords.map(async (keyword) => {
-          const response = await fetch("/api/check-place-rank", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              keyword: keyword.keyword,
-              placeId: publicPlaceId,
-              placeName: place.name,
-            }),
-          });
+  place.keywords.map(async (keyword) => {
+    const response = await fetch("/api/check-place-rank", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        keyword: keyword.keyword,
+        targetName: place.name,
+      }),
+    });
 
-          const data = await response.json();
+    let data = null;
 
-          if (!response.ok) {
-            return {
-              keywordId: keyword.id,
-              monthly: keyword.totalVolume,
-              mobile: keyword.mobileVolume,
-              pc: keyword.pcVolume,
-              currentRank: "오류",
-            };
-          }
+    try {
+      data = await response.json();
+    } catch (e) {
+      console.error("JSON 파싱 실패:", e);
+      return {
+        keywordId: keyword.id,
+        monthly: keyword.totalVolume,
+        mobile: keyword.mobileVolume,
+        pc: keyword.pcVolume,
+        currentRank: "오류",
+      };
+    }
 
-          if (keyword.id && data.rank && data.rank !== "-") {
-            await fetch("/api/place-rank-history-save", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                placeKeywordId: keyword.id,
-                rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
-              }),
-            });
-          }
+    if (!response.ok) {
+      return {
+        keywordId: keyword.id,
+        monthly: keyword.totalVolume,
+        mobile: keyword.mobileVolume,
+        pc: keyword.pcVolume,
+        currentRank: "오류",
+      };
+    }
 
-          return {
-            keywordId: keyword.id,
-            monthly:
-              data.monthly === undefined ||
-              data.monthly === null ||
-              data.monthly === "-"
-                ? keyword.totalVolume
-                : Number(String(data.monthly).replace(/,/g, "")),
-            mobile:
-              data.mobile === undefined ||
-              data.mobile === null ||
-              data.mobile === "-"
-                ? keyword.mobileVolume
-                : Number(String(data.mobile).replace(/,/g, "")),
-            pc:
-              data.pc === undefined || data.pc === null || data.pc === "-"
-                ? keyword.pcVolume
-                : Number(String(data.pc).replace(/,/g, "")),
-            currentRank: data.rank ?? "-",
-          };
-        })
-      );
+    if (keyword.id && data?.rank && data.rank !== "-") {
+      await fetch("/api/place-rank-history-save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeKeywordId: keyword.id,
+          rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+        }),
+      });
+    }
+
+    return {
+      keywordId: keyword.id,
+      monthly:
+        data?.monthly === undefined ||
+        data?.monthly === null ||
+        data?.monthly === "-"
+          ? keyword.totalVolume
+          : Number(String(data.monthly).replace(/,/g, "")),
+      mobile:
+        data?.mobile === undefined ||
+        data?.mobile === null ||
+        data?.mobile === "-"
+          ? keyword.mobileVolume
+          : Number(String(data.mobile).replace(/,/g, "")),
+      pc:
+        data?.pc === undefined ||
+        data?.pc === null ||
+        data?.pc === "-"
+          ? keyword.pcVolume
+          : Number(String(data.pc).replace(/,/g, "")),
+      currentRank: data?.rank ?? "-",
+    };
+  })
+);
 
       setPlace((prev) => {
         if (!prev) return prev;

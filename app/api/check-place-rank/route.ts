@@ -1,403 +1,692 @@
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+const GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
 
-import { chromium } from "playwright";
-
-type SearchResultItem = {
+type GraphqlRestaurantItem = {
   id: string;
   name: string;
-  rank: number | null;
-  index: number | null;
 };
 
-function normalizeText(text: string) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/[^\p{L}\p{N}]/gu, "");
-}
+type GraphqlResponseItem = {
+  data?: {
+    restaurants?: {
+      items?: GraphqlRestaurantItem[];
+      total?: number;
+    };
+  };
+  errors?: Array<{
+    message?: string;
+  }>;
+};
 
-function makeNameCandidates(name: string) {
-  const raw = String(name || "").trim();
-  const set = new Set<string>();
-
-  if (!raw) return [];
-
-  set.add(normalizeText(raw));
-
-  const noBracket = raw.replace(/\([^)]*\)/g, "").trim();
-  if (noBracket) set.add(normalizeText(noBracket));
-
-  const noBranchWord = raw
-    .replace(/\s*(지점|본점|직영점|점)$/g, "")
-    .replace(/\([^)]*\)/g, "")
-    .trim();
-  if (noBranchWord) set.add(normalizeText(noBranchWord));
-
-  return [...set].filter(Boolean);
-}
-
-function toNumberOrNull(value: unknown) {
-  if (value === null || value === undefined) return null;
-  const n = Number(String(value).replace(/[^\d.-]/g, ""));
-  return Number.isFinite(n) ? n : null;
-}
-
-function pushUnique(
-  target: SearchResultItem[],
-  seen: Set<string>,
-  item: SearchResultItem
+const GET_RESTAURANTS_QUERY = `
+query getRestaurants(
+  $restaurantListInput: RestaurantListInput,
+  $restaurantListFilterInput: RestaurantListFilterInput,
+  $reverseGeocodingInput: ReverseGeocodingInput,
+  $useReverseGeocode: Boolean = false,
+  $isNmap: Boolean = false
 ) {
-  const key = `${item.id}__${item.name}__${item.rank ?? ""}__${item.index ?? ""}`;
-  if (!item.id && !item.name) return;
-  if (seen.has(key)) return;
-  seen.add(key);
-  target.push(item);
-}
-
-function collectItemsDeep(
-  value: any,
-  out: SearchResultItem[],
-  seen: Set<string>
-) {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectItemsDeep(item, out, seen);
+  restaurants: restaurantList(input: $restaurantListInput) {
+    items {
+      apolloCacheId
+      coupon {
+        ...CouponItems
+        __typename
+      }
+      ...CommonBusinessItems
+      ...RestaurantBusinessItems
+      __typename
     }
-    return;
+    ...RestaurantCommonFields
+    optionsForMap {
+      ...OptionsForMap
+      __typename
+    }
+    nlu {
+      ...NluFields
+      __typename
+    }
+    searchGuide {
+      ...SearchGuide
+      __typename
+    }
+    __typename
   }
+  filters: restaurantListFilter(input: $restaurantListFilterInput) {
+    ...RestaurantFilter
+    __typename
+  }
+  reverseGeocodingAddr(input: $reverseGeocodingInput) @include(if: $useReverseGeocode) {
+    ...ReverseGeocodingAddr
+    __typename
+  }
+}
 
-  if (!value || typeof value !== "object") return;
+fragment OptionsForMap on OptionsForMap {
+  maxZoom
+  minZoom
+  includeMyLocation
+  maxIncludePoiCount
+  center
+  spotId
+  keepMapBounds
+  __typename
+}
 
-  const id = String(value.id ?? "").trim();
-  const name = String(value.name ?? value.display ?? "").trim();
-  const rank = toNumberOrNull(value.rank);
-  const index = toNumberOrNull(value.index);
+fragment NluFields on Nlu {
+  queryType
+  user {
+    gender
+    __typename
+  }
+  queryResult {
+    ptn0
+    ptn1
+    region
+    spot
+    tradeName
+    service
+    selectedRegion {
+      name
+      index
+      x
+      y
+      __typename
+    }
+    selectedRegionIndex
+    otherRegions {
+      name
+      index
+      __typename
+    }
+    property
+    keyword
+    queryType
+    nluQuery
+    businessType
+    cid
+    branch
+    franchise
+    titleKeyword
+    location {
+      x
+      y
+      default
+      longitude
+      latitude
+      dong
+      si
+      __typename
+    }
+    noRegionQuery
+    priority
+    showLocationBarFlag
+    themeId
+    filterBooking
+    repRegion
+    repSpot
+    dbQuery {
+      isDefault
+      name
+      type
+      getType
+      useFilter
+      hasComponents
+      __typename
+    }
+    type
+    category
+    menu
+    context
+    styles {
+      id
+      text
+      __typename
+    }
+    gender
+    themes
+    __typename
+  }
+  __typename
+}
 
-  if (id && name) {
-    pushUnique(out, seen, {
-      id,
-      name,
-      rank,
-      index,
+fragment SearchGuide on SearchGuide {
+  queryResults {
+    regions {
+      displayTitle
+      query
+      region {
+        rcode
+        __typename
+      }
+      __typename
+    }
+    isBusinessName
+    __typename
+  }
+  queryIndex
+  types
+  __typename
+}
+
+fragment ReverseGeocodingAddr on ReverseGeocodingResult {
+  rcode
+  region
+  __typename
+}
+
+fragment CouponItems on Coupon {
+  total
+  promotions {
+    promotionSeq
+    couponSeq
+    conditionType
+    image {
+      url
+      __typename
+    }
+    title
+    description
+    type
+    couponUseType
+    couponLandingUrl
+    __typename
+  }
+  __typename
+}
+
+fragment CommonBusinessItems on BusinessSummary {
+  id
+  dbType
+  name
+  businessCategory
+  category
+  description
+  hasBooking
+  hasNPay
+  x
+  y
+  distance
+  imageUrl
+  imageCount
+  phone
+  virtualPhone
+  routeUrl
+  streetPanorama {
+    id
+    pan
+    tilt
+    lat
+    lon
+    __typename
+  }
+  roadAddress
+  address
+  commonAddress
+  blogCafeReviewCount
+  bookingReviewCount
+  totalReviewCount
+  bookingUrl
+  bookingBusinessId
+  talktalkUrl
+  detailCid {
+    c0
+    c1
+    c2
+    c3
+    __typename
+  }
+  options
+  promotionTitle
+  agencyId
+  businessHours
+  newOpening
+  hasWheelchairEntrance
+  markerId @include(if: $isNmap)
+  markerLabel @include(if: $isNmap) {
+    text
+    style
+    __typename
+  }
+  imageMarker @include(if: $isNmap) {
+    marker
+    markerSelected
+    __typename
+  }
+  __typename
+}
+
+fragment RestaurantFilter on RestaurantListFilterResult {
+  filters {
+    index
+    name
+    displayName
+    value
+    multiSelectable
+    defaultParams {
+      age
+      gender
+      day
+      time
+      __typename
+    }
+    items {
+      index
+      name
+      value
+      selected
+      representative
+      displayName
+      clickCode
+      laimCode
+      type
+      icon
+      __typename
+    }
+    __typename
+  }
+  votingKeywordList {
+    items {
+      name
+      displayName
+      value
+      icon
+      clickCode
+      __typename
+    }
+    menuItems {
+      name
+      value
+      icon
+      clickCode
+      __typename
+    }
+    total
+    __typename
+  }
+  optionKeywordList {
+    items {
+      name
+      displayName
+      value
+      icon
+      clickCode
+      __typename
+    }
+    total
+    __typename
+  }
+  __typename
+}
+
+fragment RestaurantCommonFields on RestaurantListResult {
+  restaurantCategory
+  queryString
+  siteSort
+  selectedFilter {
+    order
+    rank
+    tvProgram
+    brand
+    menu
+    food
+    mood
+    purpose
+    sortingOrder
+    takeout
+    orderBenefit
+    cafeFood
+    gender
+    cafeMenu
+    cafeTheme
+    theme
+    voting
+    filterOpening
+    keywordFilter
+    property
+    realTimeBooking
+    hours
+    __typename
+  }
+  rcodes
+  location {
+    sasX
+    sasY
+    __typename
+  }
+  showMembershipBenefit
+  total
+  __typename
+}
+
+fragment RestaurantBusinessItems on RestaurantListSummary {
+  fullAddress
+  categoryCodeList
+  visitorReviewCount
+  visitorReviewScore
+  imageUrls
+  bookingHubUrl
+  bookingHubButtonName
+  visitorImages {
+    id
+    reviewId
+    imageUrl
+    profileImageUrl
+    nickname
+    __typename
+  }
+  visitorReviews {
+    id
+    review
+    reviewId
+    __typename
+  }
+  foryouLabel
+  foryouTasteType
+  microReview
+  priceCategory
+  broadcastInfo {
+    program
+    date
+    menu
+    __typename
+  }
+  michelinGuide {
+    year
+    star
+    comment
+    url
+    hasGrade
+    isBib
+    alternateText
+    hasExtraNew
+    region
+    __typename
+  }
+  broadcasts {
+    program
+    menu
+    episode
+    broadcast_date
+    __typename
+  }
+  tvcastId
+  naverBookingCategory
+  saveCount
+  uniqueBroadcasts
+  naverOrder {
+    items {
+      id
+      type
+      __typename
+    }
+    isDelivery
+    isTableOrder
+    isPreOrder
+    isPickup
+    __typename
+  }
+  deliveryArea
+  isCvsDelivery
+  bookingDisplayName
+  bookingVisitId
+  bookingPickupId
+  popularMenuImages {
+    name
+    price
+    bookingCount
+    menuUrl
+    menuListUrl
+    imageUrl
+    isPopular
+    usePanoramaImage
+    __typename
+  }
+  newBusinessHours {
+    status
+    description
+    __typename
+  }
+  baemin {
+    businessHours {
+      deliveryTime {
+        start
+        end
+        __typename
+      }
+      closeDate {
+        start
+        end
+        __typename
+      }
+      temporaryCloseDate {
+        start
+        end
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+  yogiyo {
+    businessHours {
+      actualDeliveryTime {
+        start
+        end
+        __typename
+      }
+      bizHours {
+        start
+        end
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+  realTimeBookingInfo {
+    description
+    hasMultipleBookingItems
+    bookingBusinessId
+    bookingUrl
+    itemId
+    itemName
+    timeSlots {
+      date
+      time
+      timeRaw
+      available
+      __typename
+    }
+    __typename
+  }
+  posInfo {
+    isPOS
+    items {
+      value
+      title
+      description
+      __typename
+    }
+    __typename
+  }
+  nPayConnect {
+    benefitText
+    __typename
+  }
+  membershipBenefit {
+    membershipSeq
+    membershipName
+    type
+    representativeColor
+    representativeImageUrl
+    membershipBenefitLandingUrl
+    benefitName
+    totalCouponCount
+    totalMembershipBenefitCount
+    promotions {
+      promotionSeq
+      couponSeq
+      conditionType
+      image {
+        url
+        __typename
+      }
+      title
+      type
+      couponUseType
+      __typename
+    }
+    __typename
+  }
+  __typename
+}
+`;
+
+function normalizeText(value: string) {
+  return value.replace(/\s/g, "").trim();
+}
+
+async function getRank(keyword: string, targetName: string) {
+  const normalizedTarget = normalizeText(targetName);
+
+  for (let page = 1; page <= 10; page++) {
+    const start = 1 + (page - 1) * 70;
+
+    const payload = [
+      {
+        operationName: "getRestaurants",
+        variables: {
+          useReverseGeocode: true,
+          isNmap: true,
+          restaurantListInput: {
+            query: keyword,
+            x: "127.0005",
+            y: "37.53455",
+            start,
+            display: 70,
+            takeout: null,
+            orderBenefit: null,
+            isCurrentLocationSearch: null,
+            filterOpening: null,
+            deviceType: "pcmap",
+            isPcmap: true,
+          },
+          restaurantListFilterInput: {
+            x: "127.0005",
+            y: "37.53455",
+            display: 70,
+            start,
+            query: keyword,
+            isCurrentLocationSearch: null,
+          },
+          reverseGeocodingInput: {
+            x: "127.0005",
+            y: "37.53455",
+          },
+        },
+        query: GET_RESTAURANTS_QUERY,
+      },
+    ];
+
+    const referer = `https://pcmap.place.naver.com/restaurant/list?query=${encodeURIComponent(
+      keyword
+    )}&x=127.0005&y=37.53455&clientX=127.0005&clientY=37.53455&display=70&locale=ko`;
+
+    const res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://pcmap.place.naver.com",
+        Referer: referer,
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        Accept: "*/*",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
     });
-  }
 
-  for (const nested of Object.values(value)) {
-    collectItemsDeep(nested, out, seen);
-  }
-}
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("GraphQL 실패 상태코드:", res.status);
+      console.error("GraphQL 실패 응답 일부:", text.slice(0, 500));
+      throw new Error(`GraphQL 요청 실패: ${res.status}`);
+    }
 
-function extractItemsFromAllSearch(json: any) {
-  const out: SearchResultItem[] = [];
-  const seen = new Set<string>();
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await res.text();
+      console.error("JSON 아님:", text.slice(0, 500));
+      throw new Error("GraphQL 응답이 JSON이 아닙니다.");
+    }
 
-  collectItemsDeep(json, out, seen);
+    const json = (await res.json()) as GraphqlResponseItem[];
 
-  return out;
-}
+    if (!Array.isArray(json)) {
+      continue;
+    }
 
-function findRankFromItems(
-  items: SearchResultItem[],
-  placeId: string,
-  placeName: string
-) {
-  const targetId = String(placeId || "").trim();
-  const targetNames = makeNameCandidates(placeName);
+    const restaurantData = json.find((item) => item?.data?.restaurants?.items);
 
-  if (targetId) {
-    const foundById = items.find(
-      (item) => String(item.id).trim() === targetId
+    if (!restaurantData) {
+      const errorMessage = json
+        .flatMap((item) => item?.errors || [])
+        .map((e) => e?.message)
+        .filter(Boolean)
+        .join(" | ");
+
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+
+      continue;
+    }
+
+    const items = restaurantData.data?.restaurants?.items ?? [];
+    const index = items.findIndex(
+      (item) => normalizeText(item.name) === normalizedTarget
     );
 
-    if (foundById) {
-      return foundById.rank ?? foundById.index ?? items.indexOf(foundById) + 1;
+    if (index !== -1) {
+      return start + index;
     }
   }
 
-  if (targetNames.length) {
-    const foundByName = items.find((item) => {
-      const normalized = normalizeText(item.name);
-      if (!normalized) return false;
-
-      return targetNames.some(
-        (target) =>
-          target &&
-          (normalized === target ||
-            normalized.includes(target) ||
-            target.includes(normalized))
-      );
-    });
-
-    if (foundByName) {
-      return foundByName.rank ?? foundByName.index ?? items.indexOf(foundByName) + 1;
-    }
-  }
-
-  return "-";
-}
-
-async function forceScrollLeftList(page: any) {
-  await page.evaluate(() => {
-    const all = Array.from(
-      document.querySelectorAll("div, section, aside, main")
-    ) as HTMLElement[];
-
-    const scrollables = all.filter((el) => {
-      const style = getComputedStyle(el);
-      return (
-        el.scrollHeight > el.clientHeight + 150 &&
-        style.overflowY !== "visible"
-      );
-    });
-
-    // 가장 왼쪽/좁은 리스트 후보 우선
-    scrollables.sort((a, b) => {
-      const ar = a.getBoundingClientRect();
-      const br = b.getBoundingClientRect();
-
-      const aScore = ar.left + ar.width;
-      const bScore = br.left + br.width;
-
-      return aScore - bScore;
-    });
-
-    const target = scrollables[0];
-    if (target) {
-      target.scrollTop += Math.max(1200, target.clientHeight);
-    }
-
-    window.scrollBy(0, 800);
-  });
-}
-
-async function findRankWithAllSearch(
-  keyword: string,
-  placeId: string,
-  placeName: string
-) {
-  const browser = await chromium.launch({
-    headless: true,
-  });
-
-  const context = await browser.newContext({
-    locale: "ko-KR",
-    viewport: { width: 1440, height: 1200 },
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-  });
-
-  const page = await context.newPage();
-
-  const collected: SearchResultItem[] = [];
-  const seen = new Set<string>();
-  const allSearchUrls = new Set<string>();
-
-  const mergeItems = (items: SearchResultItem[]) => {
-    for (const item of items) {
-      pushUnique(collected, seen, item);
-    }
-  };
-
-  page.on("request", (request) => {
-    const url = request.url();
-
-    if (url.includes("/p/api/search/allSearch")) {
-      allSearchUrls.add(url);
-      console.log("[ALLSEARCH request]", url);
-    }
-  });
-
-  page.on("response", async (response) => {
-    try {
-      const url = response.url();
-
-      if (!url.includes("/p/api/search/allSearch")) return;
-
-      console.log("[ALLSEARCH response]", response.status(), url);
-
-      const json = await response.json().catch(() => null);
-      if (!json) return;
-
-      const items = extractItemsFromAllSearch(json);
-      if (!items.length) return;
-
-      mergeItems(items);
-
-      console.log(
-        "[ALLSEARCH sample]",
-        items.slice(0, 10).map((item) => ({
-          id: item.id,
-          name: item.name,
-          rank: item.rank,
-          index: item.index,
-        }))
-      );
-
-      console.log("[ALLSEARCH totalCollected]", collected.length);
-    } catch (error) {
-      console.error("[ALLSEARCH parse error]", error);
-    }
-  });
-
-  try {
-    const url = `https://map.naver.com/p/search/${encodeURIComponent(
-      keyword
-    )}?c=12.00,0,0,0,dh`;
-
-    await page.goto(url, {
-      waitUntil: "networkidle",
-      timeout: 30000,
-    });
-
-    console.log("[ALLSEARCH final url]", page.url());
-    console.log("[ALLSEARCH title]", await page.title());
-
-    await page.waitForTimeout(4000);
-
-    // 1차: 초기 응답 확인
-    let rank = findRankFromItems(collected, placeId, placeName);
-    if (rank !== "-") {
-      return {
-        rank,
-        source: "allsearch-initial",
-        debug: {
-          totalCollected: collected.length,
-          allSearchCount: allSearchUrls.size,
-          sample: collected.slice(0, 20),
-        },
-      };
-    }
-
-    // 2차: 리스트를 더 깊게 스크롤
-    let stableCount = 0;
-    let previousCount = collected.length;
-
-    for (let i = 0; i < 35; i++) {
-      await forceScrollLeftList(page);
-      await page.waitForTimeout(1500);
-
-      rank = findRankFromItems(collected, placeId, placeName);
-      if (rank !== "-") {
-        return {
-          rank,
-          source: "allsearch-scroll",
-          debug: {
-            totalCollected: collected.length,
-            allSearchCount: allSearchUrls.size,
-            sample: collected.slice(0, 20),
-          },
-        };
-      }
-
-      if (collected.length === previousCount) {
-        stableCount += 1;
-      } else {
-        stableCount = 0;
-        previousCount = collected.length;
-      }
-
-      console.log(
-        `[ALLSEARCH scroll] step=${i + 1}, totalCollected=${collected.length}, stableCount=${stableCount}`
-      );
-
-      // 여러 번 연속으로 더 안 늘어나면 중단
-      if (stableCount >= 5) {
-        break;
-      }
-    }
-
-    // 3차: 마지막 이름 fallback
-    rank = findRankFromItems(collected, placeId, placeName);
-
-    return {
-      rank,
-      source: rank === "-" ? "allsearch-not-found" : "allsearch-fallback",
-      debug: {
-        totalCollected: collected.length,
-        allSearchCount: allSearchUrls.size,
-        sample: collected.slice(0, 30),
-      },
-    };
-  } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
-  }
+  return -1;
 }
 
 export async function POST(req: Request) {
   try {
-    const raw = await req.text();
-
-    if (!raw || !raw.trim()) {
-      console.error("[check-place-rank] empty request body");
-      return Response.json(
-        {
-          ok: false,
-          error: "빈 요청 body",
-        },
-        { status: 400 }
-      );
-    }
-
-    let body: any;
-
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      console.error("[check-place-rank] invalid json body:", raw);
-      return Response.json(
-        {
-          ok: false,
-          error: "잘못된 JSON body",
-        },
-        { status: 400 }
-      );
-    }
-
+    const body = await req.json();
     const keyword = String(body.keyword || "").trim();
-    const placeId = String(body.placeId || "").trim();
-    const placeName = String(body.placeName || "").trim();
+    const targetName = String(body.targetName || "").trim();
 
-    console.log(
-      `[check-place-rank] 시작: ${keyword} / ${placeName} / placeId=${placeId || "-"}`
-    );
-
-    if (!keyword || !placeId) {
+    if (!keyword || !targetName) {
       return Response.json(
         {
           ok: false,
-          error: "keyword 또는 placeId가 없습니다.",
+          error: "keyword 또는 targetName이 없습니다.",
         },
         { status: 400 }
       );
     }
 
-    const result = await findRankWithAllSearch(keyword, placeId, placeName);
-
-    console.log(
-      `[check-place-rank] 결과: ${keyword} / ${placeName} / rank=${result.rank} / source=${result.source}`
-    );
+    const rank = await getRank(keyword, targetName);
 
     return Response.json({
       ok: true,
-      rank: result.rank,
-      monthly: "-",
-      mobile: "-",
-      pc: "-",
-      source: result.source,
-      debug: result.debug,
+      rank,
     });
   } catch (error) {
-    console.error("[check-place-rank] fatal error:", error);
+    console.error("check-place-rank error:", error);
 
-    return Response.json({
-      ok: true,
-      rank: "-",
-      monthly: "-",
-      mobile: "-",
-      pc: "-",
-      source: "allsearch-error",
-    });
+    return Response.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "순위 조회 실패",
+      },
+      { status: 500 }
+    );
   }
 }
