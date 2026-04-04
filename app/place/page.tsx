@@ -807,8 +807,9 @@ if (!session) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            keyword: item.keyword,
-            placeId: target.placeId,
+  keyword: item.keyword,
+  placeId: target.placeId,
+  placeName: target.name,
           }),
         });
 
@@ -999,7 +1000,7 @@ return (
   <>
     <TopNav active="place" />
 
-      <main className="min-h-screen b‹g-[#f3f5f9] text-[#111827]">
+      <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
         <section className="mx-auto max-w-[1280px] px-6 py-8">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>

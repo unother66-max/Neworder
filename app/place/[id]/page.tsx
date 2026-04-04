@@ -197,6 +197,7 @@ export default function PlaceDetailPage() {
             body: JSON.stringify({
               keyword: keyword.keyword,
               placeId: publicPlaceId,
+              placeName: place.name,
             }),
           });
 
