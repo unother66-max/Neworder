@@ -96,12 +96,18 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      ok: true,
-      total: trackedKeywords.length,
-      successCount,
-      failCount,
-    });
+    console.log("✅ cron 완료:", {
+  total: trackedKeywords.length,
+  successCount,
+  failCount,
+});
+
+return NextResponse.json({
+  ok: true,
+  total: trackedKeywords.length,
+  successCount,
+  failCount,
+});
   } catch (error) {
     console.error("place-tracking cron error", error);
     return NextResponse.json(
