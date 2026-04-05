@@ -56,12 +56,9 @@ type PlaceDetail = {
 
 function formatDateLabel(value: string) {
   const date = new Date(value);
-
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${mm}/${dd}`;
 }
 
 function formatCount(value?: number | null) {

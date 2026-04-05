@@ -19,13 +19,14 @@ function formatUpdatedAt(value: unknown) {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return null;
 
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mi = String(date.getMinutes()).padStart(2, "0");
-
-  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 export async function GET(req: Request) {
