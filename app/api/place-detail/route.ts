@@ -67,36 +67,44 @@ export async function GET(req: Request) {
     }
 
     const normalizedKeywords = place.keywords.map((item) => {
-      const keywordItem = item as any;
+  const keywordItem = item as any;
 
-      const mobileVolume = toNumber(
-        keywordItem.mobileVolume ?? keywordItem.mobile ?? 0
-      );
+  const mobileVolume = toNumber(
+    keywordItem.mobileVolume ?? keywordItem.mobile ?? 0
+  );
 
-      const pcVolume = toNumber(
-        keywordItem.pcVolume ?? keywordItem.pc ?? 0
-      );
+  const pcVolume = toNumber(
+    keywordItem.pcVolume ?? keywordItem.pc ?? 0
+  );
 
-      const totalVolume =
-        toNumber(keywordItem.totalVolume) || mobileVolume + pcVolume;
+  const totalVolume =
+    toNumber(keywordItem.totalVolume) || mobileVolume + pcVolume;
 
-      const updatedAtRaw =
-        keywordItem.updatedAt ??
-        keywordItem.checkedAt ??
-        keywordItem.lastCheckedAt ??
-        keywordItem.createdAt ??
-        null;
+  const updatedAtRaw =
+    keywordItem.updatedAt ??
+    keywordItem.checkedAt ??
+    keywordItem.lastCheckedAt ??
+    keywordItem.createdAt ??
+    null;
 
-      return {
-        ...item,
-        mobileVolume,
-        pcVolume,
-        totalVolume,
-        monthlyVolume: totalVolume,
-        updatedAt: updatedAtRaw,
-        updatedAtText: formatUpdatedAt(updatedAtRaw),
-      };
-    });
+  const histories = (place.rankHistory || [])
+    .filter((history) => history.keyword === item.keyword)
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+  return {
+    ...item,
+    mobileVolume,
+    pcVolume,
+    totalVolume,
+    monthlyVolume: totalVolume,
+    updatedAt: updatedAtRaw,
+    updatedAtText: formatUpdatedAt(updatedAtRaw),
+    histories, // ✅ 이거 추가
+  };
+});
 
     const latestUpdatedAtRaw = normalizedKeywords
       .map((item) => item.updatedAt)

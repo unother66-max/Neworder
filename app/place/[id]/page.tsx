@@ -164,6 +164,26 @@ export default function PlaceDetailPage() {
     fetchDetail();
   }, [id]);
 
+  const loadPlaceDetail = async () => {
+  if (!id) return;
+
+  try {
+    const res = await fetch(`/api/place-detail?id=${id}`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error(data.error || "상세 다시 불러오기 실패");
+      return;
+    }
+
+    setPlace(data.place || null);
+  } catch (e) {
+    console.error("상세 다시 불러오기 오류:", e);
+  }
+};
+
   useEffect(() => {
     if (!place?.keywords?.length) return;
     if (selectedKeywordId) return;
@@ -239,6 +259,9 @@ export default function PlaceDetailPage() {
       });
     }
 
+
+
+
     return {
       keywordId: keyword.id,
       monthly:
@@ -293,6 +316,8 @@ export default function PlaceDetailPage() {
         };
       });
 
+
+      await loadPlaceDetail();
       alert("순위 업데이트 완료");
     } catch (error) {
       console.error(error);
