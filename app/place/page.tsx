@@ -130,23 +130,41 @@ function formatCount(value?: string | number | null) {
   return Number(onlyNumber).toLocaleString("ko-KR");
 }
 
-function getRankMeta(rank: string) {
-  if (!rank || rank === "-" || rank === "오류") {
+function getRankMeta(rank?: string | number | null) {
+  if (rank === null || rank === undefined || rank === "" || rank === "-" || rank === "오류") {
     return {
-      main: rank || "-",
+      main: "-",
       sub: "-",
     };
   }
 
-  const matched = rank.match(/\d+/);
+  if (typeof rank === "number") {
+    if (!Number.isFinite(rank) || rank <= 0) {
+      return {
+        main: "-",
+        sub: "-",
+      };
+    }
+
+    const PAGE_SIZE = 70;
+    const page = Math.ceil(rank / PAGE_SIZE);
+    const pagePosition = ((rank - 1) % PAGE_SIZE) + 1;
+
+    return {
+      main: `${rank}위`,
+      sub: `${page}p ${pagePosition}위`,
+    };
+  }
+
+  const matched = String(rank).match(/\d+/);
   if (!matched) {
     return {
-      main: rank,
+      main: String(rank),
       sub: "-",
     };
   }
 
-   const numericRank = Number(matched[0]);
+  const numericRank = Number(matched[0]);
   const PAGE_SIZE = 70;
   const page = Math.ceil(numericRank / PAGE_SIZE);
   const pagePosition = ((numericRank - 1) % PAGE_SIZE) + 1;
