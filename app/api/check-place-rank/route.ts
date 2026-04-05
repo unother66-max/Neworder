@@ -1,3 +1,6 @@
+import { getKeywordSearchVolume } from "@/lib/searchad";
+import { prisma } from "@/lib/prisma";
+
 const GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
 
 type GraphqlRestaurantItem = {
@@ -674,10 +677,29 @@ export async function POST(req: Request) {
 
     const rank = await getRank(keyword, targetName);
 
-    return Response.json({
-      ok: true,
-      rank,
-    });
+// 🔥 검색량 가져오기
+const volume = await getKeywordSearchVolume(keyword);
+
+const mobile = volume?.mobile ?? 0;
+const pc = volume?.pc ?? 0;
+const total = mobile + pc;
+
+// 🔥 DB 저장
+await prisma.placeKeyword.updateMany({
+  where: {
+    keyword,
+  },
+  data: {
+    mobileVolume: mobile,
+    pcVolume: pc,
+    totalVolume: total,
+  },
+});
+
+return Response.json({
+  ok: true,
+  rank,
+});
   } catch (error) {
     console.error("check-place-rank error:", error);
 
