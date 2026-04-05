@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+
 type PlaceRankHistory = {
   id: string;
   rank: number | null;
@@ -306,33 +307,75 @@ for (const keyword of place.keywords) {
 }
 
       setPlace((prev) => {
-        if (!prev) return prev;
+  if (!prev) return prev;
 
-        return {
-          ...prev,
-          keywords: prev.keywords.map((keyword) => {
-            const found = keywordResults.find((item) => item.keywordId === keyword.id);
-            if (!found) return keyword;
+  const now = new Date().toISOString();
 
-            return {
-              ...keyword,
-              totalVolume:
-                found.monthly === null || found.monthly === undefined
-                  ? keyword.totalVolume
-                  : found.monthly,
-              mobileVolume:
-                found.mobile === null || found.mobile === undefined
-                  ? keyword.mobileVolume
-                  : found.mobile,
-              pcVolume:
-                found.pc === null || found.pc === undefined
-                  ? keyword.pcVolume
-                  : found.pc,
-              currentRank: found.currentRank,
-            };
-          }),
-        };
-      });
+  return {
+    ...prev,
+    keywords: prev.keywords.map((keyword) => {
+      const found = keywordResults.find((item) => item.keywordId === keyword.id);
+      if (!found) return keyword;
+
+      const nextRankNumber =
+        found.currentRank && found.currentRank !== "-" && found.currentRank !== "오류"
+          ? Number(String(found.currentRank).match(/\d+/)?.[0] ?? 0)
+          : null;
+
+      const nextHistories =
+        nextRankNumber === null
+          ? keyword.histories
+          : [
+              {
+                id: `temp-${keyword.id}-${Date.now()}`,
+                rank: nextRankNumber,
+                createdAt: now,
+              },
+              ...(keyword.histories || []),
+            ];
+
+      return {
+        ...keyword,
+        totalVolume:
+          found.monthly === null || found.monthly === undefined
+            ? keyword.totalVolume
+            : found.monthly,
+        mobileVolume:
+          found.mobile === null || found.mobile === undefined
+            ? keyword.mobileVolume
+            : found.mobile,
+        pcVolume:
+          found.pc === null || found.pc === undefined
+            ? keyword.pcVolume
+            : found.pc,
+        currentRank: found.currentRank,
+        histories: nextHistories,
+      };
+    }),
+
+    rankHistory: [
+      ...(prev.rankHistory || []),
+      ...keywordResults
+        .filter(
+          (item) =>
+            item.currentRank &&
+            item.currentRank !== "-" &&
+            item.currentRank !== "오류"
+        )
+        .map((item) => {
+          const targetKeyword = prev.keywords.find((k) => k.id === item.keywordId);
+
+          return {
+            id: `temp-rank-${item.keywordId}-${Date.now()}`,
+            placeId: prev.id,
+            keyword: targetKeyword?.keyword ?? "",
+            rank: Number(String(item.currentRank).match(/\d+/)?.[0] ?? 0),
+            createdAt: now,
+          };
+        }),
+    ],
+  };
+});
 
 
       await loadPlaceDetail();

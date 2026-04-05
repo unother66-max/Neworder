@@ -3,9 +3,6 @@
 import { useState } from "react";
 import PageHeader from "@/components/page-header";
 import TopNav from "@/components/top-nav";
-import Link from "next/link";
-import { useSession } from "next-auth/react";
-import UserMenu from "@/components/user-menu";
 
 type Post = {
   title: string;
@@ -48,45 +45,65 @@ function getRankTextColor(rank: string) {
 
 export default function Home() {
   const [blogUrl, setBlogUrl] = useState("");
+  const [visitor, setVisitor] = useState<number | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const fetchPosts = async () => {
-    if (!blogUrl.trim()) {
-      setErrorMessage("블로그 주소를 입력해주세요.");
-      setPosts([]);
-      return;
-    }
+  if (!blogUrl.trim()) {
+    setErrorMessage("블로그 주소를 입력해주세요.");
+    setPosts([]);
+    return;
+  }
 
-    setErrorMessage("");
-    setLoading(true);
+  setErrorMessage("");
+  setLoading(true);
 
-    try {
-      const response = await fetch("/api/posts", {
+  try {
+    // 👉 1. 포스트 + 방문자 동시에 요청
+    const [postRes, visitorRes] = await Promise.all([
+      fetch("/api/posts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ blogUrl }),
-      });
+      }),
 
-      const data = await response.json();
+      fetch("/api/blog-visitor", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ blogUrl }),
+      }),
+    ]);
 
-      if (!response.ok) {
-        setErrorMessage(data.error || "최근글을 가져오는 중 오류가 났어요.");
-        setPosts([]);
-        return;
-      }
+    const postData = await postRes.json();
+    const visitorData = await visitorRes.json();
 
-      setPosts(data.posts || []);
-    } catch (error) {
-      console.error(error);
-      setErrorMessage("최근글을 가져오는 중 오류가 났어요.");
-    } finally {
-      setLoading(false);
+    // 👉 2. 포스트 처리
+    if (!postRes.ok) {
+      setErrorMessage(postData.error || "최근글 불러오기 실패");
+      setPosts([]);
+      return;
     }
-  };
+
+    setPosts(postData.posts || []);
+
+    // 👉 3. 방문자 처리
+    if (visitorRes.ok) {
+      setVisitor(visitorData.visitor ?? null);
+    }
+
+  } catch (error) {
+    console.error(error);
+    setErrorMessage("데이터 불러오기 실패");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const updatePostKeyword = (index: number, value: string) => {
     setPosts((prev) =>
@@ -171,39 +188,7 @@ export default function Home() {
     }
   };
 
-  const saveTrack = async (index: number) => {
-    const targetPost = posts[index];
-
-    if (!targetPost.keyword.trim()) {
-      alert("키워드를 먼저 입력해주세요.");
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/track", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          keyword: targetPost.keyword,
-          placeUrl: targetPost.link,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.error || "저장 중 오류가 발생했어요.");
-        return;
-      }
-
-      alert("추적 저장 완료");
-    } catch (error) {
-      console.error(error);
-      alert("저장 중 오류가 발생했어요.");
-    }
-  };
+ 
 
   return (
     <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
@@ -257,22 +242,37 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 md:flex-row">
-            <input
-              type="text"
-              value={blogUrl}
-              onChange={(e) => setBlogUrl(e.target.value)}
-              placeholder="예: https://blog.naver.com/kikolog"
-              className="h-[46px] flex-1 rounded-[14px] border border-[#d9dee7] bg-white px-4 text-[14px] text-[#111827] outline-none placeholder:text-[#b7bec8] focus:border-[#8b2cf5]"
-            />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+  {/* URL 입력 */}
+  <input
+    type="text"
+    value={blogUrl}
+    onChange={(e) => setBlogUrl(e.target.value)}
+    placeholder="https://blog.naver.com/blogname"
+    className="h-[46px] flex-1 rounded-[14px] border border-[#d9dee7] bg-white px-4 text-[14px] text-[#111827] outline-none placeholder:text-[#b7bec8] focus:border-[#8b2cf5]"
+  />
 
-            <button
-              onClick={fetchPosts}
-              className="h-[46px] rounded-[14px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[14px] font-semibold text-white shadow-[0_10px_20px_rgba(139,44,245,0.18)] transition hover:opacity-95"
-            >
-              {loading ? "불러오는 중..." : "분석 시작"}
-            </button>
-          </div>
+  {/* 방문자 */}
+  <div className="h-[46px] min-w-[140px] flex items-center justify-center rounded-[14px] bg-[#f8fafc] px-4 text-[14px] text-[#4b5563] ring-1 ring-[#e5e9f0]">
+    {visitor !== null ? (
+      <>
+        방문자 <span className="ml-2 font-bold text-[#111827]">{visitor}</span>
+      </>
+    ) : (
+      <span className="text-gray-400">방문자 -</span>
+    )}
+  </div>
+
+  {/* 분석 버튼 */}
+  <button
+    onClick={fetchPosts}
+    className="h-[46px] rounded-[14px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[14px] font-semibold text-white shadow-[0_10px_20px_rgba(139,44,245,0.18)] transition hover:opacity-95"
+  >
+    {loading ? "불러오는 중..." : "분석 시작"}
+  </button>
+</div>
+
+
 
           {errorMessage && (
             <p className="mt-4 text-[13px] font-medium text-red-600">
@@ -327,7 +327,6 @@ export default function Home() {
                     <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[13px] font-bold text-[#374151]">
                       검색량
                     </th>
-      
                   </tr>
                 </thead>
 
@@ -377,11 +376,10 @@ export default function Home() {
                       </td>
 
                       <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px] text-[#6b7280]">
-  {typeof post.searchVolume === "object"
-    ? post.searchVolume?.total ?? "-"
-    : post.searchVolume || "-"}
-</td>
-
+                        {typeof post.searchVolume === "object"
+                          ? post.searchVolume?.total ?? "-"
+                          : post.searchVolume || "-"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
