@@ -30,6 +30,7 @@ type Store = {
   placeMonthlyVolume?: number;
   placeMobileVolume?: number;
   placePcVolume?: number;
+  jibunAddress?: string | null;
 };
 
 type SearchPlaceItem = {
@@ -66,6 +67,7 @@ type PlaceItem = {
   name: string;
   category: string | null;
   address: string | null;
+  jibunAddress?: string | null;
   placeUrl: string | null;
   imageUrl: string | null;
   createdAt: string;
@@ -152,57 +154,55 @@ function getRankMeta(rank: string) {
   };
 }
 
+function extractArea(address?: string | null) {
+  if (!address) return "";
+
+  const parts = String(address)
+    .split(" ")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  if (!parts.length) return "";
+
+  const adminToken =
+    [...parts].reverse().find((part) => /(동|읍|면|리)$/.test(part)) || "";
+
+  if (adminToken) {
+    return adminToken;
+  }
+
+  const roadToken = parts[parts.length - 1] || "";
+  if (
+    roadToken.includes("로") ||
+    roadToken.includes("길") ||
+    roadToken.includes("대로")
+  ) {
+    return "";
+  }
+
+  return roadToken.replace(/(동|읍|면|리)$/, "");
+}
+
+
 function getDefaultRecommendedKeywords(store: Store): RecommendedKeyword[] {
-  const area = store.address.includes("한남")
-    ? "한남동"
-    : store.address.includes("연남")
-      ? "연남동"
-      : store.address.includes("서울역")
-        ? "서울역"
-        : store.address.includes("숙대")
-          ? "숙대입구"
-          : "";
-
-  if (store.name.includes("뉴오더클럽") && area === "한남동") {
-    return [
-      { keyword: "블루스퀘어청모생일파티" },
-      { keyword: "가성비소개팅회식" },
-      { keyword: "한남동청첩장모임또간집" },
-      { keyword: "맥주숩집내돈내산낮술" },
-      { keyword: "화덕피자", monthly: "28180" },
-    ];
-  }
-
-  if (store.name.includes("뉴오더클럽") && area === "연남동") {
-    return [
-      { keyword: "연남동 피자", monthly: "12410" },
-      { keyword: "연남동 맛집", monthly: "41280" },
-      { keyword: "연남동 데이트" },
-      { keyword: "연남동 화덕피자" },
-      { keyword: "연남 피자집" },
-    ];
-  }
+  const area = extractArea(store.jibunAddress || store.address);
 
   if (store.category.includes("필라테스")) {
     return [
-      { keyword: "서울역 필라테스", monthly: "240" },
-      { keyword: "숙대입구 필라테스", monthly: "30" },
-      { keyword: "용산 필라테스" },
-      { keyword: "자세교정 필라테스" },
-      { keyword: "기구필라테스" },
+      { keyword: area ? `${area} 필라테스` : "필라테스" },
+      { keyword: area ? `${area} 기구필라테스` : "기구필라테스" },
+      { keyword: area ? `${area} 자세교정` : "자세교정 필라테스" },
+      { keyword: "재활 필라테스" },
+      { keyword: "체형교정 필라테스" },
     ];
   }
 
   return [
-    {
-      keyword:
-        `${area} ${store.category}`.trim() ||
-        `${store.name} ${store.category}`.trim(),
-    },
-    { keyword: `${area} 맛집`.trim() || `${store.name} 맛집`.trim() },
+    { keyword: area ? `${area} ${store.category}` : `${store.category}` },
+    { keyword: area ? `${area} 맛집` : `${store.category} 맛집` },
+    { keyword: area ? `${area} 데이트` : `${store.category} 데이트` },
     { keyword: `${store.category} 추천` },
     { keyword: `${store.name} 후기` },
-    { keyword: `${store.name} 예약` },
   ];
 }
 
@@ -264,11 +264,12 @@ function mapPlaceToStore(place: PlaceItem): Store {
   const links = buildPlaceLinks(publicPlaceId, place.name);
 
   return {
-    dbId: place.id,
-    name: place.name,
-    category: place.category ?? "",
-    address: place.address ?? "",
-    placeId: publicPlaceId,
+  dbId: place.id,
+  name: place.name,
+  category: place.category ?? "",
+  address: place.address ?? "",
+  jibunAddress: place.jibunAddress ?? null,
+  placeId: publicPlaceId,
     mobilePlaceLink: links.mobilePlaceLink,
     pcPlaceLink: links.pcPlaceLink,
     image: place.imageUrl ? getProxyImageUrl(place.imageUrl) : "",
@@ -503,16 +504,18 @@ if (!session) {
   const handleRegisterPlace = async (item: SearchPlaceItem) => {
     try {
       const response = await fetch("/api/resolve-place-link", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: item.title,
-          address: item.address,
-          link: item.link,
-        }),
-      });
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    name: item.title,
+    address: item.address,
+    link: item.link,
+  }),
+});
+
+
 
       const data = await response.json();
 
@@ -543,12 +546,13 @@ if (!session) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: item.title,
-          category: item.category.split(">").pop()?.trim() || item.category,
-          address: item.address,
-          placeUrl: links.mobilePlaceLink || item.link,
-          imageUrl: rawImage || "",
-        }),
+  name: item.title,
+  category: item.category.split(">").pop()?.trim() || item.category,
+  address: item.address,
+  jibunAddress: data.jibunAddress || "",
+  placeUrl: links.mobilePlaceLink || item.link,
+  imageUrl: rawImage || "",
+}),
       });
 
       const saveData = await saveRes.json();

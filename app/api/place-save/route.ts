@@ -19,6 +19,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const { name, category, address, placeUrl, imageUrl } = body ?? {};
+    const jibunAddress = String(body.jibunAddress || "").trim();
 
     if (!name) {
       return NextResponse.json(
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
         id: userId,
         email: userEmail ?? `${userId}@no-email.local`,
         name: userName ?? null,
+        
       },
     });
 
@@ -51,6 +53,7 @@ export async function POST(req: Request) {
         address: address ?? null,
         placeUrl: placeUrl ?? null,
         imageUrl: imageUrl ?? null,
+        jibunAddress: jibunAddress || null
       },
     });
 

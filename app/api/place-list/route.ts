@@ -78,6 +78,7 @@ export async function GET() {
 
         return {
           ...place,
+          jibunAddress: (place as any).jibunAddress ?? null,
           latestUpdatedAt,
           latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
           placeMonthlyVolume,

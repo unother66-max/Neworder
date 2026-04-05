@@ -64,7 +64,7 @@ async function fetchHtml(url: string) {
   };
 }
 
-function buildFallbackLinks(name: string) {
+function buildFallbackLinks(name: string, address = "") {
   const query = String(name || "").trim();
   const encoded = encodeURIComponent(query);
 
@@ -73,6 +73,7 @@ function buildFallbackLinks(name: string) {
     mobilePlaceLink: `https://m.map.naver.com/search2/search.naver?query=${encoded}`,
     pcPlaceLink: `https://map.naver.com/p/search/${encoded}`,
     image: "",
+    jibunAddress: guessJibunAddressFromRoadAddress(address),
   };
 }
 
@@ -134,21 +135,16 @@ async function pickBestPublicPlaceId(name: string, address: string) {
 
         if (!candidateIds.length) continue;
 
-        // 이름이 페이지 안에 보이면 첫 번째 후보 사용
         if (normalizedName && normalizedHtml.includes(normalizedName)) {
-          if (normalizedAddress) {
-            // 주소까지 보이면 가장 신뢰
-            if (normalizedHtml.includes(normalizedAddress)) {
-              console.log("🔥 공개 placeId 찾음(이름+주소):", candidateIds[0]);
-              return candidateIds[0];
-            }
+          if (normalizedAddress && normalizedHtml.includes(normalizedAddress)) {
+            console.log("🔥 공개 placeId 찾음(이름+주소):", candidateIds[0]);
+            return candidateIds[0];
           }
 
           console.log("🔥 공개 placeId 찾음(이름 기준):", candidateIds[0]);
           return candidateIds[0];
         }
 
-        // 이름 텍스트 매칭이 안 돼도 후보가 있으면 첫 번째 사용
         console.log("🔥 공개 placeId 찾음(후보 첫번째):", candidateIds[0]);
         return candidateIds[0];
       } catch (error) {
@@ -193,6 +189,97 @@ async function fetchPlaceImage(publicPlaceId: string) {
   return "";
 }
 
+function cleanupAddress(value: string) {
+  return decodeHtmlEntities(String(value || ""))
+    .replace(/\\u002F/g, "/")
+    .replace(/\\\//g, "/")
+    .replace(/\\/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function guessJibunAddressFromRoadAddress(address: string) {
+  const cleaned = cleanupAddress(address);
+  if (!cleaned) return "";
+
+  const parts = cleaned.split(" ").filter(Boolean);
+  if (parts.length < 3) return "";
+
+  const district = parts[1] || "";
+  const token = parts[2] || "";
+
+  // 이미 동/읍/면이면 그대로
+  if (
+    token.endsWith("동") ||
+    token.endsWith("읍") ||
+    token.endsWith("면") ||
+    token.endsWith("리")
+  ) {
+    return [district, token].filter(Boolean).join(" ").trim();
+  }
+
+  // 도로명에서 대표 지명 추정
+  const root =
+    token.match(/^([가-힣]+?)(?:대로|로|길)/)?.[1] ||
+    token.match(/^([가-힣]+?)(?:\d+길)/)?.[1] ||
+    "";
+
+  if (!root) return "";
+
+  return [district, `${root}동`].filter(Boolean).join(" ").trim();
+}
+
+function extractJibunAddressFromHtml(html: string) {
+  const decoded = cleanupAddress(html);
+
+  const patterns = [
+    /"jibunAddress"\s*:\s*"([^"]+)"/i,
+    /"lotNumberAddress"\s*:\s*"([^"]+)"/i,
+    /"addressOld"\s*:\s*"([^"]+)"/i,
+    /지번\s*주소[^가-힣0-9]*([가-힣0-9\s\-]+(?:동|읍|면|리)[^"<\n]*)/i,
+    /지번[^가-힣0-9]*([가-힣0-9\s\-]+(?:동|읍|면|리)[^"<\n]*)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = decoded.match(pattern);
+    const value = cleanupAddress(match?.[1] || "");
+    if (value) return value;
+  }
+
+  return "";
+}
+
+async function fetchJibunAddress(publicPlaceId: string, address: string) {
+  const urls = [
+    `https://m.place.naver.com/restaurant/${publicPlaceId}/home`,
+    `https://m.place.naver.com/place/${publicPlaceId}/home`,
+    `https://pcmap.place.naver.com/restaurant/${publicPlaceId}/home`,
+    `https://pcmap.place.naver.com/place/${publicPlaceId}/home`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const result = await fetchHtml(url);
+      if (!result.ok) continue;
+
+      const jibun = extractJibunAddressFromHtml(result.html);
+      if (jibun) {
+        console.log("🔥 지번주소 찾음(html):", jibun);
+        return jibun;
+      }
+    } catch (error) {
+      console.error("fetchJibunAddress error:", error);
+    }
+  }
+
+  const guessed = guessJibunAddressFromRoadAddress(address);
+  if (guessed) {
+    console.log("🔥 지번주소 추정값 사용:", guessed);
+  }
+
+  return guessed;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -210,16 +297,20 @@ export async function POST(request: Request) {
     const publicPlaceId = await pickBestPublicPlaceId(name, address);
 
     if (!publicPlaceId) {
-      return Response.json(buildFallbackLinks(name));
+      return Response.json(buildFallbackLinks(name, address));
     }
 
-    const image = await fetchPlaceImage(publicPlaceId);
+    const [image, jibunAddress] = await Promise.all([
+      fetchPlaceImage(publicPlaceId),
+      fetchJibunAddress(publicPlaceId, address),
+    ]);
 
     return Response.json({
       placeId: publicPlaceId,
       mobilePlaceLink: `https://m.place.naver.com/restaurant/${publicPlaceId}/home`,
       pcPlaceLink: `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
       image: image || "",
+      jibunAddress: jibunAddress || "",
     });
   } catch (error) {
     console.error("resolve-place-link error:", error);

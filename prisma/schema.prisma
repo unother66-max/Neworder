@@ -8,10 +8,9 @@ datasource db {
 }
 
 model User {
-  id    String  @id @default(cuid())
-  email String  @unique
-  name  String?
-
+  id     String  @id @default(cuid())
+  email  String  @unique
+  name   String?
   places Place[]
 }
 
@@ -41,10 +40,13 @@ model Place {
   imageUrl    String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
-
+  x           String?
+  y           String?
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   keywords    PlaceKeyword[]
   rankHistory RankHistory[]
+  jibunAddress String?
+  
 }
 
 model PlaceKeyword {
@@ -57,8 +59,7 @@ model PlaceKeyword {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   isTracking   Boolean  @default(false)
-
-  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@unique([placeId, keyword])
 }
@@ -69,6 +70,5 @@ model RankHistory {
   keyword   String
   rank      Int
   createdAt DateTime @default(now())
-
-  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 }
