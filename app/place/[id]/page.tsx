@@ -37,6 +37,8 @@ type PlaceDetail = {
   address: string | null;
   placeUrl: string | null;
   imageUrl: string | null;
+  x?: string | null;
+  y?: string | null;
   keywords: PlaceKeyword[];
   rankHistory: {
     id: string;
@@ -48,6 +50,7 @@ type PlaceDetail = {
   placeMonthlyVolume?: number | null;
   placeMobileVolume?: number | null;
   placePcVolume?: number | null;
+  jibunAddress?: string | null;
 };
 
 function formatDateLabel(value: string) {
@@ -210,84 +213,97 @@ export default function PlaceDetailPage() {
     try {
       setUpdating(true);
 
-      const keywordResults = await Promise.all(
-  place.keywords.map(async (keyword) => {
-    const response = await fetch("/api/check-place-rank", {
+    const keywordResults: any[] = [];
+
+
+
+console.log("전송 좌표 확인", {
+  placeName: place.name,
+  x: place.x,
+  y: place.y,
+});
+
+
+for (const keyword of place.keywords) {
+  const response = await fetch("/api/check-place-rank", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      keyword: keyword.keyword,
+      targetName: place.name,
+      x: place.x,
+      y: place.y,
+      placeKeywordId: keyword.id, // 👈 이거 추가
+    }),
+  });
+
+  let data = null;
+
+  try {
+    data = await response.json();
+  } catch (e) {
+    console.error("JSON 파싱 실패:", e);
+    keywordResults.push({
+      keywordId: keyword.id,
+      monthly: keyword.totalVolume,
+      mobile: keyword.mobileVolume,
+      pc: keyword.pcVolume,
+      currentRank: "오류",
+    });
+    continue;
+  }
+
+  if (!response.ok) {
+    keywordResults.push({
+      keywordId: keyword.id,
+      monthly: keyword.totalVolume,
+      mobile: keyword.mobileVolume,
+      pc: keyword.pcVolume,
+      currentRank: "오류",
+    });
+    continue;
+  }
+
+  if (keyword.id && data?.rank && data.rank !== "-") {
+    await fetch("/api/place-rank-history-save", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        keyword: keyword.keyword,
-        targetName: place.name,
+        placeKeywordId: keyword.id,
+        rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
       }),
     });
+  }
 
-    let data = null;
+  keywordResults.push({
+    keywordId: keyword.id,
+    monthly:
+      data?.monthly === undefined ||
+      data?.monthly === null ||
+      data?.monthly === "-"
+        ? keyword.totalVolume
+        : Number(String(data.monthly).replace(/,/g, "")),
+    mobile:
+      data?.mobile === undefined ||
+      data?.mobile === null ||
+      data?.mobile === "-"
+        ? keyword.mobileVolume
+        : Number(String(data.mobile).replace(/,/g, "")),
+    pc:
+      data?.pc === undefined ||
+      data?.pc === null ||
+      data?.pc === "-"
+        ? keyword.pcVolume
+        : Number(String(data.pc).replace(/,/g, "")),
+    currentRank: data?.rank ?? "-",
+  });
 
-    try {
-      data = await response.json();
-    } catch (e) {
-      console.error("JSON 파싱 실패:", e);
-      return {
-        keywordId: keyword.id,
-        monthly: keyword.totalVolume,
-        mobile: keyword.mobileVolume,
-        pc: keyword.pcVolume,
-        currentRank: "오류",
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        keywordId: keyword.id,
-        monthly: keyword.totalVolume,
-        mobile: keyword.mobileVolume,
-        pc: keyword.pcVolume,
-        currentRank: "오류",
-      };
-    }
-
-    if (keyword.id && data?.rank && data.rank !== "-") {
-      await fetch("/api/place-rank-history-save", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          placeKeywordId: keyword.id,
-          rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
-        }),
-      });
-    }
-
-
-
-
-    return {
-      keywordId: keyword.id,
-      monthly:
-        data?.monthly === undefined ||
-        data?.monthly === null ||
-        data?.monthly === "-"
-          ? keyword.totalVolume
-          : Number(String(data.monthly).replace(/,/g, "")),
-      mobile:
-        data?.mobile === undefined ||
-        data?.mobile === null ||
-        data?.mobile === "-"
-          ? keyword.mobileVolume
-          : Number(String(data.mobile).replace(/,/g, "")),
-      pc:
-        data?.pc === undefined ||
-        data?.pc === null ||
-        data?.pc === "-"
-          ? keyword.pcVolume
-          : Number(String(data.pc).replace(/,/g, "")),
-      currentRank: data?.rank ?? "-",
-    };
-  })
-);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+}
 
       setPlace((prev) => {
         if (!prev) return prev;

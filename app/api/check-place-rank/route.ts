@@ -1,23 +1,16 @@
 import { getKeywordSearchVolume } from "@/lib/searchad";
 import { prisma } from "@/lib/prisma";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
+const PAGE_SIZE = 70;
+const MAX_PAGES = 5;
 
 type GraphqlRestaurantItem = {
-  id: string;
-  name: string;
-};
-
-type GraphqlResponseItem = {
-  data?: {
-    restaurants?: {
-      items?: GraphqlRestaurantItem[];
-      total?: number;
-    };
-  };
-  errors?: Array<{
-    message?: string;
-  }>;
+  id?: string;
+  name?: string;
 };
 
 const GET_RESTAURANTS_QUERY = `
@@ -545,55 +538,104 @@ fragment RestaurantBusinessItems on RestaurantListSummary {
 }
 `;
 
-function normalizeText(value: string) {
-  return value.replace(/\s/g, "").trim();
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getRank(keyword: string, targetName: string) {
-  const normalizedTarget = normalizeText(targetName);
+function normalizeText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s/g, "")
+    .replace(/&/g, "and")
+    .replace(/앤/g, "and")
+    .replace(/[()[\]{}'"`.,·•\-_/]/g, "")
+    .trim();
+}
 
-  for (let page = 1; page <= 10; page++) {
-    const start = 1 + (page - 1) * 70;
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
 
-    const payload = [
-      {
-        operationName: "getRestaurants",
-        variables: {
-          useReverseGeocode: true,
-          isNmap: true,
-          restaurantListInput: {
-            query: keyword,
-            x: "127.0005",
-            y: "37.53455",
-            start,
-            display: 70,
-            takeout: null,
-            orderBenefit: null,
-            isCurrentLocationSearch: null,
-            filterOpening: null,
-            deviceType: "pcmap",
-            isPcmap: true,
-          },
-          restaurantListFilterInput: {
-            x: "127.0005",
-            y: "37.53455",
-            display: 70,
-            start,
-            query: keyword,
-            isCurrentLocationSearch: null,
-          },
-          reverseGeocodingInput: {
-            x: "127.0005",
-            y: "37.53455",
-          },
+function isRestaurantKeyword(keyword: string) {
+  const normalized = normalizeText(keyword);
+
+  const restaurantHints = [
+    "맛집",
+    "식당",
+    "레스토랑",
+    "카페",
+    "술집",
+    "치킨",
+    "피자",
+    "햄버거",
+    "파스타",
+    "국밥",
+    "고기집",
+    "횟집",
+    "분식",
+    "중식",
+    "일식",
+    "한식",
+    "양식",
+    "베이커리",
+    "디저트",
+    "브런치",
+    "와인바",
+  ];
+
+  return restaurantHints.some((hint) => normalized.includes(normalizeText(hint)));
+}
+
+function buildGraphqlPayload(keyword: string, x: string, y: string, start: number) {
+  return [
+    {
+      operationName: "getRestaurants",
+      variables: {
+        useReverseGeocode: true,
+        isNmap: true,
+        restaurantListInput: {
+          query: keyword,
+          x,
+          y,
+          start,
+          display: PAGE_SIZE,
+          deviceType: "pcmap",
+          isPcmap: true,
         },
-        query: GET_RESTAURANTS_QUERY,
+        restaurantListFilterInput: {
+          x,
+          y,
+          display: PAGE_SIZE,
+          start,
+          query: keyword,
+        },
+        reverseGeocodingInput: {
+          x,
+          y,
+        },
       },
-    ];
+      query: GET_RESTAURANTS_QUERY,
+    },
+  ];
+}
 
-    const referer = `https://pcmap.place.naver.com/restaurant/list?query=${encodeURIComponent(
-      keyword
-    )}&x=127.0005&y=37.53455&clientX=127.0005&clientY=37.53455&display=70&locale=ko`;
+async function fetchGraphqlPage(keyword: string, x: string, y: string, start: number) {
+  const payload = buildGraphqlPayload(keyword, x, y, start);
+  const referer = `https://pcmap.place.naver.com/restaurant/list?query=${encodeURIComponent(
+    keyword
+  )}&x=${x}&y=${y}`;
+
+  const delays = [0, 1200, 2500];
+
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) {
+      await sleep(delays[attempt]);
+    }
 
     const res = await fetch(GRAPHQL_URL, {
       method: "POST",
@@ -602,104 +644,332 @@ async function getRank(keyword: string, targetName: string) {
         Origin: "https://pcmap.place.naver.com",
         Referer: referer,
         "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-        Accept: "*/*",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
       },
       body: JSON.stringify(payload),
       cache: "no-store",
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("GraphQL 실패 상태코드:", res.status);
-      console.error("GraphQL 실패 응답 일부:", text.slice(0, 500));
-      throw new Error(`GraphQL 요청 실패: ${res.status}`);
+    if (res.ok) {
+      const json = await res.json();
+      return { ok: true as const, status: res.status, json };
     }
 
-    const contentType = res.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      const text = await res.text();
-      console.error("JSON 아님:", text.slice(0, 500));
-      throw new Error("GraphQL 응답이 JSON이 아닙니다.");
+    if (res.status !== 429) {
+      return { ok: false as const, status: res.status, json: null };
     }
 
-    const json = (await res.json()) as GraphqlResponseItem[];
+    console.log("[graphql 429]", { keyword, start, attempt: attempt + 1 });
+  }
 
-    if (!Array.isArray(json)) {
-      continue;
+  return { ok: false as const, status: 429, json: null };
+}
+
+function extractNamesFromPlaceHtml(html: string) {
+  const decoded = decodeHtmlEntities(html);
+  const names: string[] = [];
+
+  const patterns = [
+    /"name"\s*:\s*"([^"]+)"/g,
+    /"title"\s*:\s*"([^"]+)"/g,
+    /"businessName"\s*:\s*"([^"]+)"/g,
+    /"placeName"\s*:\s*"([^"]+)"/g,
+    /<strong[^>]*>([^<]+)<\/strong>/g,
+  ];
+
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(decoded)) !== null) {
+      const raw = String(match[1] || "").trim();
+      if (!raw) continue;
+      if (raw.length > 80) continue;
+      if (raw.includes("query")) continue;
+      if (raw.includes("검색")) continue;
+      names.push(raw);
     }
+  }
 
-    const restaurantData = json.find((item) => item?.data?.restaurants?.items);
+  const unique: string[] = [];
+  const seen = new Set<string>();
 
-    if (!restaurantData) {
-      const errorMessage = json
-        .flatMap((item) => item?.errors || [])
-        .map((e) => e?.message)
-        .filter(Boolean)
-        .join(" | ");
+  for (const name of names) {
+    const normalized = normalizeText(name);
+    if (!normalized) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(name);
+  }
 
-      if (errorMessage) {
-        throw new Error(errorMessage);
+  return unique;
+}
+
+async function getRestaurantRank(keyword: string, targetName: string, x: string, y: string) {
+  const normalizedTarget = normalizeText(targetName);
+  const safeX = x || "127.0005";
+  const safeY = y || "37.53455";
+  const seenPageSignatures = new Set<string>();
+  let had429 = false;
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const start = 1 + (page - 1) * PAGE_SIZE;
+    const result = await fetchGraphqlPage(keyword, safeX, safeY, start);
+
+    if (!result.ok) {
+      if (result.status === 429) {
+        had429 = true;
+        break;
       }
 
+      console.log("[graphql 실패]", { keyword, page, status: result.status });
       continue;
     }
 
-    const items = restaurantData.data?.restaurants?.items ?? [];
+    const restaurantData = result.json.find(
+      (item: any) => item?.data?.restaurants?.items
+    );
+
+    if (!restaurantData) {
+      console.log("[graphql items 없음]", { keyword, page });
+      continue;
+    }
+
+    const items = (restaurantData.data.restaurants.items || []) as GraphqlRestaurantItem[];
+
+    if (!items.length) {
+      console.log("[graphql 빈페이지]", { keyword, page });
+      break;
+    }
+
+    console.log("[rank-debug]", {
+      type: "restaurant",
+      keyword,
+      targetName,
+      page,
+      x: safeX,
+      y: safeY,
+      sample: items.slice(0, 10).map((i) => i?.name),
+    });
+
+    const pageSignature = items.map((i) => i?.name || "").join("|");
+    if (seenPageSignatures.has(pageSignature)) {
+      console.log("[중복 페이지 감지]", { keyword, page });
+      break;
+    }
+    seenPageSignatures.add(pageSignature);
+
     const index = items.findIndex(
-      (item) => normalizeText(item.name) === normalizedTarget
+      (item) => normalizeText(item?.name || "") === normalizedTarget
     );
 
     if (index !== -1) {
       return start + index;
     }
+
+    await sleep(250);
+  }
+
+  const fallbackRank = await getPlaceRankFallback(keyword, targetName, x, y);
+
+  console.log("[fallback 결과]", {
+    type: "restaurant",
+    keyword,
+    targetName,
+    x: safeX,
+    y: safeY,
+    had429,
+    fallbackRank,
+  });
+
+  return fallbackRank;
+}
+
+async function getGeneralPlaceRank(keyword: string, targetName: string, x: string, y: string) {
+  const normalizedTarget = normalizeText(targetName);
+  const safeX = x || "127.0005";
+  const safeY = y || "37.53455";
+  const seenPageSignatures = new Set<string>();
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const url = `https://pcmap.place.naver.com/place/list?query=${encodeURIComponent(
+      keyword
+    )}&x=${safeX}&y=${safeY}&page=${page}`;
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+        Referer: "https://map.naver.com/",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      },
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      console.log("[place/list 실패]", { keyword, page, status: res.status });
+      if (res.status === 429) {
+        await sleep(1200);
+      }
+      continue;
+    }
+
+    const html = await res.text();
+    const names = extractNamesFromPlaceHtml(html);
+
+    if (!names.length) {
+      console.log("[place/list 빈페이지]", { keyword, page });
+      break;
+    }
+
+    console.log("[rank-debug]", {
+      type: "place",
+      keyword,
+      targetName,
+      page,
+      x: safeX,
+      y: safeY,
+      sample: names.slice(0, 10),
+    });
+
+    const pageSignature = names.join("|");
+    if (seenPageSignatures.has(pageSignature)) {
+      console.log("[place/list 중복 페이지]", { keyword, page });
+      break;
+    }
+    seenPageSignatures.add(pageSignature);
+
+    const index = names.findIndex(
+      (name) => normalizeText(name) === normalizedTarget
+    );
+
+    if (index !== -1) {
+      return 1 + (page - 1) * PAGE_SIZE + index;
+    }
+
+    await sleep(300);
   }
 
   return -1;
 }
 
+async function getPlaceRankFallback(keyword: string, targetName: string, x: string, y: string) {
+  const normalizedTarget = normalizeText(targetName);
+  const safeX = x || "127.0005";
+  const safeY = y || "37.53455";
+
+  for (let page = 1; page <= 2; page++) {
+    const url = `https://pcmap.place.naver.com/place/list?query=${encodeURIComponent(
+      keyword
+    )}&x=${safeX}&y=${safeY}&page=${page}`;
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+        Referer: "https://map.naver.com/",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      },
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      console.log("[fallback 실패]", { keyword, page, status: res.status });
+      continue;
+    }
+
+    const html = await res.text();
+    const names = extractNamesFromPlaceHtml(html);
+
+    if (!names.length) break;
+
+    const index = names.findIndex(
+      (name) => normalizeText(name) === normalizedTarget
+    );
+
+    if (index !== -1) {
+      return 1 + (page - 1) * PAGE_SIZE + index;
+    }
+
+    await sleep(250);
+  }
+
+  return -1;
+}
+
+async function getRank(keyword: string, targetName: string, x: string, y: string) {
+  if (isRestaurantKeyword(keyword)) {
+    return getRestaurantRank(keyword, targetName, x, y);
+  }
+
+  return getGeneralPlaceRank(keyword, targetName, x, y);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
     const keyword = String(body.keyword || "").trim();
     const targetName = String(body.targetName || "").trim();
+    const x = String(body.x || "").trim();
+    const y = String(body.y || "").trim();
+    const placeKeywordId = String(body.placeKeywordId || "").trim();
 
     if (!keyword || !targetName) {
       return Response.json(
-        {
-          ok: false,
-          error: "keyword 또는 targetName이 없습니다.",
-        },
+        { ok: false, error: "keyword, targetName가 필요합니다." },
         { status: 400 }
       );
     }
 
-    const rank = await getRank(keyword, targetName);
+    const rank = await getRank(keyword, targetName, x, y);
 
-// 🔥 검색량 가져오기
-const volume = await getKeywordSearchVolume(keyword);
+    console.log("[check-place-rank 결과]", {
+      keyword,
+      targetName,
+      x,
+      y,
+      rank,
+    });
 
-const mobile = volume?.mobile ?? 0;
-const pc = volume?.pc ?? 0;
-const total = mobile + pc;
+    const volume = await getKeywordSearchVolume(keyword);
+    const mobile = volume?.mobile ?? 0;
+    const pc = volume?.pc ?? 0;
+    const total = mobile + pc;
 
-// 🔥 DB 저장
-await prisma.placeKeyword.updateMany({
-  where: {
-    keyword,
-  },
-  data: {
-    mobileVolume: mobile,
-    pcVolume: pc,
-    totalVolume: total,
-  },
-});
+    if (placeKeywordId) {
+      await prisma.placeKeyword.update({
+        where: {
+          id: placeKeywordId,
+        },
+        data: {
+          mobileVolume: mobile,
+          pcVolume: pc,
+          totalVolume: total,
+        },
+      });
+    } else {
+      await prisma.placeKeyword.updateMany({
+        where: {
+          keyword,
+          place: {
+            name: targetName,
+          },
+        },
+        data: {
+          mobileVolume: mobile,
+          pcVolume: pc,
+          totalVolume: total,
+        },
+      });
+    }
 
-return Response.json({
-  ok: true,
-  rank,
-});
+    return Response.json({
+      ok: true,
+      rank,
+      mobile,
+      pc,
+      monthly: total,
+    });
   } catch (error) {
     console.error("check-place-rank error:", error);
 

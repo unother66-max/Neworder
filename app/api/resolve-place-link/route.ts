@@ -64,6 +64,35 @@ async function fetchHtml(url: string) {
   };
 }
 
+function guessJibunAddressFromRoadAddress(address: string) {
+  const cleaned = cleanupAddress(address);
+  if (!cleaned) return "";
+
+  const parts = cleaned.split(" ").filter(Boolean);
+  if (parts.length < 3) return "";
+
+  const district = parts[1] || "";
+  const token = parts[2] || "";
+
+  if (
+    token.endsWith("동") ||
+    token.endsWith("읍") ||
+    token.endsWith("면") ||
+    token.endsWith("리")
+  ) {
+    return [district, token].filter(Boolean).join(" ").trim();
+  }
+
+  const root =
+    token.match(/^([가-힣]+?)(?:대로|로|길)/)?.[1] ||
+    token.match(/^([가-힣]+?)(?:\d+길)/)?.[1] ||
+    "";
+
+  if (!root) return "";
+
+  return [district, `${root}동`].filter(Boolean).join(" ").trim();
+}
+
 function buildFallbackLinks(name: string, address = "") {
   const query = String(name || "").trim();
   const encoded = encodeURIComponent(query);
@@ -74,6 +103,8 @@ function buildFallbackLinks(name: string, address = "") {
     pcPlaceLink: `https://map.naver.com/p/search/${encoded}`,
     image: "",
     jibunAddress: guessJibunAddressFromRoadAddress(address),
+    x: null,
+    y: null,
   };
 }
 
@@ -198,37 +229,6 @@ function cleanupAddress(value: string) {
     .trim();
 }
 
-function guessJibunAddressFromRoadAddress(address: string) {
-  const cleaned = cleanupAddress(address);
-  if (!cleaned) return "";
-
-  const parts = cleaned.split(" ").filter(Boolean);
-  if (parts.length < 3) return "";
-
-  const district = parts[1] || "";
-  const token = parts[2] || "";
-
-  // 이미 동/읍/면이면 그대로
-  if (
-    token.endsWith("동") ||
-    token.endsWith("읍") ||
-    token.endsWith("면") ||
-    token.endsWith("리")
-  ) {
-    return [district, token].filter(Boolean).join(" ").trim();
-  }
-
-  // 도로명에서 대표 지명 추정
-  const root =
-    token.match(/^([가-힣]+?)(?:대로|로|길)/)?.[1] ||
-    token.match(/^([가-힣]+?)(?:\d+길)/)?.[1] ||
-    "";
-
-  if (!root) return "";
-
-  return [district, `${root}동`].filter(Boolean).join(" ").trim();
-}
-
 function extractJibunAddressFromHtml(html: string) {
   const decoded = cleanupAddress(html);
 
@@ -280,6 +280,57 @@ async function fetchJibunAddress(publicPlaceId: string, address: string) {
   return guessed;
 }
 
+async function fetchPlaceCoords(publicPlaceId: string) {
+  const urls = [
+    `https://m.place.naver.com/restaurant/${publicPlaceId}/home`,
+    `https://m.place.naver.com/place/${publicPlaceId}/home`,
+    `https://pcmap.place.naver.com/restaurant/${publicPlaceId}/home`,
+    `https://pcmap.place.naver.com/place/${publicPlaceId}/home`,
+  ];
+
+  const patterns = [
+    /"x"\s*:\s*"([^"]+)".*?"y"\s*:\s*"([^"]+)"/is,
+    /"y"\s*:\s*"([^"]+)".*?"x"\s*:\s*"([^"]+)"/is,
+    /"longitude"\s*:\s*"([^"]+)".*?"latitude"\s*:\s*"([^"]+)"/is,
+    /"longitude"\s*:\s*([0-9.]+).*?"latitude"\s*:\s*([0-9.]+)/is,
+    /"x"\s*:\s*([0-9.]+).*?"y"\s*:\s*([0-9.]+)/is,
+  ];
+
+  for (const url of urls) {
+    try {
+      const result = await fetchHtml(url);
+      if (!result.ok) continue;
+
+      const html = result.html;
+
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (!match) continue;
+
+        let x = "";
+        let y = "";
+
+        if (pattern.source.includes('"y"\\s*:\\s*"([^"]+)".*?"x"')) {
+          y = String(match[1] || "").trim();
+          x = String(match[2] || "").trim();
+        } else {
+          x = String(match[1] || "").trim();
+          y = String(match[2] || "").trim();
+        }
+
+        if (x && y) {
+          console.log("🔥 좌표 찾음:", { x, y });
+          return { x, y };
+        }
+      }
+    } catch (error) {
+      console.error("fetchPlaceCoords error:", error);
+    }
+  }
+
+  return { x: "", y: "" };
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -300,9 +351,10 @@ export async function POST(request: Request) {
       return Response.json(buildFallbackLinks(name, address));
     }
 
-    const [image, jibunAddress] = await Promise.all([
+    const [image, jibunAddress, coords] = await Promise.all([
       fetchPlaceImage(publicPlaceId),
       fetchJibunAddress(publicPlaceId, address),
+      fetchPlaceCoords(publicPlaceId),
     ]);
 
     return Response.json({
@@ -311,6 +363,8 @@ export async function POST(request: Request) {
       pcPlaceLink: `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
       image: image || "",
       jibunAddress: jibunAddress || "",
+      x: coords.x || null,
+      y: coords.y || null,
     });
   } catch (error) {
     console.error("resolve-place-link error:", error);

@@ -24,6 +24,8 @@ type Store = {
   mobilePlaceLink?: string;
   pcPlaceLink?: string;
   image?: string;
+  x?: string;
+y?: string;
   keywords: KeywordItem[];
   latestUpdatedAtText?: string;
 
@@ -545,6 +547,8 @@ if (!session) {
   jibunAddress: data.jibunAddress || "",
   placeUrl: links.mobilePlaceLink || item.link,
   imageUrl: rawImage || "",
+  x: data.x || null,
+  y: data.y || null,
 }),
       });
 
@@ -806,9 +810,10 @@ if (!session) {
           },
           body: JSON.stringify({
   keyword: item.keyword,
-  placeId: target.placeId,
-  placeName: target.name,
-          }),
+  targetName: target.name,
+  x: target.x,
+  y: target.y,
+}),
         });
 
         const data = await response.json();

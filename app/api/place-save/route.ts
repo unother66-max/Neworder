@@ -20,6 +20,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { name, category, address, placeUrl, imageUrl } = body ?? {};
     const jibunAddress = String(body.jibunAddress || "").trim();
+    const x = body.x ? String(body.x).trim() : null;
+    const y = body.y ? String(body.y).trim() : null;
 
     if (!name) {
       return NextResponse.json(
@@ -28,7 +30,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ 현재 로그인한 유저를 User 테이블에 먼저 맞춰둠
     await prisma.user.upsert({
       where: {
         id: userId,
@@ -41,7 +42,6 @@ export async function POST(req: Request) {
         id: userId,
         email: userEmail ?? `${userId}@no-email.local`,
         name: userName ?? null,
-        
       },
     });
 
@@ -53,7 +53,9 @@ export async function POST(req: Request) {
         address: address ?? null,
         placeUrl: placeUrl ?? null,
         imageUrl: imageUrl ?? null,
-        jibunAddress: jibunAddress || null
+        jibunAddress: jibunAddress || null,
+        x,
+        y,
       },
     });
 
