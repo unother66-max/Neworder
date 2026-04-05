@@ -141,7 +141,8 @@ function getRankMeta(rank: string) {
     };
   }
 
-  const numericRank = Number(matched[0]);
+   const numericRank = Number(matched[0]);
+  const PAGE_SIZE = 70;
   const page = Math.ceil(numericRank / PAGE_SIZE);
   const pagePosition = ((numericRank - 1) % PAGE_SIZE) + 1;
 

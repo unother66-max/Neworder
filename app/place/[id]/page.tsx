@@ -92,8 +92,9 @@ function getRankMeta(rank: number | null) {
     return { main: "-", sub: "-" };
   }
 
-  const page = Math.ceil(rank / 15);
-  const pagePosition = ((rank - 1) % 15) + 1;
+  const PAGE_SIZE = 70;
+  const page = Math.ceil(rank / PAGE_SIZE);
+  const pagePosition = ((rank - 1) % PAGE_SIZE) + 1;
 
   return {
     main: `${rank}위`,
