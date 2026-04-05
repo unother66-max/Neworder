@@ -88,6 +88,17 @@ type PlaceItem = {
 const PAGE_SIZE = 15;
 
 
+function formatKST(date: Date) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 
 function normalizeImageUrl(image?: string) {
   if (!image) return "";
