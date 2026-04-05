@@ -129,6 +129,8 @@ export default function PlaceDetailPage() {
   const [selectedKeywordId, setSelectedKeywordId] = useState<string>("");
   const [updating, setUpdating] = useState(false);
   const [trackingUpdating, setTrackingUpdating] = useState(false);
+  const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
+  const [keywordInput, setKeywordInput] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -447,30 +449,54 @@ export default function PlaceDetailPage() {
   }, [selectedKeyword]);
 
   const chartData = useMemo(() => {
-    if (!selectedKeyword || !place) return [];
+  if (!selectedKeyword || !place) return [];
 
-    return (place.rankHistory || [])
-      .filter(
-        (item) =>
-          item.keyword === selectedKeyword.keyword &&
-          item.rank !== null &&
-          item.rank !== undefined
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      )
-      .map((item) => ({
-        label: formatDateLabel(item.createdAt),
-        shortLabel: formatDateLabel(item.createdAt).slice(0, 5),
-        rank: item.rank as number,
-        fullDate: item.createdAt,
-      }));
-  }, [selectedKeyword, place]);
+  const filtered = (place.rankHistory || [])
+    .filter(
+      (item) =>
+        item.keyword === selectedKeyword.keyword &&
+        item.rank !== null &&
+        item.rank !== undefined
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+  const dailyMap = new Map<
+    string,
+    {
+      label: string;
+      shortLabel: string;
+      rank: number;
+      fullDate: string;
+    }
+  >();
+
+  filtered.forEach((item) => {
+    const dateKey = getDateKey(item.createdAt);
+
+    // 같은 날짜면 마지막 기록으로 덮어쓰기
+    dailyMap.set(dateKey, {
+      label: formatDateLabel(item.createdAt),
+      shortLabel: formatDateLabel(item.createdAt).slice(0, 5),
+      rank: item.rank as number,
+      fullDate: item.createdAt,
+    });
+  });
+
+  return Array.from(dailyMap.values()).sort(
+    (a, b) => new Date(a.fullDate).getTime() - new Date(b.fullDate).getTime()
+  );
+}, [selectedKeyword, place]);
 
   const rankValues = chartData.map((item) => item.rank);
   const yMin = rankValues.length ? Math.max(1, Math.min(...rankValues) - 2) : 1;
   const yMax = rankValues.length ? Math.max(...rankValues) + 2 : 50;
+  const openKeywordModal = () => {
+  if (!place) return;
+  setIsKeywordModalOpen(true);
+};
 
   if (!mounted) return null;
 
@@ -582,9 +608,12 @@ export default function PlaceDetailPage() {
                       </span>
                     </button>
 
-                    <button className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f]">
-                      키워드 관리
-                    </button>
+                    <button
+  onClick={openKeywordModal}
+  className="rounded-[12px] bg-[#f2f2f7] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f]"
+>
+  키워드 관리
+</button>
 
                     <button
                       onClick={handleUpdateRanks}
@@ -827,6 +856,108 @@ export default function PlaceDetailPage() {
             </div>
           )}
         </section>
+
+        {isKeywordModalOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="w-full max-w-md rounded-[16px] bg-white p-6 shadow-xl">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[16px] font-semibold text-[#1d1d1f]">
+          키워드 관리
+        </h2>
+        <button
+          onClick={() => setIsKeywordModalOpen(false)}
+          className="text-[14px] text-[#6e6e73]"
+        >
+          닫기
+        </button>
+      </div>
+
+
+      <div className="mt-4 text-[13px] text-[#6e6e73]">
+        여기에 키워드 추가/삭제 UI 넣으면 돼.
+
+<div className="mt-4 space-y-4">
+  {/* 키워드 추가 */}
+  <div className="flex gap-2">
+
+    
+    <input
+
+    
+      value={keywordInput}
+      onChange={(e) => setKeywordInput(e.target.value)}
+      placeholder="키워드 입력 (쉼표로 여러개)"
+      className="flex-1 rounded-[10px] border px-3 py-2 text-[13px]"
+    />
+    <button
+      onClick={async () => {
+        if (!place) return;
+        
+        
+
+        const keywords = keywordInput
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean);
+
+        for (const keyword of keywords) {
+          await fetch("/api/place-keyword-save", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              placeId: place.id,
+              keyword,
+            }),
+          });
+        }
+
+        setKeywordInput("");
+        await loadPlaceDetail();
+      }}
+      className="rounded-[10px] bg-black px-3 py-2 text-white text-[12px]"
+    >
+      추가
+    </button>
+  </div>
+
+  {/* 키워드 리스트 */}
+  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+    {place?.keywords.map((item) => (
+      <div
+        key={item.id}
+        className="flex items-center justify-between rounded-[10px] bg-[#f5f5f7] px-3 py-2 text-[13px]"
+      >
+        <span>{item.keyword}</span>
+        <button
+          onClick={async () => {
+            await fetch("/api/place-keyword-delete", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                placeKeywordId: item.id,
+              }),
+            });
+
+            await loadPlaceDetail();
+          }}
+          className="text-red-500 text-[12px]"
+        >
+          삭제
+        </button>
+      </div>
+    ))}
+  </div>
+</div>
+
+      </div>
+    </div>
+  </div>
+)}
+
       </main>
     </>
   );
