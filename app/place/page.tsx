@@ -164,6 +164,7 @@ function extractArea(address?: string | null) {
 
   if (!parts.length) return "";
 
+  // 1️⃣ 행정동 찾기 (한남동, 연남동 등)
   const adminToken =
     [...parts].reverse().find((part) => /(동|읍|면|리)$/.test(part)) || "";
 
@@ -171,16 +172,8 @@ function extractArea(address?: string | null) {
     return adminToken;
   }
 
-  const roadToken = parts[parts.length - 1] || "";
-  if (
-    roadToken.includes("로") ||
-    roadToken.includes("길") ||
-    roadToken.includes("대로")
-  ) {
-    return "";
-  }
-
-  return roadToken.replace(/(동|읍|면|리)$/, "");
+  // ❌ 여기서 이상한 값(1층, 지하1층 등) 쓰지 않음
+  return "";
 }
 
 
