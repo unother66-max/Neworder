@@ -74,6 +74,7 @@ function guessJibunAddressFromRoadAddress(address: string) {
   const district = parts[1] || "";
   const token = parts[2] || "";
 
+  // 이미 동/읍/면/리면 그때만 사용
   if (
     token.endsWith("동") ||
     token.endsWith("읍") ||
@@ -83,14 +84,8 @@ function guessJibunAddressFromRoadAddress(address: string) {
     return [district, token].filter(Boolean).join(" ").trim();
   }
 
-  const root =
-    token.match(/^([가-힣]+?)(?:대로|로|길)/)?.[1] ||
-    token.match(/^([가-힣]+?)(?:\d+길)/)?.[1] ||
-    "";
-
-  if (!root) return "";
-
-  return [district, `${root}동`].filter(Boolean).join(" ").trim();
+  // 도로명은 억지로 ~동 만들지 않음
+  return "";
 }
 
 function buildFallbackLinks(name: string, address = "") {

@@ -13,7 +13,13 @@ type Post = {
   link: string;
   rank: string;
   keyword: string;
-  searchVolume: string;
+  searchVolume:
+    | string
+    | {
+        mobile?: number;
+        pc?: number;
+        total?: number;
+      };
 };
 
 function getRankTextColor(rank: string) {
@@ -371,8 +377,10 @@ export default function Home() {
                       </td>
 
                       <td className="border-b border-[#e5e7eb] px-4 py-4 text-[13px] text-[#6b7280]">
-                        {post.searchVolume || "-"}
-                      </td>
+  {typeof post.searchVolume === "object"
+    ? post.searchVolume?.total ?? "-"
+    : post.searchVolume || "-"}
+</td>
 
                     </tr>
                   ))}

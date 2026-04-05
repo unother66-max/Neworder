@@ -180,7 +180,7 @@ function extractArea(address?: string | null) {
 
 
 function getDefaultRecommendedKeywords(store: Store): RecommendedKeyword[] {
-  const area = extractArea(store.jibunAddress || store.address);
+  const area = extractArea(store.jibunAddress);
 
   if (store.category.includes("필라테스")) {
     return [
@@ -193,12 +193,12 @@ function getDefaultRecommendedKeywords(store: Store): RecommendedKeyword[] {
   }
 
   return [
-    { keyword: area ? `${area} ${store.category}` : `${store.category}` },
-    { keyword: area ? `${area} 맛집` : `${store.category} 맛집` },
-    { keyword: area ? `${area} 데이트` : `${store.category} 데이트` },
-    { keyword: `${store.category} 추천` },
-    { keyword: `${store.name} 후기` },
-  ];
+  { keyword: area ? `${area} ${store.category}` : `${store.category}` },
+  { keyword: area ? `${area} 맛집` : `${store.category} 맛집` },
+  { keyword: area ? `${area} 데이트` : `${store.category} 데이트` },
+  { keyword: `${store.category} 추천` },
+  { keyword: `${store.name} 후기` },
+];
 }
 
 function moveItem<T>(arr: T[], from: number, to: number) {
