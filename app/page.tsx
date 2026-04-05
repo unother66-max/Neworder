@@ -294,7 +294,7 @@ export default function Home() {
 
             {posts.length > 0 && (
               <div className="inline-flex rounded-[12px] bg-[#f4f6f9] px-4 py-2.5 text-[13px] text-[#6b7280] ring-1 ring-[#e5e9f0]">
-                총
+                최근
                 <span className="mx-1 font-bold text-[#111827]">
                   {posts.length}개
                 </span>
