@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "New Order Lab",
+  title: "Post Labs",
   description: "플레이스 순위 추적",
 };
 

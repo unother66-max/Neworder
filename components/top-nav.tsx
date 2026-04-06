@@ -64,58 +64,65 @@ export default function TopNav({ active = "place" }: TopNavProps) {
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-[#e8ebf2] bg-white">
-        <div className="mx-auto flex max-w-[1280px] items-center justify-between px-4 py-4 md:px-6">
-          <div className="flex items-center gap-3 md:gap-8">
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#e5e7eb] bg-white text-[#111827] lg:hidden"
-              aria-label="메뉴 열기"
-            >
-              <span className="text-[20px] leading-none">☰</span>
-            </button>
+          <div className="mx-auto flex max-w-[1280px] items-center px-4 py-4 md:px-6">
+  
+  {/* 왼쪽 - 로고 */}
+  <div className="flex items-center">
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      className="mr-3 flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#e5e7eb] bg-white text-[#111827] lg:hidden"
+    >
+      ☰
+    </button>
 
-            <Link href="/" className="shrink-0">
-              <img
-                src="/logo.png"
-                alt="logo"
-                className="h-11 w-auto object-contain"
-              />
-            </Link>
+    <Link href="/" className="shrink-0">
+      <img
+        src="/logo.png"
+        alt="logo"
+        className="h-10 w-auto object-contain"
+      />
+    </Link>
+  </div>
 
-            <nav className="hidden items-center gap-7 lg:flex">
-              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
-                스마트스토어
-              </Link>
-              <Link href="/" className={getClassName("blog")}>
-                상위블로그찾기
-              </Link>
-              <Link href="/place" className={getClassName("place")}>
-                플레이스 순위 추적
-              </Link>
-              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
-                키워드 실험실
-              </Link>
-              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
-                경쟁 블로그 참고
-              </Link>
-              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
-                서비스 소개
-              </Link>
-              <Link href="/" className="text-[14px] font-semibold text-[#111827]">
-                공지사항
-              </Link>
-            </nav>
-          </div>
+  {/* 가운데 - 메뉴 (핵심🔥) */}
+  <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-5 xl:flex 2xl:gap-7">
+  <Link href="/" className="whitespace-nowrap text-[14px] font-semibold text-[#111827]">
+    스마트스토어
+  </Link>
+  <Link href="/" className={`${getClassName("blog")} whitespace-nowrap`}>
+    상위블로그찾기
+  </Link>
+  <Link href="/place" className={`${getClassName("place")} whitespace-nowrap`}>
+    플레이스 순위 추적
+  </Link>
+  <Link href="/" className="whitespace-nowrap text-[14px] font-semibold text-[#111827]">
+    키워드 실험실
+  </Link>
+  <Link href="/" className="whitespace-nowrap text-[14px] font-semibold text-[#111827]">
+    경쟁 블로그 참고
+  </Link>
+  <Link href="/" className="whitespace-nowrap text-[14px] font-semibold text-[#111827]">
+    서비스 소개
+  </Link>
+  <Link href="/" className="whitespace-nowrap text-[14px] font-semibold text-[#111827]">
+    공지사항
+  </Link>
+</nav>
 
-          <div className="hidden items-center gap-3 lg:flex">
-            {renderAuthArea()}
-          </div>
 
-          <div className="flex items-center gap-3 lg:hidden">
-            <div className="text-[20px]">👤</div>
-          </div>
-        </div>
+  {/* 오른쪽 - 로그인 (데스크탑) */}
+
+  <div className="ml-auto hidden items-center gap-3 xl:flex">
+  {renderAuthArea()}
+</div>
+
+  {/* 모바일 */}
+<div className="ml-auto flex items-center gap-3 xl:hidden">
+  <div className="text-[20px]">👤</div>
+</div>
+
+</div>
       </header>
 
       <div className="border-b border-[#e8ebf2] bg-white/80">
