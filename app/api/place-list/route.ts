@@ -3,6 +3,9 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 function formatUpdatedAt(value: unknown) {
   if (!value) return null;
 
@@ -17,6 +20,46 @@ function formatUpdatedAt(value: unknown) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function getDateKey(value: string | Date) {
+  const date = new Date(value);
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+type RankHistoryItem = {
+  id: string;
+  placeId: string;
+  keyword: string;
+  rank: number | null;
+  createdAt: Date;
+};
+
+function normalizeDailyRankHistory(items: RankHistoryItem[]) {
+  const sorted = [...items].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const map = new Map<string, RankHistoryItem>();
+
+  for (const item of sorted) {
+    const dateKey = getDateKey(item.createdAt);
+    const key = `${item.keyword}__${dateKey}`;
+
+    // 같은 날짜/같은 키워드가 여러 개면
+    // 마지막(더 이른 시각) 값으로 덮어쓰기
+    map.set(key, item);
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 export async function GET() {
@@ -54,31 +97,55 @@ export async function GET() {
 
     const normalizedPlaces = await Promise.all(
       places.map(async (place) => {
+        const normalizedRankHistory = normalizeDailyRankHistory(
+          (place.rankHistory || []).map((item) => ({
+            id: item.id,
+            placeId: item.placeId,
+            keyword: item.keyword,
+            rank: item.rank,
+            createdAt: item.createdAt,
+          }))
+        );
+
         const latestUpdatedAt =
-          [...place.keywords]
-            .sort(
-              (a, b) =>
-                new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-            )[0]?.updatedAt ?? null;
+          [...place.keywords].sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          )[0]?.updatedAt ?? null;
 
         let placeMonthlyVolume = 0;
         let placeMobileVolume = 0;
         let placePcVolume = 0;
 
-        try {
-          const placeSearchVolume = await getKeywordSearchVolume(place.name);
-          placeMonthlyVolume = placeSearchVolume.total ?? 0;
-          placeMobileVolume = placeSearchVolume.mobile ?? 0;
-          placePcVolume = placeSearchVolume.pc ?? 0;
-        } catch (volumeError) {
-          console.error(
-            `[place-list] 매장명 검색량 조회 실패: ${place.name}`,
-            volumeError
-          );
+        // 상세페이지와 최대한 맞추기 위해
+        // 첫 번째 키워드 검색량을 우선 사용
+        const firstKeyword = place.keywords?.[0];
+
+        if (firstKeyword) {
+          placeMonthlyVolume =
+            firstKeyword.totalVolume ??
+            (firstKeyword.mobileVolume ?? 0) + (firstKeyword.pcVolume ?? 0);
+
+          placeMobileVolume = firstKeyword.mobileVolume ?? 0;
+          placePcVolume = firstKeyword.pcVolume ?? 0;
+        } else {
+          // 키워드가 없을 때만 매장명 검색량 fallback
+          try {
+            const placeSearchVolume = await getKeywordSearchVolume(place.name);
+            placeMonthlyVolume = placeSearchVolume.total ?? 0;
+            placeMobileVolume = placeSearchVolume.mobile ?? 0;
+            placePcVolume = placeSearchVolume.pc ?? 0;
+          } catch (volumeError) {
+            console.error(
+              `[place-list] 매장명 검색량 조회 실패: ${place.name}`,
+              volumeError
+            );
+          }
         }
 
         return {
           ...place,
+          rankHistory: normalizedRankHistory,
           jibunAddress: (place as any).jibunAddress ?? null,
           latestUpdatedAt,
           latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
