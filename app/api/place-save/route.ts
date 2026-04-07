@@ -56,6 +56,8 @@ export async function POST(req: Request) {
         jibunAddress: jibunAddress || null,
         x,
         y,
+        type: "rank",
+
       },
     });
 

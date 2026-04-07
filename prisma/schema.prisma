@@ -34,6 +34,7 @@ model Place {
   id                 String               @id @default(cuid())
   userId             String
   name               String
+    type               String   @default("rank") // "rank" | "review"
   category           String?
   address            String?
   jibunAddress       String?

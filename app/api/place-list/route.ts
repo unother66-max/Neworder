@@ -65,18 +65,19 @@ function normalizeDailyRankHistory(items: RankHistoryItem[]) {
 export async function GET() {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
-    const userId = session?.user?.id as string | undefined;
+const userId = session?.user?.id as string | undefined;
 
-    if (!userId) {
-      return Response.json(
-        { ok: false, message: "로그인이 필요합니다." },
-        { status: 401 }
-      );
-    }
+if (!userId) {
+  return Response.json(
+    { ok: false, message: "로그인이 필요합니다." },
+    { status: 200 } // 🔥 변경
+  );
+}
 
     const places = await prisma.place.findMany({
       where: {
         userId,
+       
       },
       orderBy: {
         createdAt: "desc",

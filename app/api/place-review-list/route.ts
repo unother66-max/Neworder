@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +24,22 @@ function parseSaveCount(value: string) {
 
 export async function GET() {
   try {
+    // ✅ userId 가져오기
+    const session = (await getServerSession(authOptions as any)) as any;
+    const userId = session?.user?.id as string | undefined;
+
+    if (!userId) {
+      return NextResponse.json(
+        { ok: false, message: "로그인이 필요합니다." },
+        { status: 401 }
+      );
+    }
+
     const places = await prisma.place.findMany({
+      where: {
+        userId,
+      
+      },
       orderBy: { createdAt: "desc" },
       include: {
         reviewHistory: {

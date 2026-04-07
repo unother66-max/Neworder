@@ -520,9 +520,15 @@ useEffect(() => {
 
 const fetchPlaces = async () => {
   try {
+    if (!session?.user?.id) return; // 🔥 추가
+
     setPlaceLoading(true);
 
-    const res = await fetch("/api/place-list", { cache: "no-store" });
+    const res = await fetch("/api/place-list", {
+      cache: "no-store",
+      credentials: "include", // 🔥 추가
+    });
+
     const data = await res.json();
 
     if (!res.ok) {
@@ -533,6 +539,7 @@ const fetchPlaces = async () => {
     const nextStores = (data.places || []).map((place: PlaceItem) =>
       mapPlaceToStore(place)
     );
+
     setStores(nextStores);
   } catch (e) {
     console.error(e);
