@@ -25,25 +25,27 @@ const menuItems: Array<{
   { label: "공지사항", href: "/" },
 ];
 
-export default function TopNav({ active = "place" }: TopNavProps) {
+export default function TopNav({ active }: TopNavProps) {
   const [open, setOpen] = useState(false);
   
 
-  const getClassName = (key?: NavKey) =>
-    key && active === key
-      ? "whitespace-nowrap text-[14px] font-extrabold text-[#7c3aed]"
-      : "whitespace-nowrap text-[14px] font-semibold text-[#111827]";
+
+ const getClassName = (key?: NavKey) =>
+  key && active === key
+    ? "whitespace-nowrap text-[14px] font-extrabold text-[#7c3aed]"
+    : "whitespace-nowrap text-[14px] font-semibold text-[#111827]";
 
   const getMobileClassName = (key?: NavKey) =>
-    key && active === key
-      ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[15px] font-bold text-[#7c3aed]"
-      : "block rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]";
+  key && active === key
+    ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[15px] font-bold text-[#7c3aed]"
+    : "block rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]";
 
   const getBreadcrumbLabel = () => {
-    if (active === "place") return "플레이스 순위 추적";
-    if (active === "place-review") return "플레이스 리뷰 추적";
-    return "상위 블로그 찾기";
-  };
+  if (active === "place") return "플레이스 순위 추적";
+  if (active === "place-review") return "플레이스 리뷰 추적";
+  if (active === "blog") return "상위 블로그 찾기";
+  return "";
+};
 
   const { data: session, status } = useSession();
 
@@ -134,12 +136,17 @@ const renderAuthArea = () => {
       </header>
 
       <div className="border-b border-[#e8ebf2] bg-white/80">
-        <div className="mx-auto max-w-[1280px] px-4 py-3 text-[13px] text-[#6b7280] md:px-6">
-          홈 &gt; 네이버지도 &gt;{" "}
-          <span className="font-semibold text-[#111827]">
-            {getBreadcrumbLabel()}
-          </span>
-        </div>
+       <div className="mx-auto max-w-[1280px] px-4 py-3 text-[13px] text-[#6b7280] md:px-6">
+  {"홈 > 네이버지도"}
+{getBreadcrumbLabel() && (
+  <>
+    {" > "}
+    <span className="font-semibold text-[#111827]">
+      {getBreadcrumbLabel()}
+    </span>
+  </>
+)}
+</div>
       </div>
 
       {open && (

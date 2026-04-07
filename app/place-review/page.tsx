@@ -350,7 +350,7 @@ export default function PlaceReviewPage() {
 
   return (
     <>
-      <TopNav active="place" />
+      <TopNav active="place-review" />
 
       <main className="min-h-screen bg-[#f4f4f5] text-[#111111]">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
