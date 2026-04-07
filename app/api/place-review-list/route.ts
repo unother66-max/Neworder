@@ -39,8 +39,19 @@ export async function GET() {
         userId,
         type: "review",
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { reviewPinned: "desc" },
+        { createdAt: "desc" },
+      ],
       include: {
+        keywords: {
+          select: {
+            id: true,
+            mobileVolume: true,
+            pcVolume: true,
+            totalVolume: true,
+          },
+        },
         reviewHistory: {
           orderBy: { createdAt: "desc" },
         },
@@ -81,8 +92,14 @@ export async function GET() {
         id: place.id,
         name: place.name,
         address: place.address,
+        jibunAddress: place.jibunAddress,
         imageUrl: place.imageUrl,
+        placeUrl: place.placeUrl,
+        x: place.x,
+        y: place.y,
         reviewAutoTracking: place.reviewAutoTracking,
+        reviewPinned: place.reviewPinned,
+        keywords: place.keywords,
         reviewHistory: history,
       };
     });

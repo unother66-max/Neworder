@@ -53,6 +53,7 @@ type ApiPlace = {
     totalVolume: number | null;
   }[];
   reviewHistory: ApiReviewHistory[];
+  reviewPinned?: boolean;
 };
 
 type StoreItem = {
@@ -199,7 +200,7 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
     mobileUrl: links.mobilePlaceLink,
     pcUrl: links.pcPlaceLink,
     isAutoTracking: !!place.reviewAutoTracking,
-    isPinned: false,
+    isPinned: !!place.reviewPinned,
     updatedAt: formatUpdatedAt(latestCreatedAt),
     history,
   };
@@ -377,15 +378,30 @@ export default function PlaceReviewPage() {
     }
   }
 
-  const handleTogglePin = (storeId: string) => {
-    setStores((prev) =>
-      prev.map((store) =>
-        store.id === storeId
-          ? { ...store, isPinned: !store.isPinned }
-          : store
-      )
-    );
-  };
+  async function handleTogglePin(storeId: string) {
+  try {
+    const res = await fetch("/api/place-review-pin", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ placeId: storeId }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      alert(data?.message || "핀 변경 실패");
+      return;
+    }
+
+    // 다시 리스트 불러오기 (핵심)
+    await fetchPlaces();
+  } catch (error) {
+    console.error("pin error:", error);
+    alert("오류 발생");
+  }
+}
 
   return (
     <>
@@ -592,19 +608,23 @@ export default function PlaceReviewPage() {
                       </div>
 
                       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePin(store.id)}
-                          className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] border text-[#111827] transition ${
-                            store.isPinned
-                              ? "border-[#d1d5db] bg-[#f8fafc]"
-                              : "border-[#d1d5db] bg-white hover:bg-[#f9fafb]"
-                          }`}
-                          aria-label="핀 고정"
-                        >
-                          <Pin className="h-4.5 w-4.5" />
-                        </button>
-
+                      <button
+  type="button"
+  onClick={() => handleTogglePin(store.id)}
+  className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] border transition ${
+    store.isPinned
+      ? "border-[#b91c1c] bg-[#fff5f5] text-[#b91c1c]"
+      : "border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
+  }`}
+  aria-label="핀 고정"
+>
+  <Pin
+    className={`h-[16px] w-[16px] transition ${
+      store.isPinned ? "rotate-45" : ""
+    }`}
+    strokeWidth={2.2}
+  />
+</button>
                         <button
                           type="button"
                           onClick={() => handleUpdateStore(store.id)}
@@ -642,13 +662,7 @@ export default function PlaceReviewPage() {
                           삭제
                         </button>
 
-                        <button
-                          type="button"
-                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] border border-transparent bg-transparent text-[#111827] transition hover:bg-[#f3f4f6]"
-                          aria-label="더보기"
-                        >
-                          <MoreVertical className="h-5 w-5" />
-                        </button>
+                        
                       </div>
                     </div>
                   </div>

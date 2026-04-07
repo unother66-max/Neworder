@@ -50,6 +50,7 @@ model Place {
   keywords      PlaceKeyword[]
   rankHistory   RankHistory[]
   reviewHistory PlaceReviewHistory[]
+  reviewPinned Boolean @default(false)
 
   @@index([userId])
 }
