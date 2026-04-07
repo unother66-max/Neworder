@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,11 +17,69 @@ export async function POST(req: Request) {
       );
     }
 
-    const totalReviewCount = Math.floor(Math.random() * 2000) + 200;
-    const visitorReviewCount = Math.floor(totalReviewCount * 0.45);
-    const blogReviewCount = totalReviewCount - visitorReviewCount;
-    const saveCount = `${Math.floor(Math.random() * 30000) + 1000}+`;
-    const keywords = ["맛집", "분위기", "데이트", "가성비", "친절"];
+    const place = await prisma.place.findUnique({
+      where: { id: placeId },
+      include: {
+        reviewHistory: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+
+    if (!place) {
+      return NextResponse.json(
+        { ok: false, message: "매장을 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
+
+    if (!place.placeUrl) {
+      return NextResponse.json(
+        { ok: false, message: "placeUrl이 없습니다." },
+        { status: 400 }
+      );
+    }
+
+    console.log("[review-track place.id]", place.id);
+    console.log("[review-track place.name]", place.name);
+    console.log("[review-track place.placeUrl]", place.placeUrl);
+
+    const latest = place.reviewHistory[0];
+    const snapshot = await getNaverPlaceReviewSnapshot(place.placeUrl);
+
+    console.log("[review-track snapshot]", snapshot);
+
+    const visitorReviewCount =
+      snapshot.visitorReviewCount ?? latest?.visitorReviewCount ?? 0;
+
+    const blogReviewCount =
+      snapshot.blogReviewCount ?? latest?.blogReviewCount ?? 0;
+
+    const totalReviewCount =
+      visitorReviewCount + blogReviewCount;
+
+    const saveCount =
+      snapshot.saveCountText ?? latest?.saveCount ?? "0";
+
+    if (
+      snapshot.visitorReviewCount === null &&
+      snapshot.blogReviewCount === null &&
+      snapshot.saveCountText === null
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: `리뷰 파싱 실패: ${place.name} / ${place.placeUrl}`,
+        },
+        { status: 422 }
+      );
+    }
+
+    const keywords =
+      latest?.keywords && latest.keywords.length > 0
+        ? latest.keywords
+        : ["맛집", "분위기", "데이트", "가성비", "친절"];
 
     const data = await prisma.placeReviewHistory.create({
       data: {
@@ -36,6 +95,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       data,
+      parsed: {
+        totalReviewCount,
+        visitorReviewCount,
+        blogReviewCount,
+        saveCount,
+      },
     });
   } catch (error) {
     console.error("place-review-track error:", error);

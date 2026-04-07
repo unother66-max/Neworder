@@ -45,6 +45,7 @@ type ApiPlace = {
   placeUrl: string | null;
   x?: string | null;
   y?: string | null;
+  reviewAutoTracking?: boolean;
   keywords?: {
     id: string;
     mobileVolume: number | null;
@@ -110,16 +111,29 @@ function formatUpdatedAt(value: string) {
   }).format(date);
 }
 
-function buildMobilePlaceUrl(placeUrl?: string | null) {
-  if (!placeUrl) return "https://m.place.naver.com/";
-  return placeUrl.includes("m.place.naver.com")
-    ? placeUrl
-    : "https://m.place.naver.com/";
+function extractPublicPlaceId(placeUrl?: string | null) {
+  if (!placeUrl) return "";
+
+  const matched =
+    placeUrl.match(/restaurant\/(\d+)/) ||
+    placeUrl.match(/place\/(\d+)/) ||
+    placeUrl.match(/placeId=(\d+)/) ||
+    placeUrl.match(/entry\/place\/(\d+)/);
+
+  return matched?.[1] ?? "";
 }
 
-function buildPcPlaceUrl(placeUrl?: string | null) {
-  if (!placeUrl) return "https://map.naver.com/";
-  return placeUrl;
+function buildPlaceLinks(publicPlaceId: string, name: string) {
+  const encodedQuery = encodeURIComponent(name.trim());
+
+  return {
+    mobilePlaceLink: publicPlaceId
+      ? `https://m.place.naver.com/restaurant/${publicPlaceId}/home`
+      : `https://m.map.naver.com/search2/search.naver?query=${encodedQuery}`,
+    pcPlaceLink: publicPlaceId
+      ? `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`
+      : `https://map.naver.com/p/search/${encodedQuery}`,
+  };
 }
 
 function mapApiPlaceToStore(place: ApiPlace): StoreItem {
@@ -134,17 +148,11 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
       id: row.id,
       dateLabel: formatDateLabel(row.createdAt),
       totalReviewCount: row.totalReviewCount,
-      totalReviewDiff: prev
-        ? row.totalReviewCount - prev.totalReviewCount
-        : null,
+      totalReviewDiff: prev ? row.totalReviewCount - prev.totalReviewCount : null,
       visitorReviewCount: row.visitorReviewCount,
-      visitorReviewDiff: prev
-        ? row.visitorReviewCount - prev.visitorReviewCount
-        : null,
+      visitorReviewDiff: prev ? row.visitorReviewCount - prev.visitorReviewCount : null,
       blogReviewCount: row.blogReviewCount,
-      blogReviewDiff: prev
-        ? row.blogReviewCount - prev.blogReviewCount
-        : null,
+      blogReviewDiff: prev ? row.blogReviewCount - prev.blogReviewCount : null,
       saveCount: row.saveCount,
       keywords: row.keywords || [],
     };
@@ -169,6 +177,9 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
       ? sortedHistory[0].createdAt
       : new Date().toISOString();
 
+  const publicPlaceId = extractPublicPlaceId(place.placeUrl);
+  const links = buildPlaceLinks(publicPlaceId, place.name);
+
   return {
     id: place.id,
     name: place.name,
@@ -180,9 +191,9 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
     searchVolume: totalVolume,
     mobileVolume,
     pcVolume,
-    mobileUrl: buildMobilePlaceUrl(place.placeUrl),
-    pcUrl: buildPcPlaceUrl(place.placeUrl),
-    isAutoTracking: false,
+    mobileUrl: links.mobilePlaceLink,
+    pcUrl: links.pcPlaceLink,
+    isAutoTracking: !!place.reviewAutoTracking,
     isPinned: false,
     updatedAt: formatUpdatedAt(latestCreatedAt),
     history,
@@ -191,7 +202,9 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
 
 function DiffText({ value }: { value?: number | null }) {
   if (value === null || value === undefined || value === 0) {
-    return <span className="ml-2 text-[12px] font-semibold text-[#9ca3af]">-</span>;
+    return (
+      <span className="ml-2 text-[12px] font-semibold text-[#9ca3af]">-</span>
+    );
   }
 
   const isUp = value > 0;
@@ -211,42 +224,30 @@ export default function PlaceReviewPage() {
   const [stores, setStores] = useState<StoreItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [updatingStoreId, setUpdatingStoreId] = useState<string | null>(null);
+  const [trackingStoreId, setTrackingStoreId] = useState<string | null>(null);
+
+  async function fetchPlaces() {
+    try {
+      setLoading(true);
+
+      const res = await fetch("/api/place-review-list", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+
+      const places: ApiPlace[] = Array.isArray(data?.places) ? data.places : [];
+      setStores(places.map(mapApiPlaceToStore));
+    } catch (error) {
+      console.error("place-review-list fetch error:", error);
+      setStores([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let ignore = false;
-
-    async function fetchPlaces() {
-      try {
-        setLoading(true);
-
-        const res = await fetch("/api/place-review-list", {
-          cache: "no-store",
-        });
-        const data = await res.json();
-
-        if (!ignore) {
-          const places: ApiPlace[] = Array.isArray(data?.places)
-            ? data.places
-            : [];
-          setStores(places.map(mapApiPlaceToStore));
-        }
-      } catch (error) {
-        console.error("place-review-list fetch error:", error);
-        if (!ignore) {
-          setStores([]);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
     fetchPlaces();
-
-    return () => {
-      ignore = true;
-    };
   }, []);
 
   const filteredStores = useMemo(() => {
@@ -262,15 +263,72 @@ export default function PlaceReviewPage() {
     });
   }, [search, stores]);
 
-  const handleToggleAutoTracking = (storeId: string) => {
-    setStores((prev) =>
-      prev.map((store) =>
-        store.id === storeId
-          ? { ...store, isAutoTracking: !store.isAutoTracking }
-          : store
-      )
-    );
-  };
+  async function handleUpdateStore(storeId: string) {
+    try {
+      setUpdatingStoreId(storeId);
+
+      const res = await fetch("/api/place-review-track", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId: storeId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        alert(data?.message || "리뷰 데이터 업데이트 실패");
+        return;
+      }
+
+      await fetchPlaces();
+    } catch (error) {
+      console.error("place-review-track error:", error);
+      alert("업데이트 중 오류가 발생했습니다.");
+    } finally {
+      setUpdatingStoreId(null);
+    }
+  }
+
+  async function handleToggleAutoTracking(storeId: string, nextValue: boolean) {
+    try {
+      setTrackingStoreId(storeId);
+
+      const res = await fetch("/api/place-review-toggle-tracking", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId: storeId,
+          enabled: nextValue,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        alert(data?.message || "자동추적 상태 변경 실패");
+        return;
+      }
+
+      setStores((prev) =>
+        prev.map((store) =>
+          store.id === storeId
+            ? { ...store, isAutoTracking: nextValue }
+            : store
+        )
+      );
+    } catch (error) {
+      console.error("place-review-toggle-tracking error:", error);
+      alert("자동추적 변경 중 오류가 발생했습니다.");
+    } finally {
+      setTrackingStoreId(null);
+    }
+  }
 
   const handleTogglePin = (storeId: string) => {
     setStores((prev) =>
@@ -284,7 +342,7 @@ export default function PlaceReviewPage() {
 
   return (
     <>
-      <TopNav active="place-review" />
+      <TopNav active="place" />
 
       <main className="min-h-screen bg-[#f4f4f5] text-[#111111]">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
@@ -352,7 +410,9 @@ export default function PlaceReviewPage() {
                 </div>
 
                 <p className="mt-2 text-[12px] text-[#6b7280]">
-                  {loading ? "📍 리뷰 데이터 불러오는 중..." : "📍 리뷰/저장수 변화 조회중"}
+                  {loading
+                    ? "📍 리뷰 데이터 불러오는 중..."
+                    : "📍 리뷰/저장수 변화 조회중"}
                 </p>
               </div>
 
@@ -365,7 +425,9 @@ export default function PlaceReviewPage() {
           <div className="mt-5 space-y-4">
             {loading ? (
               <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
-                <p className="text-[18px] font-bold text-[#111827]">불러오는 중...</p>
+                <p className="text-[18px] font-bold text-[#111827]">
+                  불러오는 중...
+                </p>
                 <p className="mt-2 text-[14px] text-[#9ca3af]">
                   등록된 리뷰 추적 매장을 확인하고 있습니다.
                 </p>
@@ -498,21 +560,31 @@ export default function PlaceReviewPage() {
 
                         <button
                           type="button"
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                          onClick={() => handleUpdateStore(store.id)}
+                          disabled={updatingStoreId === store.id}
+                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb] disabled:opacity-60"
                         >
-                          리뷰변화보기
+                          {updatingStoreId === store.id ? "업데이트 중..." : "업데이트"}
                         </button>
 
                         <button
                           type="button"
-                          onClick={() => handleToggleAutoTracking(store.id)}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition ${
+                          onClick={() =>
+                            handleToggleAutoTracking(
+                              store.id,
+                              !store.isAutoTracking
+                            )
+                          }
+                          disabled={trackingStoreId === store.id}
+                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition disabled:opacity-60 ${
                             store.isAutoTracking
                               ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
                               : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
                           }`}
                         >
-                          자동추적 {store.isAutoTracking ? "ON" : "OFF"}
+                          {trackingStoreId === store.id
+                            ? "변경 중..."
+                            : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
                         </button>
 
                         <button
