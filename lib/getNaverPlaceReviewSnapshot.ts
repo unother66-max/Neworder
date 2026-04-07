@@ -3,6 +3,7 @@ type ReviewSnapshot = {
   visitorReviewCount: number | null;
   blogReviewCount: number | null;
   saveCountText: string | null;
+  keywordList: string[]; // ✅ 추가
 };
 
 type GetReviewSnapshotInput = {
@@ -422,15 +423,29 @@ export async function getNaverPlaceReviewSnapshot(
     const publicPlaceId = extractPublicPlaceId(placeUrl);
 
     if (!publicPlaceId) {
-      return {
-        totalReviewCount: null,
-        visitorReviewCount: null,
-        blogReviewCount: null,
-        saveCountText: null,
-      };
-    }
+  return {
+    totalReviewCount: null,
+    visitorReviewCount: null,
+    blogReviewCount: null,
+    saveCountText: null,
+    keywordList: [],
+  };
+}
 
     const urls = buildReviewUrls(publicPlaceId);
+
+    // ✅ 키워드 가져오기 (information 페이지)
+const infoUrl = `https://pcmap.place.naver.com/restaurant/${publicPlaceId}/information`;
+
+const infoHtml = await fetchHtml(infoUrl);
+
+const keywordMatch = infoHtml.match(/"keywordList":\[(.*?)\]/);
+
+const keywordList = keywordMatch
+  ? keywordMatch[1]
+      .split(",")
+      .map((k) => k.replace(/"/g, "").trim())
+  : [];
 
     const [homeHtml, visitorHtml, pcHtml] = await Promise.all([
       fetchHtml(urls.mobileHomeUrl),
@@ -499,19 +514,22 @@ export async function getNaverPlaceReviewSnapshot(
     });
 
     return {
-      totalReviewCount,
-      visitorReviewCount,
-      blogReviewCount,
-      saveCountText: saveCount !== null ? String(saveCount) : null,
-    };
-  } catch (error) {
-    console.error("[getNaverPlaceReviewSnapshot error]", error);
+  totalReviewCount,
+  visitorReviewCount,
+  blogReviewCount,
+  saveCountText: saveCount !== null ? String(saveCount) : null,
+  keywordList,
+};
 
-    return {
-      totalReviewCount: null,
-      visitorReviewCount: null,
-      blogReviewCount: null,
-      saveCountText: null,
-    };
-  }
+    } catch (error) {
+  console.error("[getNaverPlaceReviewSnapshot error]", error);
+
+  return {
+    totalReviewCount: null,
+    visitorReviewCount: null,
+    blogReviewCount: null,
+    saveCountText: null,
+    keywordList: [],
+  };
+}
 }

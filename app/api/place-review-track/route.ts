@@ -84,8 +84,11 @@ export async function POST(req: Request) {
 
     const latest = place.reviewHistory[0];
 
+    // 🔥 핵심 수정 (여기)
     const keywords =
-      latest?.keywords && latest.keywords.length > 0
+      snapshot.keywordList && snapshot.keywordList.length > 0
+        ? snapshot.keywordList
+        : latest?.keywords && latest.keywords.length > 0
         ? latest.keywords
         : ["맛집", "분위기", "데이트", "가성비", "친절"];
 
@@ -98,9 +101,10 @@ export async function POST(req: Request) {
       visitorReviewCount,
       blogReviewCount,
       saveCount,
+      keywords,
     });
 
-    // 🔥 핵심: 하루 1개 (중복 제거)
+    // 🔥 하루 1개 (중복 제거)
     const data = await prisma.placeReviewHistory.upsert({
       where: {
         placeId_trackedDate: {
@@ -135,6 +139,7 @@ export async function POST(req: Request) {
         visitorReviewCount,
         blogReviewCount,
         saveCount,
+        keywords,
       },
     });
   } catch (error) {
