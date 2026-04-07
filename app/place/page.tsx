@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
+import { Pin } from "lucide-react";
 
 type KeywordItem = {
   keyword: string;
@@ -36,6 +37,7 @@ y?: string;
   placeMobileVolume?: number;
   placePcVolume?: number;
   jibunAddress?: string | null;
+  isPinned?: boolean;
 };
 
 type SearchPlaceItem = {
@@ -77,6 +79,7 @@ type PlaceItem = {
   imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
+  rankPinned?: boolean;
   keywords: PlaceKeywordItem[];
   rankHistory: {
     id: string;
@@ -426,6 +429,7 @@ function mapPlaceToStore(place: PlaceItem): Store {
     placePcVolume: (place as any).placePcVolume ?? 0,
 
     latestUpdatedAtText: (place as any).latestUpdatedAtText ?? null,
+    isPinned: !!place.rankPinned,
 
     keywords: (place.keywords || []).map((keyword) => {
       const keywordRankHistory = (place.rankHistory || []).filter(
@@ -1078,7 +1082,36 @@ const goToPlaceDetail = (filteredIndex: number) => {
       setDeletingStoreId(null);
     }
   };
+const handleTogglePin = async (store: Store) => {
+  if (!store.dbId) {
+    alert("placeId가 없습니다.");
+    return;
+  }
 
+  try {
+    const res = await fetch("/api/place-pin", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        placeId: store.dbId,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      alert(data?.message || "핀 변경 실패");
+      return;
+    }
+
+    await fetchPlaces();
+  } catch (error) {
+    console.error(error);
+    alert("핀 변경 중 오류가 발생했습니다.");
+  }
+};
 
 const handleToggleTrackingByStore = async (store: Store) => {
   if (!store.dbId) {
@@ -1347,6 +1380,28 @@ return (
                       </div>
 
                       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
+                        
+
+                        <button
+  type="button"
+  onClick={() => handleTogglePin(store)}
+  className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] transition ${
+  store.isPinned
+    ? "bg-white text-[#b91c1c]"
+    : "bg-white hover:bg-[#f9fafb]"
+}`}
+  aria-label="핀 고정"
+>
+  <Pin
+  className={`h-[20px] w-[20px] transition ${
+    store.isPinned
+      ? "fill-[#b91c1c] stroke-[#b91c1c]"
+      : "stroke-[#111827]"
+  }`}
+  strokeWidth={2}
+/>
+</button>
+                        
                         <button
                           onClick={() => goToPlaceDetail(index)}
                           className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"

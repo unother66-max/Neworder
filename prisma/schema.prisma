@@ -51,6 +51,8 @@ model Place {
   rankHistory   RankHistory[]
   reviewHistory PlaceReviewHistory[]
   reviewPinned Boolean @default(false)
+  rankPinned Boolean @default(false)
+  rankPinnedAt DateTime?
 
   @@index([userId])
 }

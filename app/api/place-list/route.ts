@@ -80,9 +80,10 @@ if (!userId) {
         type: "rank",
        
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: [
+  { rankPinned: "desc" },
+  { createdAt: "desc" },
+],
       include: {
         keywords: {
           orderBy: {
@@ -146,15 +147,17 @@ if (!userId) {
         }
 
         return {
-          ...place,
-          rankHistory: normalizedRankHistory,
-          jibunAddress: (place as any).jibunAddress ?? null,
-          latestUpdatedAt,
-          latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
-          placeMonthlyVolume,
-          placeMobileVolume,
-          placePcVolume,
-        };
+  ...place,
+  rankPinned: place.rankPinned,
+  rankPinnedAt: place.rankPinnedAt,
+  rankHistory: normalizedRankHistory,
+  jibunAddress: (place as any).jibunAddress ?? null,
+  latestUpdatedAt,
+  latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
+  placeMonthlyVolume,
+  placeMobileVolume,
+  placePcVolume,
+};
       })
     );
 

@@ -611,19 +611,21 @@ export default function PlaceReviewPage() {
                       <button
   type="button"
   onClick={() => handleTogglePin(store.id)}
-  className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] border transition ${
-    store.isPinned
-      ? "border-[#b91c1c] bg-[#fff5f5] text-[#b91c1c]"
-      : "border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
-  }`}
+  className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] transition ${
+  store.isPinned
+    ? "bg-white text-[#b91c1c]"
+    : "bg-white hover:bg-[#f9fafb]"
+}`}
   aria-label="핀 고정"
 >
   <Pin
-    className={`h-[16px] w-[16px] transition ${
-      store.isPinned ? "rotate-45" : ""
-    }`}
-    strokeWidth={2.2}
-  />
+  className={`h-[20px] w-[20px] transition ${
+    store.isPinned
+      ? "fill-[#b91c1c] stroke-[#b91c1c]"
+      : "stroke-[#111827]"
+  }`}
+  strokeWidth={2}
+/>
 </button>
                         <button
                           type="button"
