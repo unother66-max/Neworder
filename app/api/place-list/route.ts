@@ -117,34 +117,21 @@ if (!userId) {
           )[0]?.updatedAt ?? null;
 
         let placeMonthlyVolume = 0;
-        let placeMobileVolume = 0;
-        let placePcVolume = 0;
+let placeMobileVolume = 0;
+let placePcVolume = 0;
 
-        // 상세페이지와 최대한 맞추기 위해
-        // 첫 번째 키워드 검색량을 우선 사용
-        const firstKeyword = place.keywords?.[0];
-
-        if (firstKeyword) {
-          placeMonthlyVolume =
-            firstKeyword.totalVolume ??
-            (firstKeyword.mobileVolume ?? 0) + (firstKeyword.pcVolume ?? 0);
-
-          placeMobileVolume = firstKeyword.mobileVolume ?? 0;
-          placePcVolume = firstKeyword.pcVolume ?? 0;
-        } else {
-          // 키워드가 없을 때만 매장명 검색량 fallback
-          try {
-            const placeSearchVolume = await getKeywordSearchVolume(place.name);
-            placeMonthlyVolume = placeSearchVolume.total ?? 0;
-            placeMobileVolume = placeSearchVolume.mobile ?? 0;
-            placePcVolume = placeSearchVolume.pc ?? 0;
-          } catch (volumeError) {
-            console.error(
-              `[place-list] 매장명 검색량 조회 실패: ${place.name}`,
-              volumeError
-            );
-          }
-        }
+try {
+  const placeSearchVolume = await getKeywordSearchVolume(place.name);
+  placeMonthlyVolume = placeSearchVolume.total ?? 0;
+  placeMobileVolume = placeSearchVolume.mobile ?? 0;
+  placePcVolume = placeSearchVolume.pc ?? 0;
+} catch (volumeError) {
+  console.error(
+    `[place-list] 매장명 검색량 조회 실패: ${place.name}`,
+    volumeError
+  );
+}
+        
 
         return {
   ...place,
