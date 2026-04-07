@@ -5,6 +5,21 @@ import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// 👉 한국 날짜 기준 YYYY-MM-DD
+function getKstDateString() {
+  const now = new Date();
+
+  const kst = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Seoul" })
+  );
+
+  const yyyy = kst.getFullYear();
+  const mm = String(kst.getMonth() + 1).padStart(2, "0");
+  const dd = String(kst.getDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -41,37 +56,12 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("[review-track place.id]", place.id);
-    console.log("[review-track place.name]", place.name);
-    console.log("[review-track place.placeUrl]", place.placeUrl);
-
-    const latest = place.reviewHistory[0];
-   const snapshot = await getNaverPlaceReviewSnapshot({
-  placeUrl: String(place.placeUrl || ""),
-  placeName: String(place.name || ""),
-  x: place.x ? String(place.x) : "",
-  y: place.y ? String(place.y) : "",
-});
-
-    console.log("[review-track snapshot]", snapshot);
-    console.log("[review-track input]", {
-  placeUrl: String(place.placeUrl || ""),
-  placeName: String(place.name || ""),
-  x: place.x ? String(place.x) : "",
-  y: place.y ? String(place.y) : "",
-});
-
-    const visitorReviewCount =
-      snapshot.visitorReviewCount ?? latest?.visitorReviewCount ?? 0;
-
-    const blogReviewCount =
-      snapshot.blogReviewCount ?? latest?.blogReviewCount ?? 0;
-
-    const totalReviewCount =
-      visitorReviewCount + blogReviewCount;
-
-    const saveCount =
-      snapshot.saveCountText ?? latest?.saveCount ?? "0";
+    const snapshot = await getNaverPlaceReviewSnapshot({
+      placeUrl: String(place.placeUrl || ""),
+      placeName: String(place.name || ""),
+      x: place.x ? String(place.x) : "",
+      y: place.y ? String(place.y) : "",
+    });
 
     if (
       snapshot.visitorReviewCount === null &&
@@ -81,20 +71,53 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          message: `리뷰 파싱 실패: ${place.name} / ${place.placeUrl}`,
+          message: `리뷰 파싱 실패: ${place.name}`,
         },
         { status: 422 }
       );
     }
+
+    const visitorReviewCount = snapshot.visitorReviewCount ?? 0;
+    const blogReviewCount = snapshot.blogReviewCount ?? 0;
+    const totalReviewCount = visitorReviewCount + blogReviewCount;
+    const saveCount = snapshot.saveCountText ?? "0";
+
+    const latest = place.reviewHistory[0];
 
     const keywords =
       latest?.keywords && latest.keywords.length > 0
         ? latest.keywords
         : ["맛집", "분위기", "데이트", "가성비", "친절"];
 
-    const data = await prisma.placeReviewHistory.create({
-      data: {
+    const trackedDate = getKstDateString();
+
+    console.log("[review upsert]", {
+      placeId,
+      trackedDate,
+      totalReviewCount,
+      visitorReviewCount,
+      blogReviewCount,
+      saveCount,
+    });
+
+    // 🔥 핵심: 하루 1개 (중복 제거)
+    const data = await prisma.placeReviewHistory.upsert({
+      where: {
+        placeId_trackedDate: {
+          placeId,
+          trackedDate,
+        },
+      },
+      update: {
+        totalReviewCount,
+        visitorReviewCount,
+        blogReviewCount,
+        saveCount,
+        keywords,
+      },
+      create: {
         placeId,
+        trackedDate,
         totalReviewCount,
         visitorReviewCount,
         blogReviewCount,
@@ -106,6 +129,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       data,
+      date: trackedDate,
       parsed: {
         totalReviewCount,
         visitorReviewCount,

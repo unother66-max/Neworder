@@ -77,16 +77,20 @@ export async function GET(req: Request) {
 
         const keywords = ["맛집", "분위기", "데이트", "가성비", "친절"];
 
-        await prisma.placeReviewHistory.create({
-          data: {
-            placeId: place.id,
-            totalReviewCount,
-            visitorReviewCount,
-            blogReviewCount,
-            saveCount,
-            keywords,
-          },
-        });
+       const now = new Date();
+const trackedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+await prisma.placeReviewHistory.create({
+  data: {
+    placeId: place.id,
+    trackedDate,
+    totalReviewCount,
+    visitorReviewCount,
+    blogReviewCount,
+    saveCount,
+    keywords,
+  },
+});
 
         results.push({
           placeId: place.id,

@@ -83,14 +83,18 @@ model RankHistory {
 model PlaceReviewHistory {
   id                 String   @id @default(cuid())
   placeId            String
+  trackedDate        String
   totalReviewCount   Int
   visitorReviewCount Int
   blogReviewCount    Int
   saveCount          String
   keywords           String[]
   createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   place              Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
+  @@unique([placeId, trackedDate])
   @@index([placeId])
+  @@index([trackedDate])
 }

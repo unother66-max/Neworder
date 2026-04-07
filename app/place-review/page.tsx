@@ -23,6 +23,7 @@ type ReviewHistoryRow = {
   blogReviewCount: number;
   blogReviewDiff?: number | null;
   saveCount: string;
+  saveCountDiff?: number | null; // ✅ 추가
   keywords: string[];
 };
 
@@ -142,21 +143,28 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
   );
 
   const history: ReviewHistoryRow[] = sortedHistory.map((row, index) => {
-    const prev = sortedHistory[index + 1];
+  const prev = sortedHistory[index + 1];
 
-    return {
-      id: row.id,
-      dateLabel: formatDateLabel(row.createdAt),
-      totalReviewCount: row.totalReviewCount,
-      totalReviewDiff: prev ? row.totalReviewCount - prev.totalReviewCount : null,
-      visitorReviewCount: row.visitorReviewCount,
-      visitorReviewDiff: prev ? row.visitorReviewCount - prev.visitorReviewCount : null,
-      blogReviewCount: row.blogReviewCount,
-      blogReviewDiff: prev ? row.blogReviewCount - prev.blogReviewCount : null,
-      saveCount: row.saveCount,
-      keywords: row.keywords || [],
-    };
-  });
+  return {
+    id: row.id,
+    dateLabel: formatDateLabel(row.createdAt),
+    totalReviewCount: row.totalReviewCount,
+    totalReviewDiff: prev ? row.totalReviewCount - prev.totalReviewCount : null,
+    visitorReviewCount: row.visitorReviewCount,
+    visitorReviewDiff: prev ? row.visitorReviewCount - prev.visitorReviewCount : null,
+    blogReviewCount: row.blogReviewCount,
+    blogReviewDiff: prev ? row.blogReviewCount - prev.blogReviewCount : null,
+
+    saveCount: row.saveCount,
+
+    // ✅ 핵심 (문자 → 숫자 변환 후 계산)
+    saveCountDiff: prev
+      ? Number(row.saveCount || 0) - Number(prev.saveCount || 0)
+      : null,
+
+    keywords: row.keywords || [],
+  };
+});
 
   const keywordList = place.keywords || [];
   const mobileVolume = keywordList.reduce(
@@ -662,6 +670,7 @@ export default function PlaceReviewPage() {
 
                                   <td className="px-4 py-4 text-[14px] font-semibold text-[#111827]">
                                     {row.saveCount}
+                                    <DiffText value={row.saveCountDiff} />
                                   </td>
 
                                   <td className="px-5 py-4 text-[14px] font-semibold leading-[1.5] text-[#374151]">
