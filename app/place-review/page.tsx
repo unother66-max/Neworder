@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import TopNav from "@/components/top-nav";
 import {
   Search,
@@ -23,7 +22,7 @@ type ReviewHistoryRow = {
   blogReviewCount: number;
   blogReviewDiff?: number | null;
   saveCount: string;
-  saveCountDiff?: number | null; // ✅ 추가
+  saveCountDiff?: number | null;
   keywords: string[];
 };
 
@@ -143,28 +142,26 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
   );
 
   const history: ReviewHistoryRow[] = sortedHistory.map((row, index) => {
-  const prev = sortedHistory[index + 1];
+    const prev = sortedHistory[index + 1];
 
-  return {
-    id: row.id,
-    dateLabel: formatDateLabel(row.createdAt),
-    totalReviewCount: row.totalReviewCount,
-    totalReviewDiff: prev ? row.totalReviewCount - prev.totalReviewCount : null,
-    visitorReviewCount: row.visitorReviewCount,
-    visitorReviewDiff: prev ? row.visitorReviewCount - prev.visitorReviewCount : null,
-    blogReviewCount: row.blogReviewCount,
-    blogReviewDiff: prev ? row.blogReviewCount - prev.blogReviewCount : null,
-
-    saveCount: row.saveCount,
-
-    // ✅ 핵심 (문자 → 숫자 변환 후 계산)
-    saveCountDiff: prev
-      ? Number(row.saveCount || 0) - Number(prev.saveCount || 0)
-      : null,
-
-    keywords: row.keywords || [],
-  };
-});
+    return {
+      id: row.id,
+      dateLabel: formatDateLabel(row.createdAt),
+      totalReviewCount: row.totalReviewCount,
+      totalReviewDiff: prev ? row.totalReviewCount - prev.totalReviewCount : null,
+      visitorReviewCount: row.visitorReviewCount,
+      visitorReviewDiff: prev
+        ? row.visitorReviewCount - prev.visitorReviewCount
+        : null,
+      blogReviewCount: row.blogReviewCount,
+      blogReviewDiff: prev ? row.blogReviewCount - prev.blogReviewCount : null,
+      saveCount: row.saveCount,
+      saveCountDiff: prev
+        ? Number(row.saveCount || 0) - Number(prev.saveCount || 0)
+        : null,
+      keywords: row.keywords || [],
+    };
+  });
 
   const keywordList = place.keywords || [];
   const mobileVolume = keywordList.reduce(
@@ -234,6 +231,7 @@ export default function PlaceReviewPage() {
   const [loading, setLoading] = useState(true);
   const [updatingStoreId, setUpdatingStoreId] = useState<string | null>(null);
   const [trackingStoreId, setTrackingStoreId] = useState<string | null>(null);
+  const [openRegister, setOpenRegister] = useState(false);
 
   async function fetchPlaces() {
     try {
@@ -256,6 +254,20 @@ export default function PlaceReviewPage() {
 
   useEffect(() => {
     fetchPlaces();
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === "PLACE_REVIEW_REGISTERED") {
+        setOpenRegister(false);
+        fetchPlaces();
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   const filteredStores = useMemo(() => {
@@ -338,6 +350,33 @@ export default function PlaceReviewPage() {
     }
   }
 
+  async function handleDeleteStore(storeId: string, storeName: string) {
+    const ok = window.confirm(`[${storeName}] 매장을 삭제할까요?`);
+    if (!ok) return;
+
+    try {
+      const res = await fetch("/api/place-review-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ placeId: storeId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        alert(data?.error || data?.message || "리뷰 매장 삭제 실패");
+        return;
+      }
+
+      await fetchPlaces();
+    } catch (error) {
+      console.error("place-review-delete error:", error);
+      alert("삭제 중 오류가 발생했습니다.");
+    }
+  }
+
   const handleTogglePin = (storeId: string) => {
     setStores((prev) =>
       prev.map((store) =>
@@ -390,12 +429,12 @@ export default function PlaceReviewPage() {
                   />
                 </div>
 
-                <Link
-                  href="/place"
+                <button
+                  onClick={() => setOpenRegister(true)}
                   className="inline-flex h-[44px] min-w-[108px] items-center justify-center rounded-[14px] bg-[#b91c1c] px-4 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
                 >
                   매장 등록
-                </Link>
+                </button>
               </div>
             </div>
 
@@ -597,6 +636,14 @@ export default function PlaceReviewPage() {
 
                         <button
                           type="button"
+                          onClick={() => handleDeleteStore(store.id, store.name)}
+                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                        >
+                          삭제
+                        </button>
+
+                        <button
+                          type="button"
                           className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] border border-transparent bg-transparent text-[#111827] transition hover:bg-[#f3f4f6]"
                           aria-label="더보기"
                         >
@@ -699,6 +746,22 @@ export default function PlaceReviewPage() {
           </div>
         </section>
       </main>
+
+      {openRegister && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-[720px] rounded-[20px] bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-[18px] font-black">리뷰 매장 등록</h2>
+              <button onClick={() => setOpenRegister(false)}>✕</button>
+            </div>
+
+            <iframe
+              src="/place-review-register?modal=1"
+              className="w-full h-[600px] border-none"
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -2,6 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request) {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
@@ -24,25 +27,26 @@ export async function POST(req: Request) {
       );
     }
 
-    await prisma.place.deleteMany({
+    const deleted = await prisma.place.deleteMany({
       where: {
         id: placeId,
         userId,
-        type: "rank",
+        type: "review",
       },
     });
 
     return Response.json({
       ok: true,
-      message: "매장이 삭제되었습니다.",
+      deletedCount: deleted.count,
+      message: "리뷰 매장이 삭제되었습니다.",
     });
   } catch (error) {
-    console.error("place-delete error:", error);
+    console.error("place-review-delete error:", error);
 
     return Response.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "매장 삭제 실패",
+        error: error instanceof Error ? error.message : "리뷰 매장 삭제 실패",
       },
       { status: 500 }
     );

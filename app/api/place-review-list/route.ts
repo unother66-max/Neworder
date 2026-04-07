@@ -24,7 +24,6 @@ function parseSaveCount(value: string) {
 
 export async function GET() {
   try {
-    // ✅ userId 가져오기
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
 
@@ -38,7 +37,7 @@ export async function GET() {
     const places = await prisma.place.findMany({
       where: {
         userId,
-      
+        type: "review",
       },
       orderBy: { createdAt: "desc" },
       include: {

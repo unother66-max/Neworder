@@ -77,6 +77,7 @@ if (!userId) {
     const places = await prisma.place.findMany({
       where: {
         userId,
+        type: "rank",
        
       },
       orderBy: {
