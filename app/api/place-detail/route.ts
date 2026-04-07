@@ -1,6 +1,29 @@
 import { prisma } from "@/lib/prisma";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type RankHistoryItem = {
+  id: string;
+  placeId: string;
+  keyword: string;
+  rank: number;
+  createdAt: Date;
+};
+
+type PlaceKeywordItem = {
+  id: string;
+  placeId: string;
+  keyword: string;
+  mobileVolume: number | null;
+  pcVolume: number | null;
+  totalVolume: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  isTracking: boolean;
+};
+
 function toNumber(value: unknown) {
   if (typeof value === "number") return value;
 
@@ -13,28 +36,24 @@ function toNumber(value: unknown) {
   return 0;
 }
 
-
-
 function formatUpdatedAt(value: unknown) {
   if (!value) return null;
 
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return null;
 
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mi = String(date.getMinutes()).padStart(2, "0");
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
 }
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-
     const placeId = searchParams.get("placeId") || searchParams.get("id");
 
     if (!placeId) {
@@ -69,52 +88,43 @@ export async function GET(req: Request) {
       );
     }
 
-    const normalizedKeywords = place.keywords.map((item) => {
-  const keywordItem = item as any;
+    const rankHistory = (place.rankHistory || []) as RankHistoryItem[];
+    const keywords = (place.keywords || []) as PlaceKeywordItem[];
 
-  const mobileVolume = toNumber(
-    keywordItem.mobileVolume ?? keywordItem.mobile ?? 0
-  );
+    const normalizedKeywords = keywords.map((item: PlaceKeywordItem) => {
+      const mobileVolume = toNumber(item.mobileVolume ?? 0);
+      const pcVolume = toNumber(item.pcVolume ?? 0);
+      const totalVolume = toNumber(item.totalVolume) || mobileVolume + pcVolume;
 
-  const pcVolume = toNumber(
-    keywordItem.pcVolume ?? keywordItem.pc ?? 0
-  );
+      const updatedAtRaw = item.updatedAt ?? item.createdAt ?? null;
 
-  const totalVolume =
-    toNumber(keywordItem.totalVolume) || mobileVolume + pcVolume;
+      const histories = rankHistory
+        .filter((history: RankHistoryItem) => history.keyword === item.keyword)
+        .sort(
+          (a: RankHistoryItem, b: RankHistoryItem) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
 
-  const updatedAtRaw =
-    keywordItem.updatedAt ??
-    keywordItem.checkedAt ??
-    keywordItem.lastCheckedAt ??
-    keywordItem.createdAt ??
-    null;
+      return {
+        ...item,
+        mobileVolume,
+        pcVolume,
+        totalVolume,
+        monthlyVolume: totalVolume,
+        updatedAt: updatedAtRaw,
+        updatedAtText: formatUpdatedAt(updatedAtRaw),
+        histories,
+      };
+    });
 
-  const histories = (place.rankHistory || [])
-    .filter((history) => history.keyword === item.keyword)
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-
-  return {
-    ...item,
-    mobileVolume,
-    pcVolume,
-    totalVolume,
-    monthlyVolume: totalVolume,
-    updatedAt: updatedAtRaw,
-    updatedAtText: formatUpdatedAt(updatedAtRaw),
-    histories, // ✅ 이거 추가
-  };
-});
-
-    const latestUpdatedAtRaw = normalizedKeywords
-      .map((item) => item.updatedAt)
-      .filter(Boolean)
-      .sort((a, b) => {
-        return new Date(String(b)).getTime() - new Date(String(a)).getTime();
-      })[0] ?? null;
+    const latestUpdatedAtRaw =
+      normalizedKeywords
+        .map((item) => item.updatedAt)
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            new Date(String(b)).getTime() - new Date(String(a)).getTime()
+        )[0] ?? null;
 
     const latestUpdatedAtText = formatUpdatedAt(latestUpdatedAtRaw);
 

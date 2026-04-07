@@ -31,22 +31,26 @@ model Record {
 }
 
 model Place {
-  id          String         @id @default(cuid())
-  userId      String
-  name        String
-  category    String?
-  address     String?
-  placeUrl    String?
-  imageUrl    String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  x           String?
-  y           String?
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  keywords    PlaceKeyword[]
-  rankHistory RankHistory[]
-  jibunAddress String?
-  
+  id                 String               @id @default(cuid())
+  userId             String
+  name               String
+  category           String?
+  address            String?
+  jibunAddress       String?
+  x                  String?
+  y                  String?
+  placeUrl           String?
+  imageUrl           String?
+  reviewAutoTracking Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keywords      PlaceKeyword[]
+  rankHistory   RankHistory[]
+  reviewHistory PlaceReviewHistory[]
+
+  @@index([userId])
 }
 
 model PlaceKeyword {
@@ -62,6 +66,7 @@ model PlaceKeyword {
   place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@unique([placeId, keyword])
+  @@index([placeId])
 }
 
 model RankHistory {
@@ -71,4 +76,21 @@ model RankHistory {
   rank      Int
   createdAt DateTime @default(now())
   place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
+}
+
+model PlaceReviewHistory {
+  id                 String   @id @default(cuid())
+  placeId            String
+  totalReviewCount   Int
+  visitorReviewCount Int
+  blogReviewCount    Int
+  saveCount          String
+  keywords           String[]
+  createdAt          DateTime @default(now())
+
+  place              Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
 }
