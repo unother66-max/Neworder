@@ -46,9 +46,20 @@ export async function POST(req: Request) {
     console.log("[review-track place.placeUrl]", place.placeUrl);
 
     const latest = place.reviewHistory[0];
-    const snapshot = await getNaverPlaceReviewSnapshot(place.placeUrl);
+   const snapshot = await getNaverPlaceReviewSnapshot({
+  placeUrl: String(place.placeUrl || ""),
+  placeName: String(place.name || ""),
+  x: place.x ? String(place.x) : "",
+  y: place.y ? String(place.y) : "",
+});
 
     console.log("[review-track snapshot]", snapshot);
+    console.log("[review-track input]", {
+  placeUrl: String(place.placeUrl || ""),
+  placeName: String(place.name || ""),
+  x: place.x ? String(place.x) : "",
+  y: place.y ? String(place.y) : "",
+});
 
     const visitorReviewCount =
       snapshot.visitorReviewCount ?? latest?.visitorReviewCount ?? 0;
