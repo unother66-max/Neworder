@@ -11,22 +11,20 @@ type TopNavProps = {
   active?: NavKey;
 };
 
-const menuItems: Array<{
-  label: string;
-  href: string;
-  key?: NavKey;
-}> = [
-  { label: "스마트스토어", href: "/" },
+const NAVER_BLOG_MENU: Array<{ label: string; href: string; key: NavKey }> = [
   { label: "상위 블로그 찾기", href: "/top-blog", key: "blog" },
+];
+
+const NAVER_MAP_MENU: Array<{ label: string; href: string; key: NavKey }> = [
   { label: "플레이스 순위 추적", href: "/place", key: "place" },
   { label: "플레이스 리뷰 추적", href: "/place-review", key: "place-review" },
   { label: "플레이스 순위 분석", href: "/place-analysis", key: "place-analysis" },
-  { label: "서비스 소개", href: "/" },
-  { label: "공지사항", href: "/" },
 ];
 
 export default function TopNav({ active }: TopNavProps) {
   const [open, setOpen] = useState(false);
+  const [naverMapOpen, setNaverMapOpen] = useState(false);
+  const [naverBlogOpen, setNaverBlogOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
 
@@ -34,15 +32,44 @@ export default function TopNav({ active }: TopNavProps) {
     setMounted(true);
   }, []);
 
-  const getClassName = (key?: NavKey) =>
-    key && active === key
-      ? "whitespace-nowrap text-[14px] font-extrabold text-[#7c3aed]"
-      : "whitespace-nowrap text-[14px] font-semibold text-[#111827]";
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest?.('[data-naver-map-menu="root"]')) return;
+      if (target.closest?.('[data-naver-blog-menu="root"]')) return;
+      setNaverMapOpen(false);
+      setNaverBlogOpen(false);
+    };
+
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, []);
+
+  const getClassName = (key?: NavKey) => {
+    const base =
+      "whitespace-nowrap text-[15px] font-extrabold leading-[1.1] text-[#111827] transition";
+    const inactive = "hover:font-black";
+    const activeClass = "font-black";
+
+    return `${base} ${key && active === key ? activeClass : inactive}`;
+  };
 
   const getMobileClassName = (key?: NavKey) =>
     key && active === key
-      ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[15px] font-bold text-[#7c3aed]"
-      : "block rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]";
+      ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[16px] font-black text-[#7c3aed]"
+      : "block rounded-[12px] px-4 py-3 text-[16px] font-extrabold text-[#111827] hover:bg-[#f7f7fb] hover:font-black";
+
+  const isNaverMapActive =
+    active === "place" || active === "place-review" || active === "place-analysis";
+
+  const isNaverBlogActive = active === "blog";
+
+  const getBreadcrumbCategoryLabel = () => {
+    if (isNaverBlogActive) return "네이버 블로그";
+    if (isNaverMapActive) return "네이버지도";
+    return "네이버지도";
+  };
 
   const getBreadcrumbLabel = () => {
     if (active === "place") return "플레이스 순위 추적";
@@ -75,11 +102,11 @@ export default function TopNav({ active }: TopNavProps) {
 
     return (
       <Link
-        href="/login"
-        className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[13px] font-bold text-white"
-      >
-        로그인/가입
-      </Link>
+  href="/login"
+  className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-[#e11d2e] px-5 text-[13px] font-bold text-white transition hover:bg-[#c81624]"
+>
+  로그인/가입
+</Link>
     );
   };
 
@@ -111,24 +138,111 @@ export default function TopNav({ active }: TopNavProps) {
               스마트스토어
             </Link>
 
-            <Link href="/top-blog" className={getClassName("blog")}>
-              상위 블로그 찾기
-            </Link>
-
-            <Link href="/place" className={getClassName("place")}>
-              플레이스 순위 추적
-            </Link>
-
-            <Link href="/place-review" className={getClassName("place-review")}>
-              플레이스 리뷰 추적
-            </Link>
-
-            <Link
-              href="/place-analysis"
-              className={getClassName("place-analysis")}
+            <div
+              className="relative"
+              data-naver-blog-menu="root"
+              onMouseEnter={() => setNaverBlogOpen(true)}
+              onMouseLeave={() => setNaverBlogOpen(false)}
             >
-              플레이스 순위 분석
-            </Link>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNaverBlogOpen((prev) => !prev);
+                }}
+                className="inline-flex items-center gap-1 align-middle"
+                aria-haspopup="menu"
+                aria-expanded={naverBlogOpen}
+              >
+                <span
+                  className={
+                    isNaverBlogActive
+                      ? "whitespace-nowrap text-[14px] font-extrabold leading-[1.1] text-[#7c3aed]"
+                      : getClassName("blog")
+                  }
+                >
+                  네이버 블로그
+                </span>
+                <span className="text-[11px] font-black leading-none text-[#6b7280] translate-y-[-1px]">
+                  {naverBlogOpen ? "▴" : "▾"}
+                </span>
+              </button>
+
+              {naverBlogOpen && (
+                <div
+                  role="menu"
+                  className="absolute left-0 top-[40px] w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+                >
+                  <div className="pb-2">
+                    {NAVER_BLOG_MENU.map((item) => (
+                      <Link
+                        key={`${item.key}-${item.href}`}
+                        href={item.href}
+                        className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(
+                          item.key
+                        )}`}
+                        onClick={() => setNaverBlogOpen(false)}
+                        role="menuitem"
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div
+              className="relative"
+              data-naver-map-menu="root"
+              onMouseEnter={() => setNaverMapOpen(true)}
+              onMouseLeave={() => setNaverMapOpen(false)}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNaverMapOpen((prev) => !prev);
+                }}
+                className="inline-flex items-center gap-1 align-middle"
+                aria-haspopup="menu"
+                aria-expanded={naverMapOpen}
+              >
+                <span
+                  className={
+                    isNaverMapActive
+                      ? "whitespace-nowrap text-[14px] font-extrabold leading-[1.1] text-[#7c3aed]"
+                      : getClassName("blog")
+                  }
+                >
+                  네이버 지도
+                </span>
+                <span className="text-[11px] font-black leading-none text-[#6b7280] translate-y-[-1px]">
+                  {naverMapOpen ? "▴" : "▾"}
+                </span>
+              </button>
+
+              {naverMapOpen && (
+                <div
+                  role="menu"
+                  className="absolute left-0 top-[40px] w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+                >
+                  <div className="pb-2">
+                    {NAVER_MAP_MENU.map((item) => (
+                      <Link
+                        key={`${item.key}-${item.href}`}
+                        href={item.href}
+                        className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(item.key)}`}
+                        onClick={() => setNaverMapOpen(false)}
+                        role="menuitem"
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <Link href="/" className={getClassName()}>
               서비스 소개
@@ -155,7 +269,14 @@ export default function TopNav({ active }: TopNavProps) {
 
       <div className="border-b border-[#e8ebf2] bg-white/80">
         <div className="mx-auto max-w-[1280px] px-4 py-3 text-[13px] text-[#6b7280] md:px-6">
-          {"홈 > 네이버지도"}
+          <Link
+            href="/"
+            className="font-semibold text-[#111827] transition hover:underline"
+          >
+            홈
+          </Link>
+          {" > "}
+          {getBreadcrumbCategoryLabel()}
           {getBreadcrumbLabel() && (
             <>
               {" > "}
@@ -204,16 +325,93 @@ export default function TopNav({ active }: TopNavProps) {
           </div>
 
           <nav className="space-y-2">
-            {menuItems.map((item) => (
-              <Link
-                key={`${item.label}-${item.href}`}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className={getMobileClassName(item.key)}
-              >
-                {item.label}
-              </Link>
-            ))}
+            <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              className={getMobileClassName()}
+            >
+              스마트스토어
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setNaverBlogOpen((prev) => !prev)}
+              className={
+                isNaverBlogActive
+                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-left text-[15px] font-extrabold text-[#7c3aed]"
+                  : "flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              }
+              aria-expanded={naverBlogOpen}
+            >
+              <span>네이버 블로그</span>
+              <span className="text-[14px]">{naverBlogOpen ? "▴" : "▾"}</span>
+            </button>
+
+            {naverBlogOpen && (
+              <div className="space-y-1 pl-2">
+                {NAVER_BLOG_MENU.map((item) => (
+                  <Link
+                    key={`${item.key}-${item.href}-mobile`}
+                    href={item.href}
+                    onClick={() => {
+                      setOpen(false);
+                      setNaverBlogOpen(false);
+                    }}
+                    className={getMobileClassName(item.key)}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setNaverMapOpen((prev) => !prev)}
+              className={
+                isNaverMapActive
+                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-left text-[15px] font-extrabold text-[#7c3aed]"
+                  : "flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              }
+              aria-expanded={naverMapOpen}
+            >
+              <span>네이버 지도</span>
+              <span className="text-[14px]">{naverMapOpen ? "▴" : "▾"}</span>
+            </button>
+
+            {naverMapOpen && (
+              <div className="space-y-1 pl-2">
+                {NAVER_MAP_MENU.map((item) => (
+                  <Link
+                    key={`${item.key}-${item.href}-mobile`}
+                    href={item.href}
+                    onClick={() => {
+                      setOpen(false);
+                      setNaverMapOpen(false);
+                    }}
+                    className={getMobileClassName(item.key)}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              className={getMobileClassName()}
+            >
+              서비스 소개
+            </Link>
+
+            <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              className={getMobileClassName()}
+            >
+              공지사항
+            </Link>
           </nav>
 
           <div className="mt-6 rounded-[14px] bg-[#f6f7fb] px-4 py-4">
