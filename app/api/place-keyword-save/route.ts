@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const MAX_KEYWORDS_PER_STORE = 10;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -16,6 +18,30 @@ export async function POST(req: Request) {
     if (!placeId || !keyword) {
       return NextResponse.json(
         { error: "placeId와 keyword는 필수입니다." },
+        { status: 400 }
+      );
+    }
+
+    // 🔥 기존 키워드 개수 체크
+    const existingCount = await prisma.placeKeyword.count({
+      where: { placeId },
+    });
+
+    const exists = await prisma.placeKeyword.findUnique({
+      where: {
+        placeId_keyword: {
+          placeId,
+          keyword,
+        },
+      },
+    });
+
+    // 🔥 이미 있는 키워드는 허용 (업데이트니까)
+    if (!exists && existingCount >= MAX_KEYWORDS_PER_STORE) {
+      return NextResponse.json(
+        {
+          error: `키워드는 매장당 최대 ${MAX_KEYWORDS_PER_STORE}개까지 등록할 수 있습니다.`,
+        },
         { status: 400 }
       );
     }
