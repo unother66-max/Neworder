@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import TopNav from "@/components/top-nav";
 
 type RelatedKeywordItem = {
@@ -15,12 +15,20 @@ type RankPlaceItem = {
   placeId?: string;
   name: string;
   category?: string;
+  address?: string;
+  imageUrl?: string;
   review?: {
     total?: number;
     visitor?: number;
     blog?: number;
     save?: string | number;
   };
+};
+
+type SavedPlaceItem = {
+  id: string;
+  name: string;
+  placeUrl?: string | null;
 };
 
 function formatCount(value?: string | number | null) {
@@ -40,13 +48,66 @@ function formatCount(value?: string | number | null) {
   return Number(onlyNumber).toLocaleString("ko-KR");
 }
 
+function extractPublicPlaceId(placeUrl?: string | null) {
+  if (!placeUrl) return "";
+
+  const matched =
+    placeUrl.match(/restaurant\/(\d+)/) ||
+    placeUrl.match(/place\/(\d+)/) ||
+    placeUrl.match(/placeId=(\d+)/) ||
+    placeUrl.match(/entry\/place\/(\d+)/);
+
+  return matched?.[1] ?? "";
+}
+
+function buildMobilePlaceLink(placeId?: string) {
+  if (!placeId) return "";
+  return `https://m.place.naver.com/restaurant/${placeId}/home`;
+}
+
 export default function PlaceAnalysisPage() {
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [searchedKeyword, setSearchedKeyword] = useState("");
-  const [relatedKeywords, setRelatedKeywords] = useState<RelatedKeywordItem[]>([]);
+  const [relatedKeywords, setRelatedKeywords] = useState<RelatedKeywordItem[]>(
+    []
+  );
   const [list, setList] = useState<RankPlaceItem[]>([]);
   const [error, setError] = useState("");
+
+  const [savedPlaceIds, setSavedPlaceIds] = useState<Set<string>>(new Set());
+  const [registeringKey, setRegisteringKey] = useState<string | null>(null);
+
+  const loadSavedPlaces = async () => {
+    try {
+      const res = await fetch("/api/place-list", {
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const places: SavedPlaceItem[] = Array.isArray(data?.places)
+        ? data.places
+        : [];
+
+      const nextSet = new Set<string>();
+
+      for (const place of places) {
+        const publicPlaceId = extractPublicPlaceId(place.placeUrl);
+        if (publicPlaceId) nextSet.add(publicPlaceId);
+      }
+
+      setSavedPlaceIds(nextSet);
+    } catch (e) {
+      console.error("saved places load error:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadSavedPlaces();
+  }, []);
 
   const handleAnalyze = async () => {
     const trimmed = keyword.trim();
@@ -90,9 +151,90 @@ export default function PlaceAnalysisPage() {
     }
   };
 
+  const handleRegisterPlace = async (
+    item: RankPlaceItem,
+    mode: "review" | "rank"
+  ) => {
+    const placeId = String(item.placeId || "").trim();
+    const key = `${mode}-${placeId || item.name}`;
+
+    if (!placeId) {
+      alert("placeId가 없어 등록할 수 없습니다.");
+      return;
+    }
+
+    if (savedPlaceIds.has(placeId)) {
+      alert("이미 등록된 매장입니다.");
+      return;
+    }
+
+    try {
+      setRegisteringKey(key);
+
+      const saveRes = await fetch("/api/place-save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: item.name,
+          category: item.category || "",
+          address: item.address || "",
+          jibunAddress: item.address || "",
+          placeUrl: buildMobilePlaceLink(placeId),
+          imageUrl: item.imageUrl || "",
+          x: null,
+          y: null,
+        }),
+      });
+
+      const saveData = await saveRes.json();
+
+      if (!saveRes.ok) {
+        alert(saveData?.error || saveData?.message || "매장 등록 실패");
+        return;
+      }
+
+      const createdPlaceId =
+        String(saveData?.place?.id || saveData?.data?.id || "").trim();
+
+      if (mode === "review" && createdPlaceId) {
+        try {
+          await fetch("/api/place-review-track", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              placeId: createdPlaceId,
+            }),
+          });
+        } catch (e) {
+          console.error("review track init error:", e);
+        }
+      }
+
+      setSavedPlaceIds((prev) => {
+        const next = new Set(prev);
+        next.add(placeId);
+        return next;
+      });
+
+      alert(mode === "review" ? "리뷰추적 등록 완료" : "순위추적 등록 완료");
+      await loadSavedPlaces();
+    } catch (e) {
+      console.error(e);
+      alert("등록 중 오류가 발생했습니다.");
+    } finally {
+      setRegisteringKey(null);
+    }
+  };
+
+  const renderedList = useMemo(() => list, [list]);
+
   return (
     <>
-      <TopNav />
+      <TopNav active="place-analysis" />
 
       <main className="min-h-screen bg-[#f4f4f5] text-[#111111]">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
@@ -106,7 +248,8 @@ export default function PlaceAnalysisPage() {
                 </div>
 
                 <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
-                  검색한 키워드 기준으로 네이버 플레이스 순위와 리뷰 지표를 확인합니다.
+                  검색한 키워드 기준으로 네이버 플레이스 순위와 리뷰 지표를
+                  확인합니다.
                 </p>
               </div>
 
@@ -122,15 +265,22 @@ export default function PlaceAnalysisPage() {
                     placeholder="예: 한남동 맛집"
                     className="h-[54px] w-full rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
                   />
-                  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[15px] text-[#6b7280]">
-                    ✕
-                  </div>
+
+                  {keyword ? (
+                    <button
+                      type="button"
+                      onClick={() => setKeyword("")}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[22px] text-[#6b7280]"
+                    >
+                      ×
+                    </button>
+                  ) : null}
                 </div>
 
                 <button
                   onClick={handleAnalyze}
                   disabled={loading}
-                  className={`h-[54px] rounded-[16px] bg-[#6d28d9] px-7 text-[15px] font-bold text-white transition hover:bg-[#5b21b6] ${
+                  className={`h-[54px] rounded-[16px] bg-[#b91c1c] px-7 text-[15px] font-bold text-white transition hover:bg-[#991b1b] ${
                     loading ? "opacity-60" : ""
                   }`}
                 >
@@ -152,7 +302,7 @@ export default function PlaceAnalysisPage() {
                         onClick={() => setKeyword(item.keyword)}
                         className={`rounded-[14px] border px-4 py-3 text-left transition ${
                           item.keyword === searchedKeyword
-                            ? "border-[#7c3aed] bg-[#faf5ff]"
+                            ? "border-[#b91c1c] bg-[#fef2f2]"
                             : "border-[#e5e7eb] bg-white hover:bg-[#fafafa]"
                         }`}
                       >
@@ -160,7 +310,9 @@ export default function PlaceAnalysisPage() {
                           {item.keyword}
                         </div>
                         <div className="mt-1 text-[12px] text-[#6b7280]">
-                          전체 {formatCount(item.total)} · 모바일 {formatCount(item.mobile)} · PC {formatCount(item.pc)}
+                          전체 {formatCount(item.total)} · 모바일{" "}
+                          {formatCount(item.mobile)} · PC{" "}
+                          {formatCount(item.pc)}
                         </div>
                       </button>
                     ))}
@@ -170,7 +322,9 @@ export default function PlaceAnalysisPage() {
 
               <div className="flex items-center justify-between border-t border-[#f3f4f6] pt-4">
                 <div className="text-[14px] font-semibold text-[#4b5563]">
-                  {searchedKeyword ? `“${searchedKeyword}” 분석 결과` : "분석 결과가 여기에 표시됩니다."}
+                  {searchedKeyword
+                    ? `“${searchedKeyword}” 분석 결과`
+                    : "분석 결과가 여기에 표시됩니다."}
                 </div>
 
                 <div className="text-[12px] text-[#9ca3af]">
@@ -188,7 +342,7 @@ export default function PlaceAnalysisPage() {
 
           <div className="mt-5 overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="overflow-x-auto">
-              <table className="min-w-full">
+              <table className="min-w-[1180px] w-full">
                 <thead>
                   <tr className="border-b border-[#f3f4f6] bg-[#fafafa]">
                     <th className="px-5 py-4 text-left text-[13px] font-bold text-[#6b7280]">
@@ -222,7 +376,7 @@ export default function PlaceAnalysisPage() {
                 </thead>
 
                 <tbody>
-                  {list.length === 0 ? (
+                  {renderedList.length === 0 ? (
                     <tr>
                       <td
                         colSpan={9}
@@ -232,54 +386,122 @@ export default function PlaceAnalysisPage() {
                       </td>
                     </tr>
                   ) : (
-                    list.map((item, idx) => (
-                      <tr
-                        key={`${item.placeId || item.name}-${idx}`}
-                        className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
-                      >
-                        <td className="px-5 py-5 text-[18px] font-black text-[#111827]">
-                          {item.rank}
-                        </td>
+                    renderedList.map((item, idx) => {
+                      const placeId = String(item.placeId || "").trim();
+                      const isRegistered = savedPlaceIds.has(placeId);
+                      const reviewKey = `review-${placeId || item.name}`;
+                      const rankKey = `rank-${placeId || item.name}`;
 
-                        <td className="px-5 py-5">
-                          <div className="text-[15px] font-bold text-[#111827]">
-                            {item.name}
-                          </div>
-                        </td>
+                      return (
+                        <tr
+                          key={`${item.placeId || item.name}-${idx}`}
+                          className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
+                        >
+                          <td className="px-5 py-5 text-[18px] font-black text-[#111827]">
+                            {item.rank}
+                          </td>
 
-                        <td className="px-5 py-5 text-[14px] font-semibold text-[#4b5563]">
-                          {item.category || "-"}
-                        </td>
+                          <td className="px-5 py-5">
+                            <div className="flex items-center gap-3">
+                              {item.imageUrl ? (
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  className="h-[56px] w-[56px] rounded-[12px] object-cover ring-1 ring-[#e5e7eb]"
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="flex h-[56px] w-[56px] items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[11px] text-[#9ca3af]">
+                                  없음
+                                </div>
+                              )}
 
-                        <td className="px-5 py-5 text-right text-[15px] font-bold text-[#111827]">
-                          {formatCount(item.review?.total)}
-                        </td>
+                              <div className="min-w-0">
+                                <div className="text-[15px] font-bold text-[#111827]">
+                                  {item.name}
+                                </div>
+                                {item.address ? (
+                                  <div className="mt-1 text-[12px] text-[#9ca3af]">
+                                    {item.address}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </td>
 
-                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
-                          {formatCount(item.review?.visitor)}
-                        </td>
+                          <td className="px-5 py-5 text-[14px] font-semibold text-[#4b5563]">
+                            {item.category || "-"}
+                          </td>
 
-                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
-                          {formatCount(item.review?.blog)}
-                        </td>
+                          <td className="px-5 py-5 text-right text-[15px] font-bold text-[#111827]">
+                            {formatCount(item.review?.total)}
+                          </td>
 
-                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#111827]">
-                          {formatCount(item.review?.save)}
-                        </td>
+                          <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
+                            {formatCount(item.review?.visitor)}
+                          </td>
 
-                        <td className="px-5 py-5 text-center">
-                          <button className="h-[42px] rounded-[14px] border-2 border-[#7c3aed] bg-white px-5 text-[14px] font-bold text-[#7c3aed] transition hover:bg-[#faf5ff]">
-                            등록
-                          </button>
-                        </td>
+                          <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
+                            {formatCount(item.review?.blog)}
+                          </td>
 
-                        <td className="px-5 py-5 text-center">
-                          <button className="h-[42px] rounded-[14px] border-2 border-[#7c3aed] bg-white px-5 text-[14px] font-bold text-[#7c3aed] transition hover:bg-[#faf5ff]">
-                            등록
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                          <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#111827]">
+                            {formatCount(item.review?.save)}
+                          </td>
+
+                          <td className="px-5 py-5 text-center">
+                            {isRegistered ? (
+                              <button
+                                disabled
+                                className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-[#f9fafb] px-5 text-[14px] font-bold text-[#9ca3af]"
+                              >
+                                등록됨
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  handleRegisterPlace(item, "review")
+                                }
+                                disabled={registeringKey === reviewKey}
+                                className={`h-[42px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] ${
+                                  registeringKey === reviewKey
+                                    ? "opacity-60"
+                                    : ""
+                                }`}
+                              >
+                                {registeringKey === reviewKey
+                                  ? "등록 중..."
+                                  : "등록"}
+                              </button>
+                            )}
+                          </td>
+
+                          <td className="px-5 py-5 text-center">
+                            {isRegistered ? (
+                              <button
+                                disabled
+                                className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-[#f9fafb] px-5 text-[14px] font-bold text-[#9ca3af]"
+                              >
+                                등록됨
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleRegisterPlace(item, "rank")}
+                                disabled={registeringKey === rankKey}
+                                className={`h-[42px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] ${
+                                  registeringKey === rankKey ? "opacity-60" : ""
+                                }`}
+                              >
+                                {registeringKey === rankKey
+                                  ? "등록 중..."
+                                  : "등록"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

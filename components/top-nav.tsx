@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { useSession } from "next-auth/react";
 
-type NavKey = "blog" | "place" | "place-review";
+type NavKey = "blog" | "place" | "place-review" | "place-analysis";
 
 type TopNavProps = {
   active?: NavKey;
@@ -20,7 +20,7 @@ const menuItems: Array<{
   { label: "상위 블로그 찾기", href: "/", key: "blog" },
   { label: "플레이스 순위 추적", href: "/place", key: "place" },
   { label: "플레이스 리뷰 추적", href: "/place-review", key: "place-review" },
-  { label: "플레이스 순위 분석", href: "/place-analysis" },
+  { label: "플레이스 순위 분석", href: "/place-analysis", key: "place-analysis" },
   { label: "서비스 소개", href: "/" },
   { label: "공지사항", href: "/" },
 ];
@@ -44,6 +44,7 @@ export default function TopNav({ active }: TopNavProps) {
   if (active === "place") return "플레이스 순위 추적";
   if (active === "place-review") return "플레이스 리뷰 추적";
   if (active === "blog") return "상위 블로그 찾기";
+  if (active === "place-analysis") return "플레이스 순위 분석";
   return "";
 };
 
@@ -112,7 +113,7 @@ const renderAuthArea = () => {
               플레이스 리뷰 추적
             </Link>
 
-            <Link href="/place-analysis" className={getClassName()}>
+            <Link href="/place-analysis" className={getClassName("place-analysis")}>
   플레이스 순위 분석
 </Link>
 
