@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -132,16 +131,16 @@ export async function GET(req: Request) {
     let placeMobileVolume = 0;
     let placePcVolume = 0;
 
-    try {
-      const placeSearchVolume = await getKeywordSearchVolume(place.name);
-      placeMonthlyVolume = placeSearchVolume.total ?? 0;
-      placeMobileVolume = placeSearchVolume.mobile ?? 0;
-      placePcVolume = placeSearchVolume.pc ?? 0;
-    } catch (volumeError) {
-      console.error(
-        `[place-detail] 매장명 검색량 조회 실패: ${place.name}`,
-        volumeError
-      );
+    // 첫 번째 키워드의 저장된 검색량을 우선 사용
+    const firstKeyword = normalizedKeywords[0];
+
+    if (firstKeyword) {
+      placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
+      placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
+
+      const totalVolume = toNumber(firstKeyword.totalVolume);
+      placeMonthlyVolume =
+        totalVolume || placeMobileVolume + placePcVolume;
     }
 
     return Response.json({

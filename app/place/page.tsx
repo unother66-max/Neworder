@@ -91,7 +91,18 @@ type PlaceItem = {
 };
 
 const PAGE_SIZE = 15;
+const MAX_KEYWORDS_PER_STORE = 10;
+const RANK_CHECK_BATCH_SIZE = 3;
 
+function chunkArray<T>(items: T[], size: number) {
+  const result: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    result.push(items.slice(i, i + size));
+  }
+
+  return result;
+}
 
 function formatKST(date: Date) {
   return new Intl.DateTimeFormat("ko-KR", {
@@ -774,16 +785,27 @@ if (!session) {
     setDeletingKeywordKey(null);
   };
 
-  const addKeywordsToTemp = (keywords: string[]) => {
-    setTempKeywords((prev) => {
-      const set = new Set(prev);
-      keywords.forEach((keyword) => {
-        const trimmed = keyword.trim();
-        if (trimmed) set.add(trimmed);
-      });
-      return Array.from(set);
-    });
-  };
+const addKeywordsToTemp = (keywords: string[]) => {
+  setTempKeywords((prev) => {
+    const next = [...prev];
+
+    for (const keyword of keywords) {
+      const trimmed = keyword.trim();
+      if (!trimmed) continue;
+
+      if (next.includes(trimmed)) continue;
+
+      if (next.length >= MAX_KEYWORDS_PER_STORE) {
+        alert(`키워드는 매장당 최대 ${MAX_KEYWORDS_PER_STORE}개까지 등록할 수 있어요.`);
+        break;
+      }
+
+      next.push(trimmed);
+    }
+
+    return next;
+  });
+};
 
   const toggleRecommendedKeyword = (keyword: string) => {
     setSelectedRecommendedKeywords((prev) => {
@@ -879,69 +901,81 @@ if (!session) {
     }
   };
 
-  const saveKeywords = async () => {
-    if (selectedStoreIndex === null) return;
+ const saveKeywords = async () => {
+  if (selectedStoreIndex === null) return;
 
-    const targetStore = stores[selectedStoreIndex];
-    if (!targetStore?.dbId) {
-      alert("매장 정보가 올바르지 않습니다.");
+  const targetStore = stores[selectedStoreIndex];
+  if (!targetStore?.dbId) {
+    alert("매장 정보가 올바르지 않습니다.");
+    return;
+  }
+
+  if (tempKeywords.length > MAX_KEYWORDS_PER_STORE) {
+    alert(`키워드는 매장당 최대 ${MAX_KEYWORDS_PER_STORE}개까지 등록할 수 있어요.`);
+    return;
+  }
+
+  const recommendedMap = new Map(
+    getDefaultRecommendedKeywords(targetStore).map((item) => [
+      item.keyword,
+      item.monthly || "",
+    ])
+  );
+
+  try {
+    const existingKeywordSet = new Set(
+      targetStore.keywords.map((k) => k.keyword)
+    );
+
+    const keywordsToCreate = tempKeywords.filter(
+      (keyword) => !existingKeywordSet.has(keyword)
+    );
+
+    if (targetStore.keywords.length + keywordsToCreate.length > MAX_KEYWORDS_PER_STORE) {
+      alert(`키워드는 매장당 최대 ${MAX_KEYWORDS_PER_STORE}개까지 등록할 수 있어요.`);
       return;
     }
 
-    const recommendedMap = new Map(
-      getDefaultRecommendedKeywords(targetStore).map((item) => [
-        item.keyword,
-        item.monthly || "",
-      ])
+    await Promise.all(
+      keywordsToCreate.map(async (keyword) => {
+        const monthly = recommendedMap.get(keyword) || "";
+        const totalVolume =
+          monthly && /^\d+$/.test(monthly.replace(/,/g, ""))
+            ? Number(monthly.replace(/,/g, ""))
+            : null;
+
+        const res = await fetch("/api/place-keyword-save", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            placeId: targetStore.dbId,
+            keyword,
+            mobileVolume: null,
+            pcVolume: null,
+            totalVolume,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `${keyword} 저장 실패`);
+        }
+      })
     );
 
-    try {
-      const existingKeywordSet = new Set(targetStore.keywords.map((k) => k.keyword));
-
-      const keywordsToCreate = tempKeywords.filter(
-        (keyword) => !existingKeywordSet.has(keyword)
-      );
-
-      await Promise.all(
-        keywordsToCreate.map(async (keyword) => {
-          const monthly = recommendedMap.get(keyword) || "";
-          const totalVolume =
-            monthly && /^\d+$/.test(monthly.replace(/,/g, ""))
-              ? Number(monthly.replace(/,/g, ""))
-              : null;
-
-          const res = await fetch("/api/place-keyword-save", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              placeId: targetStore.dbId,
-              keyword,
-              mobileVolume: null,
-              pcVolume: null,
-              totalVolume,
-            }),
-          });
-
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error || `${keyword} 저장 실패`);
-          }
-        })
-      );
-
-      await fetchPlaces();
-      closeKeywordModal();
-    } catch (error) {
-      console.error(error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "키워드 저장 중 오류가 났어요."
-      );
-    }
-  };
+    await fetchPlaces();
+    closeKeywordModal();
+  } catch (error) {
+    console.error(error);
+    alert(
+      error instanceof Error
+        ? error.message
+        : "키워드 저장 중 오류가 났어요."
+    );
+  }
+};
 
   const handleCheckRanks = async (filteredIndex: number) => {
   const targetStore = filteredStores[filteredIndex];
@@ -967,49 +1001,58 @@ if (!session) {
     return;
   }
 
+  if (target.keywords.length > MAX_KEYWORDS_PER_STORE) {
+    alert(`키워드는 매장당 최대 ${MAX_KEYWORDS_PER_STORE}개까지만 순위 조회할 수 있어요.`);
+    return;
+  }
+
   setCheckingStoreIndex(realIndex);
 
   try {
-    await Promise.all(
-      target.keywords.map(async (item) => {
-        const response = await fetch("/api/check-place-rank", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            keyword: item.keyword,
-            targetName: target.name,
-            x: target.x,
-            y: target.y,
-          }),
-        });
+    const batches = chunkArray(target.keywords, RANK_CHECK_BATCH_SIZE);
 
-        const data = await response.json();
+    for (const batch of batches) {
+      await Promise.all(
+        batch.map(async (item) => {
+          const response = await fetch("/api/check-place-rank", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              keyword: item.keyword,
+              targetName: target.name,
+              x: target.x,
+              y: target.y,
+            }),
+          });
 
-        if (!response.ok) {
-          console.error("rank check error:", item.keyword, data);
-          return;
-        }
+          const data = await response.json();
 
-        if (item.placeKeywordId && data.rank && data.rank !== "-") {
-          try {
-            await fetch("/api/place-rank-history-save", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                placeKeywordId: item.placeKeywordId,
-                rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
-              }),
-            });
-          } catch (historyError) {
-            console.error("rank history save error", historyError);
+          if (!response.ok) {
+            console.error("rank check error:", item.keyword, data);
+            return;
           }
-        }
-      })
-    );
+
+          if (item.placeKeywordId && data.rank && data.rank !== "-") {
+            try {
+              await fetch("/api/place-rank-history-save", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  placeKeywordId: item.placeKeywordId,
+                  rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+                }),
+              });
+            } catch (historyError) {
+              console.error("rank history save error", historyError);
+            }
+          }
+        })
+      );
+    }
 
     await fetchPlaces();
   } catch (error) {

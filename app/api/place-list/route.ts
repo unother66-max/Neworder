@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
-import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +30,18 @@ function getDateKey(value: string | Date) {
     month: "2-digit",
     day: "2-digit",
   }).format(date);
+}
+
+function toNumber(value: unknown) {
+  if (typeof value === "number") return value;
+
+  if (typeof value === "string") {
+    const cleaned = value.replace(/,/g, "").trim();
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  return 0;
 }
 
 type RankHistoryItem = {
@@ -65,25 +76,21 @@ function normalizeDailyRankHistory(items: RankHistoryItem[]) {
 export async function GET() {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
-const userId = session?.user?.id as string | undefined;
+    const userId = session?.user?.id as string | undefined;
 
-if (!userId) {
-  return Response.json(
-    { ok: false, message: "로그인이 필요합니다." },
-    { status: 200 } // 🔥 변경
-  );
-}
+    if (!userId) {
+      return Response.json(
+        { ok: false, message: "로그인이 필요합니다." },
+        { status: 200 }
+      );
+    }
 
     const places = await prisma.place.findMany({
       where: {
         userId,
         type: "rank",
-       
       },
-      orderBy: [
-  { rankPinned: "desc" },
-  { createdAt: "desc" },
-],
+      orderBy: [{ rankPinned: "desc" }, { createdAt: "desc" }],
       include: {
         keywords: {
           orderBy: {
@@ -98,55 +105,53 @@ if (!userId) {
       },
     });
 
-    const normalizedPlaces = await Promise.all(
-      places.map(async (place) => {
-        const normalizedRankHistory = normalizeDailyRankHistory(
-          (place.rankHistory || []).map((item) => ({
-            id: item.id,
-            placeId: item.placeId,
-            keyword: item.keyword,
-            rank: item.rank,
-            createdAt: item.createdAt,
-          }))
-        );
+    const normalizedPlaces = places.map((place) => {
+      const normalizedRankHistory = normalizeDailyRankHistory(
+        (place.rankHistory || []).map((item) => ({
+          id: item.id,
+          placeId: item.placeId,
+          keyword: item.keyword,
+          rank: item.rank,
+          createdAt: item.createdAt,
+        }))
+      );
 
-        const latestUpdatedAt =
-          [...place.keywords].sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-          )[0]?.updatedAt ?? null;
+      const latestUpdatedAt =
+        [...place.keywords].sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )[0]?.updatedAt ?? null;
 
-        let placeMonthlyVolume = 0;
-let placeMobileVolume = 0;
-let placePcVolume = 0;
+      let placeMonthlyVolume = 0;
+      let placeMobileVolume = 0;
+      let placePcVolume = 0;
 
-try {
-  const placeSearchVolume = await getKeywordSearchVolume(place.name);
-  placeMonthlyVolume = placeSearchVolume.total ?? 0;
-  placeMobileVolume = placeSearchVolume.mobile ?? 0;
-  placePcVolume = placeSearchVolume.pc ?? 0;
-} catch (volumeError) {
-  console.error(
-    `[place-list] 매장명 검색량 조회 실패: ${place.name}`,
-    volumeError
-  );
-}
-        
+      // 상세페이지와 최대한 동일하게:
+      // 첫 번째 키워드의 저장된 검색량을 우선 사용
+      const firstKeyword = place.keywords?.[0];
 
-        return {
-  ...place,
-  rankPinned: place.rankPinned,
-  rankPinnedAt: place.rankPinnedAt,
-  rankHistory: normalizedRankHistory,
-  jibunAddress: (place as any).jibunAddress ?? null,
-  latestUpdatedAt,
-  latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
-  placeMonthlyVolume,
-  placeMobileVolume,
-  placePcVolume,
-};
-      })
-    );
+      if (firstKeyword) {
+        placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
+        placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
+
+        const totalVolume = toNumber(firstKeyword.totalVolume);
+        placeMonthlyVolume =
+          totalVolume || placeMobileVolume + placePcVolume;
+      }
+
+      return {
+        ...place,
+        rankPinned: place.rankPinned,
+        rankPinnedAt: place.rankPinnedAt,
+        rankHistory: normalizedRankHistory,
+        jibunAddress: (place as any).jibunAddress ?? null,
+        latestUpdatedAt,
+        latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
+        placeMonthlyVolume,
+        placeMobileVolume,
+        placePcVolume,
+      };
+    });
 
     return Response.json({
       ok: true,
