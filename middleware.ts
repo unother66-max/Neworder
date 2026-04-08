@@ -7,5 +7,10 @@ export default withAuth({
 });
 
 export const config = {
-  matcher: ["/place/:path*"],
+  matcher: [
+    "/top-blog/:path*",
+    "/place/:path*",
+    "/place-review/:path*",
+    "/place-analysis/:path*",
+  ],
 };

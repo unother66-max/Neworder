@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { useSession } from "next-auth/react";
 
@@ -10,6 +10,20 @@ type NavKey = "blog" | "place" | "place-review" | "place-analysis";
 type TopNavProps = {
   active?: NavKey;
 };
+
+const SMARTSTORE_MENU: Array<{
+  label: string;
+  href: string;
+  badge?: "NEW";
+}> = [
+  { label: "순위 추적  가격비교", href: "/" },
+  { label: "순위 추적  플러스스토어", href: "/" },
+  { label: "리뷰 추적", href: "/" },
+  { label: "순위 분석", href: "/" },
+  { label: "스마트스토어 분석", href: "/" },
+  { label: "키워드 분석", href: "/" },
+  { label: "키워드 추출기", href: "/", badge: "NEW" },
+];
 
 const NAVER_BLOG_MENU: Array<{ label: string; href: string; key: NavKey }> = [
   { label: "상위 블로그 찾기", href: "/top-blog", key: "blog" },
@@ -21,12 +35,43 @@ const NAVER_MAP_MENU: Array<{ label: string; href: string; key: NavKey }> = [
   { label: "플레이스 순위 분석", href: "/place-analysis", key: "place-analysis" },
 ];
 
+const KAKAO_MAP_MENU: Array<{
+  label: string;
+  href: string;
+  badge?: "NEW";
+}> = [
+  { label: "랭킹추적", href: "/" },
+  { label: "순위추적", href: "/", badge: "NEW" },
+  { label: "리뷰추적", href: "/", badge: "NEW" },
+  { label: "순위분석", href: "/", badge: "NEW" },
+];
+
 export default function TopNav({ active }: TopNavProps) {
   const [open, setOpen] = useState(false);
+  const [smartstoreOpen, setSmartstoreOpen] = useState(false);
+  const [kakaoMapOpen, setKakaoMapOpen] = useState(false);
   const [naverMapOpen, setNaverMapOpen] = useState(false);
   const [naverBlogOpen, setNaverBlogOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
+  const closeTimerRef = useRef<number | null>(null);
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const scheduleCloseMenus = () => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setSmartstoreOpen(false);
+      setKakaoMapOpen(false);
+      setNaverBlogOpen(false);
+      setNaverMapOpen(false);
+    }, 70);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -36,8 +81,12 @@ export default function TopNav({ active }: TopNavProps) {
     const handler = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
+      if (target.closest?.('[data-smartstore-menu="root"]')) return;
+      if (target.closest?.('[data-kakao-map-menu="root"]')) return;
       if (target.closest?.('[data-naver-map-menu="root"]')) return;
       if (target.closest?.('[data-naver-blog-menu="root"]')) return;
+      setSmartstoreOpen(false);
+      setKakaoMapOpen(false);
       setNaverMapOpen(false);
       setNaverBlogOpen(false);
     };
@@ -134,15 +183,71 @@ export default function TopNav({ active }: TopNavProps) {
           </div>
 
           <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-5 xl:flex 2xl:gap-7">
-            <Link href="/" className={getClassName()}>
-              스마트스토어
-            </Link>
+            <div
+              className="relative"
+              data-smartstore-menu="root"
+              onMouseEnter={() => {
+                clearCloseTimer();
+                setSmartstoreOpen(true);
+              }}
+              onMouseLeave={() => {
+                scheduleCloseMenus();
+              }}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSmartstoreOpen((prev) => !prev);
+                }}
+                className="inline-flex items-center gap-1 align-middle"
+                aria-haspopup="menu"
+                aria-expanded={smartstoreOpen}
+              >
+                <span className={getClassName()}>스마트스토어</span>
+                <span className="text-[11px] font-black leading-none text-[#6b7280] translate-y-[-1px]">
+                  {smartstoreOpen ? "▴" : "▾"}
+                </span>
+              </button>
+
+              {smartstoreOpen && (
+                <div
+                  role="menu"
+                  className="absolute left-0 top-full mt-2 w-[280px] overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+                >
+                  <div className="absolute -top-2 left-0 h-2 w-full" />
+                  <div className="py-2">
+                    {SMARTSTORE_MENU.map((item) => (
+                      <Link
+                        key={`${item.label}-${item.href}`}
+                        href={item.href}
+                        className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
+                        onClick={() => setSmartstoreOpen(false)}
+                        role="menuitem"
+                      >
+                        <span className="truncate">{item.label}</span>
+                        {item.badge ? (
+                          <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2.5 py-1 text-[12px] font-black text-white">
+                            {item.badge}
+                          </span>
+                        ) : null}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div
               className="relative"
               data-naver-blog-menu="root"
-              onMouseEnter={() => setNaverBlogOpen(true)}
-              onMouseLeave={() => setNaverBlogOpen(false)}
+              onMouseEnter={() => {
+                clearCloseTimer();
+                setNaverBlogOpen(true);
+              }}
+              onMouseLeave={() => {
+                scheduleCloseMenus();
+              }}
             >
               <button
                 type="button"
@@ -171,8 +276,9 @@ export default function TopNav({ active }: TopNavProps) {
               {naverBlogOpen && (
                 <div
                   role="menu"
-                  className="absolute left-0 top-[40px] w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+                  className="absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
                 >
+                  <div className="absolute -top-2 left-0 h-2 w-full" />
                   <div className="pb-2">
                     {NAVER_BLOG_MENU.map((item) => (
                       <Link
@@ -195,8 +301,13 @@ export default function TopNav({ active }: TopNavProps) {
             <div
               className="relative"
               data-naver-map-menu="root"
-              onMouseEnter={() => setNaverMapOpen(true)}
-              onMouseLeave={() => setNaverMapOpen(false)}
+              onMouseEnter={() => {
+                clearCloseTimer();
+                setNaverMapOpen(true);
+              }}
+              onMouseLeave={() => {
+                scheduleCloseMenus();
+              }}
             >
               <button
                 type="button"
@@ -225,8 +336,9 @@ export default function TopNav({ active }: TopNavProps) {
               {naverMapOpen && (
                 <div
                   role="menu"
-                  className="absolute left-0 top-[40px] w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+                  className="absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
                 >
+                  <div className="absolute -top-2 left-0 h-2 w-full" />
                   <div className="pb-2">
                     {NAVER_MAP_MENU.map((item) => (
                       <Link
@@ -244,13 +356,61 @@ export default function TopNav({ active }: TopNavProps) {
               )}
             </div>
 
-            <Link href="/" className={getClassName()}>
-              서비스 소개
-            </Link>
+            <div
+              className="relative"
+              data-kakao-map-menu="root"
+              onMouseEnter={() => {
+                clearCloseTimer();
+                setKakaoMapOpen(true);
+              }}
+              onMouseLeave={() => {
+                scheduleCloseMenus();
+              }}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setKakaoMapOpen((prev) => !prev);
+                }}
+                className="inline-flex items-center gap-1 align-middle"
+                aria-haspopup="menu"
+                aria-expanded={kakaoMapOpen}
+              >
+                <span className={getClassName()}>카카오맵</span>
+                <span className="text-[11px] font-black leading-none text-[#6b7280] translate-y-[-1px]">
+                  {kakaoMapOpen ? "▴" : "▾"}
+                </span>
+              </button>
 
-            <Link href="/" className={getClassName()}>
-              공지사항
-            </Link>
+              {kakaoMapOpen && (
+                <div
+                  role="menu"
+                  className="absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+                >
+                  <div className="absolute -top-2 left-0 h-2 w-full" />
+                  <div className="py-2">
+                    {KAKAO_MAP_MENU.map((item) => (
+                      <Link
+                        key={`${item.label}-${item.href}`}
+                        href={item.href}
+                        className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
+                        onClick={() => setKakaoMapOpen(false)}
+                        role="menuitem"
+                      >
+                        <span className="truncate">{item.label}</span>
+                        {item.badge ? (
+                          <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2.5 py-1 text-[12px] font-black text-white">
+                            {item.badge}
+                          </span>
+                        ) : null}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
           </nav>
 
           <div className="ml-auto hidden items-center gap-3 xl:flex">
@@ -325,13 +485,38 @@ export default function TopNav({ active }: TopNavProps) {
           </div>
 
           <nav className="space-y-2">
-            <Link
-              href="/"
-              onClick={() => setOpen(false)}
-              className={getMobileClassName()}
+            <button
+              type="button"
+              onClick={() => setSmartstoreOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              aria-expanded={smartstoreOpen}
             >
-              스마트스토어
-            </Link>
+              <span>스마트스토어</span>
+              <span className="text-[14px]">{smartstoreOpen ? "▴" : "▾"}</span>
+            </button>
+
+            {smartstoreOpen && (
+              <div className="space-y-1 pl-2">
+                {SMARTSTORE_MENU.map((item) => (
+                  <Link
+                    key={`${item.label}-${item.href}-mobile`}
+                    href={item.href}
+                    onClick={() => {
+                      setOpen(false);
+                      setSmartstoreOpen(false);
+                    }}
+                    className="flex items-center justify-between gap-3 rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]"
+                  >
+                    <span className="truncate">{item.label}</span>
+                    {item.badge ? (
+                      <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2 py-0.5 text-[11px] font-black text-white">
+                        {item.badge}
+                      </span>
+                    ) : null}
+                  </Link>
+                ))}
+              </div>
+            )}
 
             <button
               type="button"
@@ -397,21 +582,39 @@ export default function TopNav({ active }: TopNavProps) {
               </div>
             )}
 
-            <Link
-              href="/"
-              onClick={() => setOpen(false)}
-              className={getMobileClassName()}
+            <button
+              type="button"
+              onClick={() => setKakaoMapOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              aria-expanded={kakaoMapOpen}
             >
-              서비스 소개
-            </Link>
+              <span>카카오맵</span>
+              <span className="text-[14px]">{kakaoMapOpen ? "▴" : "▾"}</span>
+            </button>
 
-            <Link
-              href="/"
-              onClick={() => setOpen(false)}
-              className={getMobileClassName()}
-            >
-              공지사항
-            </Link>
+            {kakaoMapOpen && (
+              <div className="space-y-1 pl-2">
+                {KAKAO_MAP_MENU.map((item) => (
+                  <Link
+                    key={`${item.label}-${item.href}-mobile`}
+                    href={item.href}
+                    onClick={() => {
+                      setOpen(false);
+                      setKakaoMapOpen(false);
+                    }}
+                    className="flex items-center justify-between gap-3 rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]"
+                  >
+                    <span className="truncate">{item.label}</span>
+                    {item.badge ? (
+                      <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2 py-0.5 text-[11px] font-black text-white">
+                        {item.badge}
+                      </span>
+                    ) : null}
+                  </Link>
+                ))}
+              </div>
+            )}
+
           </nav>
 
           <div className="mt-6 rounded-[14px] bg-[#f6f7fb] px-4 py-4">
