@@ -27,51 +27,61 @@ const menuItems: Array<{
 
 export default function TopNav({ active }: TopNavProps) {
   const [open, setOpen] = useState(false);
-  
-
-
- const getClassName = (key?: NavKey) =>
-  key && active === key
-    ? "whitespace-nowrap text-[14px] font-extrabold text-[#7c3aed]"
-    : "whitespace-nowrap text-[14px] font-semibold text-[#111827]";
-
-  const getMobileClassName = (key?: NavKey) =>
-  key && active === key
-    ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[15px] font-bold text-[#7c3aed]"
-    : "block rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]";
-
-  const getBreadcrumbLabel = () => {
-  if (active === "place") return "플레이스 순위 추적";
-  if (active === "place-review") return "플레이스 리뷰 추적";
-  if (active === "blog") return "상위 블로그 찾기";
-  if (active === "place-analysis") return "플레이스 순위 분석";
-  return "";
-};
-
+  const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
 
-const renderAuthArea = () => {
-  if (status === "loading") {
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const getClassName = (key?: NavKey) =>
+    key && active === key
+      ? "whitespace-nowrap text-[14px] font-extrabold text-[#7c3aed]"
+      : "whitespace-nowrap text-[14px] font-semibold text-[#111827]";
+
+  const getMobileClassName = (key?: NavKey) =>
+    key && active === key
+      ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[15px] font-bold text-[#7c3aed]"
+      : "block rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]";
+
+  const getBreadcrumbLabel = () => {
+    if (active === "place") return "플레이스 순위 추적";
+    if (active === "place-review") return "플레이스 리뷰 추적";
+    if (active === "blog") return "상위 블로그 찾기";
+    if (active === "place-analysis") return "플레이스 순위 분석";
+    return "";
+  };
+
+  const renderAuthArea = () => {
+    if (!mounted) {
+      return (
+        <div className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-[#f3f4f6] px-5 text-[13px] font-bold text-[#9ca3af]">
+          불러오는 중
+        </div>
+      );
+    }
+
+    if (status === "loading") {
+      return (
+        <div className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-[#f3f4f6] px-5 text-[13px] font-bold text-[#9ca3af]">
+          불러오는 중
+        </div>
+      );
+    }
+
+    if (session?.user) {
+      return <UserMenu />;
+    }
+
     return (
-      <div className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-[#f3f4f6] px-5 text-[13px] font-bold text-[#9ca3af]">
-        불러오는 중
-      </div>
+      <Link
+        href="/login"
+        className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[13px] font-bold text-white"
+      >
+        로그인/가입
+      </Link>
     );
-  }
-
-  if (session?.user) {
-    return <UserMenu />;
-  }
-
-  return (
-    <Link
-      href="/login"
-      className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-gradient-to-b from-[#8b2cf5] to-[#6d13f2] px-5 text-[13px] font-bold text-white"
-    >
-      로그인/가입
-    </Link>
-  );
-};
+  };
 
   return (
     <>
@@ -114,8 +124,8 @@ const renderAuthArea = () => {
             </Link>
 
             <Link href="/place-analysis" className={getClassName("place-analysis")}>
-  플레이스 순위 분석
-</Link>
+              플레이스 순위 분석
+            </Link>
 
             <Link href="/" className={getClassName()}>
               서비스 소개
@@ -131,23 +141,27 @@ const renderAuthArea = () => {
           </div>
 
           <div className="ml-auto flex items-center gap-3 xl:hidden">
-            <div className="text-[20px]">👤</div>
+            {mounted ? (
+              <div className="text-[20px]">👤</div>
+            ) : (
+              <div className="h-10 w-10 rounded-[10px] bg-[#f3f4f6]" />
+            )}
           </div>
         </div>
       </header>
 
       <div className="border-b border-[#e8ebf2] bg-white/80">
-       <div className="mx-auto max-w-[1280px] px-4 py-3 text-[13px] text-[#6b7280] md:px-6">
-  {"홈 > 네이버지도"}
-{getBreadcrumbLabel() && (
-  <>
-    {" > "}
-    <span className="font-semibold text-[#111827]">
-      {getBreadcrumbLabel()}
-    </span>
-  </>
-)}
-</div>
+        <div className="mx-auto max-w-[1280px] px-4 py-3 text-[13px] text-[#6b7280] md:px-6">
+          {"홈 > 네이버지도"}
+          {getBreadcrumbLabel() && (
+            <>
+              {" > "}
+              <span className="font-semibold text-[#111827]">
+                {getBreadcrumbLabel()}
+              </span>
+            </>
+          )}
+        </div>
       </div>
 
       {open && (

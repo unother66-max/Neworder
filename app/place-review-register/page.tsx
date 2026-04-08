@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
 
 type SearchPlaceItem = {
@@ -51,6 +50,7 @@ export default function PlaceReviewRegisterPage() {
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
   const [placeSearchError, setPlaceSearchError] = useState("");
   const [registeringName, setRegisteringName] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -65,13 +65,15 @@ export default function PlaceReviewRegisterPage() {
 
   const handlePlaceSearch = async () => {
     if (!placeQuery.trim()) {
-      setPlaceSearchError("매장 이름을 입력해주세요.");
+      setPlaceSearchError("매장명을 입력해주세요.");
       setPlaceResults([]);
+      setHasSearched(false);
       return;
     }
 
     setPlaceSearchLoading(true);
     setPlaceSearchError("");
+    setHasSearched(true);
 
     try {
       const response = await fetch("/api/search-place", {
@@ -154,18 +156,12 @@ export default function PlaceReviewRegisterPage() {
       const saveData = await saveRes.json();
 
       if (!saveRes.ok) {
-  alert(saveData.error || "리뷰 추적 매장 저장 실패");
-  return;
-}
+        alert(saveData.error || "리뷰 플레이스 저장 실패");
+        return;
+      }
 
-alert("리뷰 추적 매장이 등록되었습니다.");
-
-if (window.parent) {
-  window.parent.postMessage(
-    { type: "PLACE_REVIEW_REGISTERED" },
-    window.location.origin
-  );
-}
+      alert("리뷰 플레이스가 등록되었습니다.");
+      router.push("/place-review");
     } catch (error) {
       console.error(error);
       alert("매장 등록 중 오류가 났어요.");
@@ -176,113 +172,110 @@ if (window.parent) {
 
   if (!mounted || status === "loading") {
     return (
-      <>
-        <TopNav active="place-review" />
-        <main className="min-h-screen bg-[#f4f4f5] flex items-center justify-center">
-          <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
-        </main>
-      </>
+      <main className="min-h-screen bg-[rgba(15,23,42,0.28)] flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-[1520px] rounded-[40px] bg-[#f7f7f8] px-10 py-16 text-center text-[18px] text-[#6b7280]">
+          불러오는 중...
+        </div>
+      </main>
     );
   }
 
   if (!session) {
     return (
-      <>
-        <TopNav active="place-review" />
-        <main className="min-h-screen bg-[#f4f4f5] flex items-center justify-center">
-          <div className="text-[15px] text-[#6b7280]">
-            로그인 페이지로 이동 중...
-          </div>
-        </main>
-      </>
+      <main className="min-h-screen bg-[rgba(15,23,42,0.28)] flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-[1520px] rounded-[40px] bg-[#f7f7f8] px-10 py-16 text-center text-[18px] text-[#6b7280]">
+          로그인 페이지로 이동 중...
+        </div>
+      </main>
     );
   }
 
   return (
-    <>
-      <TopNav active="place-review" />
+    <main className="min-h-screen bg-[rgba(15,23,42,0.28)] px-4 py-8 md:px-8 md:py-12">
+      <div className="mx-auto w-full max-w-[1520px] overflow-hidden rounded-[40px] border border-[#d7dbe1] bg-[#f7f7f8] shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+        <div className="flex items-start justify-between px-12 pb-10 pt-12 md:px-14 md:pb-12 md:pt-12">
+          <div className="min-w-0">
+            <p className="text-[18px] font-bold tracking-[0.22em] text-[#6b7280] md:text-[22px]">
+              REVIEW PLACE REGISTER
+            </p>
 
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111]">
-        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
-          <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
-                  리뷰 추적 매장 등록
-                </h1>
-                <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
-                  리뷰 추적에 사용할 매장을 검색하고 등록하세요.
-                </p>
-              </div>
+            <h1 className="mt-5 text-[42px] font-black tracking-[-0.04em] text-[#0f172a] md:text-[56px]">
+              리뷰 매장 등록
+            </h1>
 
-              <button
-                type="button"
-                onClick={() => router.push("/place-review")}
-                className="inline-flex h-[44px] items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[13px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
-              >
-                리뷰 추적으로 돌아가기
-              </button>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <input
-                type="text"
-                value={placeQuery}
-                onChange={(e) => setPlaceQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handlePlaceSearch();
-                  }
-                }}
-                placeholder="매장명 검색"
-                className="h-[46px] flex-1 rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
-              />
-
-              <button
-                type="button"
-                onClick={handlePlaceSearch}
-                disabled={placeSearchLoading}
-                className="inline-flex h-[46px] min-w-[110px] items-center justify-center rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b] disabled:opacity-60"
-              >
-                {placeSearchLoading ? "검색 중..." : "검색"}
-              </button>
-            </div>
-
-            {placeSearchError ? (
-              <p className="mt-3 text-[13px] font-medium text-[#dc2626]">
-                {placeSearchError}
-              </p>
-            ) : null}
+            <p className="mt-8 text-[22px] leading-[1.65] text-[#6b7280] md:text-[28px]">
+              매장명을 검색해서 리뷰 추적할 플레이스를 등록하세요.
+            </p>
           </div>
 
-          <div className="mt-5 space-y-4">
-            {placeSearchLoading ? (
-              <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
-                <p className="text-[18px] font-bold text-[#111827]">
-                  검색 중...
-                </p>
-                <p className="mt-2 text-[14px] text-[#9ca3af]">
-                  네이버 플레이스를 불러오고 있습니다.
-                </p>
+          <button
+            type="button"
+            onClick={() => router.push("/place-review")}
+            className="ml-8 flex h-[92px] w-[118px] shrink-0 items-center justify-center rounded-full border border-[#c8cdd4] bg-[#f7f7f8] text-[26px] font-medium text-[#6b7280] transition hover:bg-white"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="border-t border-[#e2e5ea] px-12 py-12 md:px-14 md:py-12">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-center">
+            <input
+              type="text"
+              value={placeQuery}
+              onChange={(e) => setPlaceQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handlePlaceSearch();
+                }
+              }}
+              placeholder="예: 뉴오더클럽 한남"
+              className="h-[100px] flex-1 rounded-[30px] border border-[#c8cdd4] bg-[#f7f7f8] px-8 text-[28px] text-[#111827] outline-none transition placeholder:text-[#a3acb8] focus:bg-white"
+            />
+
+            <button
+              type="button"
+              onClick={handlePlaceSearch}
+              disabled={placeSearchLoading}
+              className="h-[100px] min-w-[210px] rounded-[30px] bg-[#c91717] px-10 text-[24px] font-bold text-white shadow-[0_18px_34px_rgba(201,23,23,0.16)] transition hover:bg-[#ae1414] disabled:opacity-60"
+            >
+              {placeSearchLoading ? "검색 중..." : "매장 검색"}
+            </button>
+          </div>
+
+          {placeSearchError ? (
+            <p className="mt-4 text-[16px] font-medium text-[#dc2626]">
+              {placeSearchError}
+            </p>
+          ) : null}
+
+          <div className="mt-8 rounded-[34px] border-2 border-dashed border-[#cfd5dc] bg-[#f7f7f8] px-8 py-8">
+            {!hasSearched && (
+              <div className="flex min-h-[210px] items-center justify-center text-center text-[26px] text-[#a3acb8]">
+                검색 결과가 여기에 표시됩니다.
               </div>
-            ) : placeResults.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
-                <p className="text-[18px] font-bold text-[#111827]">
-                  검색 결과가 없습니다.
-                </p>
-                <p className="mt-2 text-[14px] text-[#9ca3af]">
-                  매장명을 입력하고 검색해보세요.
-                </p>
+            )}
+
+            {hasSearched && placeSearchLoading && (
+              <div className="flex min-h-[210px] items-center justify-center text-center text-[26px] text-[#a3acb8]">
+                검색 중입니다.
               </div>
-            ) : (
-              placeResults.map((item, index) => (
-                <section
-                  key={`${item.title}-${item.address}-${index}`}
-                  className="overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
-                >
-                  <div className="flex flex-col gap-4 px-5 py-5 md:flex-row md:items-center md:justify-between md:px-6">
-                    <div className="flex min-w-0 gap-4">
-                      <div className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[16px] bg-[#f3f4f6] ring-1 ring-[#e5e7eb]">
+            )}
+
+            {hasSearched && !placeSearchLoading && placeResults.length === 0 && (
+              <div className="flex min-h-[210px] items-center justify-center text-center text-[26px] text-[#a3acb8]">
+                검색 결과가 없습니다.
+              </div>
+            )}
+
+            {hasSearched && !placeSearchLoading && placeResults.length > 0 && (
+              <div className="space-y-4">
+                {placeResults.map((item, index) => (
+                  <div
+                    key={`${item.title}-${item.address}-${index}`}
+                    className="flex flex-col gap-4 rounded-[26px] border border-[#e5e7eb] bg-white p-5 md:flex-row md:items-center md:justify-between md:p-6"
+                  >
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="h-[92px] w-[92px] shrink-0 overflow-hidden rounded-[18px] bg-[#eef2f7]">
                         {item.image ? (
                           <img
                             src={item.image}
@@ -290,44 +283,40 @@ if (window.parent) {
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[12px] text-[#9ca3af]">
-                            이미지
+                          <div className="flex h-full w-full items-center justify-center text-[13px] text-[#9ca3af]">
+                            이미지 없음
                           </div>
                         )}
                       </div>
 
                       <div className="min-w-0">
-                        <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827]">
+                        <div className="truncate text-[24px] font-bold text-[#111827]">
                           {item.title}
-                        </h2>
-
-                        <p className="mt-1 text-[13px] font-semibold text-[#6b7280]">
+                        </div>
+                        <div className="mt-1 text-[16px] text-[#6b7280]">
                           {item.category}
-                        </p>
-
-                        <p className="mt-2 text-[13px] leading-5 text-[#6b7280]">
+                        </div>
+                        <div className="mt-2 text-[16px] text-[#6b7280]">
                           {item.address}
-                        </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleRegisterPlace(item)}
-                        disabled={registeringName === item.title}
-                        className="inline-flex h-[44px] min-w-[110px] items-center justify-center rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b] disabled:opacity-60"
-                      >
-                        {registeringName === item.title ? "등록 중..." : "등록"}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRegisterPlace(item)}
+                      disabled={registeringName === item.title}
+                      className="h-[60px] min-w-[130px] rounded-[18px] bg-[#c91717] px-6 text-[18px] font-bold text-white transition hover:bg-[#ae1414] disabled:opacity-60"
+                    >
+                      {registeringName === item.title ? "등록 중..." : "등록"}
+                    </button>
                   </div>
-                </section>
-              ))
+                ))}
+              </div>
             )}
           </div>
-        </section>
-      </main>
-    </>
+        </div>
+      </div>
+    </main>
   );
 }

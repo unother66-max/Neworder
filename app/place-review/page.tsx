@@ -1,6 +1,6 @@
 "use client";
 
-import TopNav from "@/components/top-nav";
+import dynamic from "next/dynamic";
 import {
   Search,
   MapPin,
@@ -11,6 +11,10 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+
+const TopNav = dynamic(() => import("@/components/top-nav"), {
+  ssr: false,
+});
 
 type ReviewHistoryRow = {
   id: string;
@@ -773,20 +777,58 @@ export default function PlaceReviewPage() {
       </main>
 
       {openRegister && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-[720px] rounded-[20px] bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-[18px] font-black">리뷰 매장 등록</h2>
-              <button onClick={() => setOpenRegister(false)}>✕</button>
-            </div>
-
-            <iframe
-              src="/place-review-register?modal=1"
-              className="w-full h-[600px] border-none"
-            />
-          </div>
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+    <div className="w-full max-w-[840px] overflow-hidden rounded-[28px] border border-[#e5e7eb] bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+      <div className="flex items-start justify-between px-7 pb-6 pt-7">
+        <div>
+          <p className="text-[13px] font-bold tracking-[0.22em] text-[#6b7280]">
+            REGISTER PLACE
+          </p>
+          <h2 className="mt-3 text-[26px] font-black tracking-[-0.03em] text-[#111827]">
+            매장 등록
+          </h2>
+          <p className="mt-3 text-[15px] text-[#6b7280]">
+            매장명을 검색해서 추적할 플레이스를 등록하세요.
+          </p>
         </div>
-      )}
+
+        <button
+          type="button"
+          onClick={() => setOpenRegister(false)}
+          className="inline-flex h-[54px] w-[54px] items-center justify-center rounded-full border border-[#d1d5db] bg-white text-[18px] font-medium text-[#6b7280] transition hover:bg-[#f9fafb]"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="border-t border-[#f3f4f6] px-7 py-6">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <input
+            type="text"
+            placeholder="예: 뉴오더클럽 한남"
+            className="h-[56px] flex-1 rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af]"
+          />
+
+          <button
+            type="button"
+            className="inline-flex h-[56px] min-w-[140px] items-center justify-center rounded-[16px] bg-[#b91c1c] px-6 text-[15px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
+          >
+            매장 검색
+          </button>
+        </div>
+
+        <div className="mt-5 flex h-[170px] items-center justify-center rounded-[20px] border border-dashed border-[#d1d5db] bg-[#fcfcfc] text-[15px] text-[#9ca3af]">
+          검색 결과가 여기에 표시됩니다.
+        </div>
+        
+      </div>
+      
+    </div>
+    
+  </div>
+    
+)}
     </>
   );
 }
+
