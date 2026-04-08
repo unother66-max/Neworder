@@ -52,6 +52,10 @@ model Place {
   keywords           PlaceKeyword[]
   reviewHistory      PlaceReviewHistory[]
   rankHistory        RankHistory[]
+placeMonthlyVolume Int? @default(0)
+placeMobileVolume  Int? @default(0)
+placePcVolume      Int? @default(0)
+
 
   @@index([userId])
 }

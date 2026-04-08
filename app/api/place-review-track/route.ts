@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
+import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,6 +78,13 @@ export async function POST(req: Request) {
       );
     }
 
+    // ✅ 매장 이름 기준 검색량 가져오기
+const volume = await getKeywordSearchVolume(place.name);
+
+const placeMobileVolume = volume?.mobile ?? 0;
+const placePcVolume = volume?.pc ?? 0;
+const placeMonthlyVolume = placeMobileVolume + placePcVolume;
+
     const visitorReviewCount = snapshot.visitorReviewCount ?? 0;
     const blogReviewCount = snapshot.blogReviewCount ?? 0;
     const totalReviewCount = visitorReviewCount + blogReviewCount;
@@ -129,6 +137,15 @@ export async function POST(req: Request) {
         keywords,
       },
     });
+
+    await prisma.place.update({
+  where: { id: placeId },
+  data: {
+    placeMobileVolume,
+    placePcVolume,
+    placeMonthlyVolume,
+  },
+});
 
     return NextResponse.json({
       ok: true,

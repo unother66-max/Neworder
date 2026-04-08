@@ -20,7 +20,7 @@ const menuItems: Array<{
   { label: "상위 블로그 찾기", href: "/", key: "blog" },
   { label: "플레이스 순위 추적", href: "/place", key: "place" },
   { label: "플레이스 리뷰 추적", href: "/place-review", key: "place-review" },
-  { label: "경쟁 분석", href: "/" },
+  { label: "플레이스 순위 분석", href: "/" },
   { label: "서비스 소개", href: "/" },
   { label: "공지사항", href: "/" },
 ];
@@ -113,7 +113,7 @@ const renderAuthArea = () => {
             </Link>
 
             <Link href="/" className={getClassName()}>
-              경쟁 분석
+              플레이스 순위 분석
             </Link>
 
             <Link href="/" className={getClassName()}>

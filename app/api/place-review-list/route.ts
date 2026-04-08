@@ -39,10 +39,7 @@ export async function GET() {
         userId,
         type: "review",
       },
-      orderBy: [
-        { reviewPinned: "desc" },
-        { createdAt: "desc" },
-      ],
+      orderBy: [{ reviewPinned: "desc" }, { createdAt: "desc" }],
       include: {
         keywords: {
           select: {
@@ -99,6 +96,12 @@ export async function GET() {
         y: place.y,
         reviewAutoTracking: place.reviewAutoTracking,
         reviewPinned: place.reviewPinned,
+
+        // ✅ place/page 와 동일하게 매장 단위 검색량 내려주기
+        placeMonthlyVolume: place.placeMonthlyVolume ?? 0,
+        placeMobileVolume: place.placeMobileVolume ?? 0,
+        placePcVolume: place.placePcVolume ?? 0,
+
         keywords: place.keywords,
         reviewHistory: history,
       };

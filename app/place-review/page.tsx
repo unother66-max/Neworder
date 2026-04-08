@@ -24,6 +24,7 @@ type ReviewHistoryRow = {
   saveCount: string;
   saveCountDiff?: number | null;
   keywords: string[];
+  
 };
 
 type ApiReviewHistory = {
@@ -54,6 +55,9 @@ type ApiPlace = {
   }[];
   reviewHistory: ApiReviewHistory[];
   reviewPinned?: boolean;
+  placeMonthlyVolume?: number | null;
+placeMobileVolume?: number | null;
+placePcVolume?: number | null;
 };
 
 type StoreItem = {
@@ -165,18 +169,23 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
   });
 
   const keywordList = place.keywords || [];
-  const mobileVolume = keywordList.reduce(
-    (sum, item) => sum + (item.mobileVolume || 0),
-    0
-  );
-  const pcVolume = keywordList.reduce(
-    (sum, item) => sum + (item.pcVolume || 0),
-    0
-  );
-  const totalVolume = keywordList.reduce(
-    (sum, item) => sum + (item.totalVolume || 0),
-    0
-  );
+
+const fallbackMobileVolume = keywordList.reduce(
+  (sum, item) => sum + (item.mobileVolume || 0),
+  0
+);
+const fallbackPcVolume = keywordList.reduce(
+  (sum, item) => sum + (item.pcVolume || 0),
+  0
+);
+const fallbackTotalVolume = keywordList.reduce(
+  (sum, item) => sum + (item.totalVolume || 0),
+  0
+);
+
+const mobileVolume = place.placeMobileVolume ?? fallbackMobileVolume;
+const pcVolume = place.placePcVolume ?? fallbackPcVolume;
+const totalVolume = place.placeMonthlyVolume ?? fallbackTotalVolume;
 
   const latestCreatedAt =
     sortedHistory.length > 0
