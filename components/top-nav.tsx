@@ -17,7 +17,7 @@ const menuItems: Array<{
   key?: NavKey;
 }> = [
   { label: "스마트스토어", href: "/" },
-  { label: "상위 블로그 찾기", href: "/", key: "blog" },
+  { label: "상위 블로그 찾기", href: "/top-blog", key: "blog" },
   { label: "플레이스 순위 추적", href: "/place", key: "place" },
   { label: "플레이스 리뷰 추적", href: "/place-review", key: "place-review" },
   { label: "플레이스 순위 분석", href: "/place-analysis", key: "place-analysis" },
@@ -111,7 +111,7 @@ export default function TopNav({ active }: TopNavProps) {
               스마트스토어
             </Link>
 
-            <Link href="/" className={getClassName("blog")}>
+            <Link href="/top-blog" className={getClassName("blog")}>
               상위 블로그 찾기
             </Link>
 
@@ -123,7 +123,10 @@ export default function TopNav({ active }: TopNavProps) {
               플레이스 리뷰 추적
             </Link>
 
-            <Link href="/place-analysis" className={getClassName("place-analysis")}>
+            <Link
+              href="/place-analysis"
+              className={getClassName("place-analysis")}
+            >
               플레이스 순위 분석
             </Link>
 
@@ -177,11 +180,13 @@ export default function TopNav({ active }: TopNavProps) {
         }`}
       >
         <div className="flex h-[68px] items-center justify-between border-b border-[#e8ebf2] px-4">
-          <img
-            src="/logo.png"
-            alt="logo"
-            className="h-9 w-auto object-contain"
-          />
+          <Link href="/" onClick={() => setOpen(false)}>
+            <img
+              src="/logo.png"
+              alt="logo"
+              className="h-9 w-auto object-contain"
+            />
+          </Link>
 
           <button
             type="button"
