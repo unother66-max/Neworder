@@ -56,6 +56,25 @@ export default function TopNav({ active }: TopNavProps) {
   const { data: session, status } = useSession();
   const closeTimerRef = useRef<number | null>(null);
 
+  const closeAllDesktopMenus = () => {
+    setSmartstoreOpen(false);
+    setKakaoMapOpen(false);
+    setNaverBlogOpen(false);
+    setNaverMapOpen(false);
+  };
+
+  const openOnlyDesktopMenu = (
+    key: "smartstore" | "kakao" | "naverBlog" | "naverMap"
+  ) => {
+    // 마우스를 빠르게 이동할 때 "잔상"이 생기는 원인:
+    // 닫힘 딜레이 + 페이드아웃 동안 이전 메뉴가 남아있는 것.
+    // 새 메뉴를 여는 순간 다른 메뉴는 즉시 닫아서 한 번에 하나만 보이게 한다.
+    setSmartstoreOpen(key === "smartstore");
+    setKakaoMapOpen(key === "kakao");
+    setNaverBlogOpen(key === "naverBlog");
+    setNaverMapOpen(key === "naverMap");
+  };
+
   const clearCloseTimer = () => {
     if (closeTimerRef.current) {
       window.clearTimeout(closeTimerRef.current);
@@ -66,11 +85,8 @@ export default function TopNav({ active }: TopNavProps) {
   const scheduleCloseMenus = () => {
     clearCloseTimer();
     closeTimerRef.current = window.setTimeout(() => {
-      setSmartstoreOpen(false);
-      setKakaoMapOpen(false);
-      setNaverBlogOpen(false);
-      setNaverMapOpen(false);
-    }, 70);
+      closeAllDesktopMenus();
+    }, 180);
   };
 
   useEffect(() => {
@@ -85,10 +101,7 @@ export default function TopNav({ active }: TopNavProps) {
       if (target.closest?.('[data-kakao-map-menu="root"]')) return;
       if (target.closest?.('[data-naver-map-menu="root"]')) return;
       if (target.closest?.('[data-naver-blog-menu="root"]')) return;
-      setSmartstoreOpen(false);
-      setKakaoMapOpen(false);
-      setNaverMapOpen(false);
-      setNaverBlogOpen(false);
+      closeAllDesktopMenus();
     };
 
     window.addEventListener("click", handler);
@@ -188,7 +201,7 @@ export default function TopNav({ active }: TopNavProps) {
               data-smartstore-menu="root"
               onMouseEnter={() => {
                 clearCloseTimer();
-                setSmartstoreOpen(true);
+                openOnlyDesktopMenu("smartstore");
               }}
               onMouseLeave={() => {
                 scheduleCloseMenus();
@@ -198,7 +211,14 @@ export default function TopNav({ active }: TopNavProps) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSmartstoreOpen((prev) => !prev);
+                  setSmartstoreOpen((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      openOnlyDesktopMenu("smartstore");
+                      return true;
+                    }
+                    return false;
+                  });
                 }}
                 className="inline-flex items-center gap-1 align-middle"
                 aria-haspopup="menu"
@@ -210,32 +230,35 @@ export default function TopNav({ active }: TopNavProps) {
                 </span>
               </button>
 
-              {smartstoreOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-full mt-2 w-[280px] overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
-                >
-                  <div className="absolute -top-2 left-0 h-2 w-full" />
-                  <div className="py-2">
-                    {SMARTSTORE_MENU.map((item) => (
-                      <Link
-                        key={`${item.label}-${item.href}`}
-                        href={item.href}
-                        className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
-                        onClick={() => setSmartstoreOpen(false)}
-                        role="menuitem"
-                      >
-                        <span className="truncate">{item.label}</span>
-                        {item.badge ? (
-                          <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2.5 py-1 text-[12px] font-black text-white">
-                            {item.badge}
-                          </span>
-                        ) : null}
-                      </Link>
-                    ))}
-                  </div>
+              <div
+                role="menu"
+                aria-hidden={!smartstoreOpen}
+                className={`absolute left-0 top-full mt-2 w-[280px] overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                  smartstoreOpen
+                    ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
+                    : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
+                }`}
+              >
+                <div className="absolute -top-6 left-0 h-6 w-full" />
+                <div className="py-2">
+                  {SMARTSTORE_MENU.map((item) => (
+                    <Link
+                      key={`${item.label}-${item.href}`}
+                      href={item.href}
+                      className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
+                      onClick={() => setSmartstoreOpen(false)}
+                      role="menuitem"
+                    >
+                      <span className="truncate">{item.label}</span>
+                      {item.badge ? (
+                        <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2.5 py-1 text-[12px] font-black text-white">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </Link>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
 
             <div
@@ -243,7 +266,7 @@ export default function TopNav({ active }: TopNavProps) {
               data-naver-blog-menu="root"
               onMouseEnter={() => {
                 clearCloseTimer();
-                setNaverBlogOpen(true);
+                openOnlyDesktopMenu("naverBlog");
               }}
               onMouseLeave={() => {
                 scheduleCloseMenus();
@@ -253,7 +276,14 @@ export default function TopNav({ active }: TopNavProps) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setNaverBlogOpen((prev) => !prev);
+                  setNaverBlogOpen((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      openOnlyDesktopMenu("naverBlog");
+                      return true;
+                    }
+                    return false;
+                  });
                 }}
                 className="inline-flex items-center gap-1 align-middle"
                 aria-haspopup="menu"
@@ -273,29 +303,32 @@ export default function TopNav({ active }: TopNavProps) {
                 </span>
               </button>
 
-              {naverBlogOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
-                >
-                  <div className="absolute -top-2 left-0 h-2 w-full" />
-                  <div className="pb-2">
-                    {NAVER_BLOG_MENU.map((item) => (
-                      <Link
-                        key={`${item.key}-${item.href}`}
-                        href={item.href}
-                        className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(
-                          item.key
-                        )}`}
-                        onClick={() => setNaverBlogOpen(false)}
-                        role="menuitem"
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
+              <div
+                role="menu"
+                aria-hidden={!naverBlogOpen}
+                className={`absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                  naverBlogOpen
+                    ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
+                    : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
+                }`}
+              >
+                <div className="absolute -top-6 left-0 h-6 w-full" />
+                <div className="pb-2">
+                  {NAVER_BLOG_MENU.map((item) => (
+                    <Link
+                      key={`${item.key}-${item.href}`}
+                      href={item.href}
+                      className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(
+                        item.key
+                      )}`}
+                      onClick={() => setNaverBlogOpen(false)}
+                      role="menuitem"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
 
             <div
@@ -303,7 +336,7 @@ export default function TopNav({ active }: TopNavProps) {
               data-naver-map-menu="root"
               onMouseEnter={() => {
                 clearCloseTimer();
-                setNaverMapOpen(true);
+                openOnlyDesktopMenu("naverMap");
               }}
               onMouseLeave={() => {
                 scheduleCloseMenus();
@@ -313,7 +346,14 @@ export default function TopNav({ active }: TopNavProps) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setNaverMapOpen((prev) => !prev);
+                  setNaverMapOpen((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      openOnlyDesktopMenu("naverMap");
+                      return true;
+                    }
+                    return false;
+                  });
                 }}
                 className="inline-flex items-center gap-1 align-middle"
                 aria-haspopup="menu"
@@ -333,27 +373,30 @@ export default function TopNav({ active }: TopNavProps) {
                 </span>
               </button>
 
-              {naverMapOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
-                >
-                  <div className="absolute -top-2 left-0 h-2 w-full" />
-                  <div className="pb-2">
-                    {NAVER_MAP_MENU.map((item) => (
-                      <Link
-                        key={`${item.key}-${item.href}`}
-                        href={item.href}
-                        className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(item.key)}`}
-                        onClick={() => setNaverMapOpen(false)}
-                        role="menuitem"
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
+              <div
+                role="menu"
+                aria-hidden={!naverMapOpen}
+                className={`absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                  naverMapOpen
+                    ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
+                    : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
+                }`}
+              >
+                <div className="absolute -top-6 left-0 h-6 w-full" />
+                <div className="pb-2">
+                  {NAVER_MAP_MENU.map((item) => (
+                    <Link
+                      key={`${item.key}-${item.href}`}
+                      href={item.href}
+                      className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(item.key)}`}
+                      onClick={() => setNaverMapOpen(false)}
+                      role="menuitem"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
 
             <div
@@ -361,7 +404,7 @@ export default function TopNav({ active }: TopNavProps) {
               data-kakao-map-menu="root"
               onMouseEnter={() => {
                 clearCloseTimer();
-                setKakaoMapOpen(true);
+                openOnlyDesktopMenu("kakao");
               }}
               onMouseLeave={() => {
                 scheduleCloseMenus();
@@ -371,7 +414,14 @@ export default function TopNav({ active }: TopNavProps) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setKakaoMapOpen((prev) => !prev);
+                  setKakaoMapOpen((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      openOnlyDesktopMenu("kakao");
+                      return true;
+                    }
+                    return false;
+                  });
                 }}
                 className="inline-flex items-center gap-1 align-middle"
                 aria-haspopup="menu"
@@ -383,32 +433,35 @@ export default function TopNav({ active }: TopNavProps) {
                 </span>
               </button>
 
-              {kakaoMapOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
-                >
-                  <div className="absolute -top-2 left-0 h-2 w-full" />
-                  <div className="py-2">
-                    {KAKAO_MAP_MENU.map((item) => (
-                      <Link
-                        key={`${item.label}-${item.href}`}
-                        href={item.href}
-                        className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
-                        onClick={() => setKakaoMapOpen(false)}
-                        role="menuitem"
-                      >
-                        <span className="truncate">{item.label}</span>
-                        {item.badge ? (
-                          <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2.5 py-1 text-[12px] font-black text-white">
-                            {item.badge}
-                          </span>
-                        ) : null}
-                      </Link>
-                    ))}
-                  </div>
+              <div
+                role="menu"
+                aria-hidden={!kakaoMapOpen}
+                className={`absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                  kakaoMapOpen
+                    ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
+                    : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
+                }`}
+              >
+                <div className="absolute -top-6 left-0 h-6 w-full" />
+                <div className="py-2">
+                  {KAKAO_MAP_MENU.map((item) => (
+                    <Link
+                      key={`${item.label}-${item.href}`}
+                      href={item.href}
+                      className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
+                      onClick={() => setKakaoMapOpen(false)}
+                      role="menuitem"
+                    >
+                      <span className="truncate">{item.label}</span>
+                      {item.badge ? (
+                        <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2.5 py-1 text-[12px] font-black text-white">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </Link>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
 
           </nav>
