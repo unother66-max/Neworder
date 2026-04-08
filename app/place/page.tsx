@@ -703,10 +703,13 @@ if (!session) {
       const publicPlaceId = String(data.placeId || "").trim();
 
       const alreadyExists = stores.some(
-        (store) =>
-          (publicPlaceId && store.placeId === publicPlaceId) ||
-          (store.name === item.title && store.address === item.address)
-      );
+  (store) =>
+    store.dbId && // 👉 이 줄 추가
+    (
+      (publicPlaceId && store.placeId === publicPlaceId) ||
+      (store.name === item.title && store.address === item.address)
+    )
+);
 
       if (alreadyExists) {
         alert("이미 등록된 매장입니다.");

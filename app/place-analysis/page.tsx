@@ -75,35 +75,56 @@ export default function PlaceAnalysisPage() {
   const [list, setList] = useState<RankPlaceItem[]>([]);
   const [error, setError] = useState("");
 
-  const [savedPlaceIds, setSavedPlaceIds] = useState<Set<string>>(new Set());
+  const [savedRankPlaceIds, setSavedRankPlaceIds] = useState<Set<string>>(new Set());
+  const [savedReviewPlaceIds, setSavedReviewPlaceIds] = useState<Set<string>>(new Set());
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
 
-  const loadSavedPlaces = async () => {
-    try {
-      const res = await fetch("/api/place-list", {
+ const loadSavedPlaces = async () => {
+  try {
+    const [rankRes, reviewRes] = await Promise.all([
+      fetch("/api/place-list", {
         cache: "no-store",
         credentials: "include",
-      });
+      }),
+      fetch("/api/place-review-list", {
+        cache: "no-store",
+        credentials: "include",
+      }),
+    ]);
 
-      if (!res.ok) return;
+    const rankSet = new Set<string>();
+    const reviewSet = new Set<string>();
 
-      const data = await res.json();
-      const places: SavedPlaceItem[] = Array.isArray(data?.places)
-        ? data.places
+    if (rankRes.ok) {
+      const rankData = await rankRes.json();
+      const rankPlaces: SavedPlaceItem[] = Array.isArray(rankData?.places)
+        ? rankData.places
         : [];
 
-      const nextSet = new Set<string>();
-
-      for (const place of places) {
+      for (const place of rankPlaces) {
         const publicPlaceId = extractPublicPlaceId(place.placeUrl);
-        if (publicPlaceId) nextSet.add(publicPlaceId);
+        if (publicPlaceId) rankSet.add(publicPlaceId);
       }
-
-      setSavedPlaceIds(nextSet);
-    } catch (e) {
-      console.error("saved places load error:", e);
     }
-  };
+
+    if (reviewRes.ok) {
+      const reviewData = await reviewRes.json();
+      const reviewPlaces: SavedPlaceItem[] = Array.isArray(reviewData?.places)
+        ? reviewData.places
+        : [];
+
+      for (const place of reviewPlaces) {
+        const publicPlaceId = extractPublicPlaceId(place.placeUrl);
+        if (publicPlaceId) reviewSet.add(publicPlaceId);
+      }
+    }
+
+    setSavedRankPlaceIds(rankSet);
+    setSavedReviewPlaceIds(reviewSet);
+  } catch (e) {
+    console.error("saved places load error:", e);
+  }
+};
 
   useEffect(() => {
     loadSavedPlaces();
@@ -152,83 +173,98 @@ export default function PlaceAnalysisPage() {
   };
 
   const handleRegisterPlace = async (
-    item: RankPlaceItem,
-    mode: "review" | "rank"
-  ) => {
-    const placeId = String(item.placeId || "").trim();
-    const key = `${mode}-${placeId || item.name}`;
+  item: RankPlaceItem,
+  mode: "review" | "rank"
+) => {
+  const placeId = String(item.placeId || "").trim();
+  const key = `${mode}-${placeId || item.name}`;
 
-    if (!placeId) {
-      alert("placeId가 없어 등록할 수 없습니다.");
+  if (!placeId) {
+    alert("placeId가 없어 등록할 수 없습니다.");
+    return;
+  }
+
+  try {
+    setRegisteringKey(key);
+
+    const endpoint =
+      mode === "review" ? "/api/place-review-save" : "/api/place-save";
+
+    const saveRes = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: item.name,
+        category: item.category || "",
+        address: item.address || "",
+        jibunAddress: item.address || "",
+        placeUrl: buildMobilePlaceLink(placeId),
+        imageUrl: item.imageUrl || "",
+        x: null,
+        y: null,
+      }),
+    });
+
+    const saveData = await saveRes.json();
+
+    if (!saveRes.ok) {
+      alert(saveData?.error || saveData?.message || "매장 등록 실패");
       return;
     }
 
-    if (savedPlaceIds.has(placeId)) {
-      alert("이미 등록된 매장입니다.");
-      return;
-    }
+   if (mode === "review") {
+  const createdPlaceId = String(
+    saveData?.place?.id || saveData?.data?.id || ""
+  ).trim();
 
+  if (createdPlaceId) {
     try {
-      setRegisteringKey(key);
-
-      const saveRes = await fetch("/api/place-save", {
+      await fetch("/api/place-review-track", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: item.name,
-          category: item.category || "",
-          address: item.address || "",
-          jibunAddress: item.address || "",
-          placeUrl: buildMobilePlaceLink(placeId),
-          imageUrl: item.imageUrl || "",
-          x: null,
-          y: null,
+          placeId: createdPlaceId,
         }),
       });
-
-      const saveData = await saveRes.json();
-
-      if (!saveRes.ok) {
-        alert(saveData?.error || saveData?.message || "매장 등록 실패");
-        return;
-      }
-
-      const createdPlaceId =
-        String(saveData?.place?.id || saveData?.data?.id || "").trim();
-
-      if (mode === "review" && createdPlaceId) {
-        try {
-          await fetch("/api/place-review-track", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              placeId: createdPlaceId,
-            }),
-          });
-        } catch (e) {
-          console.error("review track init error:", e);
-        }
-      }
-
-      setSavedPlaceIds((prev) => {
-        const next = new Set(prev);
-        next.add(placeId);
-        return next;
-      });
-
-      alert(mode === "review" ? "리뷰추적 등록 완료" : "순위추적 등록 완료");
-      await loadSavedPlaces();
     } catch (e) {
-      console.error(e);
-      alert("등록 중 오류가 발생했습니다.");
-    } finally {
-      setRegisteringKey(null);
+      console.error("review track init error:", e);
     }
-  };
+  }
+
+  setSavedReviewPlaceIds((prev) => {
+    const next = new Set(prev);
+    next.add(placeId);
+    return next;
+  });
+
+  alert("리뷰추적 등록 완료");
+  await loadSavedPlaces();
+  return;
+}
+
+setSavedRankPlaceIds((prev) => {
+  const next = new Set(prev);
+  next.add(placeId);
+  return next;
+});
+
+alert("순위추적 등록 완료");
+await loadSavedPlaces();
+
+ 
+
+
+  } catch (e) {
+    console.error(e);
+    alert("등록 중 오류가 발생했습니다.");
+  } finally {
+    setRegisteringKey(null);
+  }
+};
 
   const renderedList = useMemo(() => list, [list]);
 
@@ -388,7 +424,8 @@ export default function PlaceAnalysisPage() {
                   ) : (
                     renderedList.map((item, idx) => {
                       const placeId = String(item.placeId || "").trim();
-                      const isRegistered = savedPlaceIds.has(placeId);
+                      const isReviewRegistered = savedReviewPlaceIds.has(placeId);
+const isRankRegistered = savedRankPlaceIds.has(placeId);
                       const reviewKey = `review-${placeId || item.name}`;
                       const rankKey = `rank-${placeId || item.name}`;
 
@@ -451,7 +488,7 @@ export default function PlaceAnalysisPage() {
                           </td>
 
                           <td className="px-5 py-5 text-center">
-                            {isRegistered ? (
+                            {isReviewRegistered ? (
                               <button
                                 disabled
                                 className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-[#f9fafb] px-5 text-[14px] font-bold text-[#9ca3af]"
@@ -478,7 +515,7 @@ export default function PlaceAnalysisPage() {
                           </td>
 
                           <td className="px-5 py-5 text-center">
-                            {isRegistered ? (
+                            {isRankRegistered ? (
                               <button
                                 disabled
                                 className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-[#f9fafb] px-5 text-[14px] font-bold text-[#9ca3af]"
