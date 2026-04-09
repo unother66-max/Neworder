@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
+import { Pin } from "lucide-react";
+import Tooltip from "@/components/Tooltip";
 
 type KakaoRankRow = {
   date: string;
+  keyword: string;
   searchAll: string;
   searchCat: string;
   directionAll: string;
@@ -19,14 +22,13 @@ type KakaoRankRow = {
 
 type KakaoStore = {
   id: string;
+  kakaoId: string | null;
   name: string;
   category: string;
   address: string;
   kakaoUrl: string;
   imageUrl: string | null;
-  monthlyVolume: number | null;
-  mobileVolume: number | null;
-  pcVolume: number | null;
+  isPinned: boolean;
   isAutoTracking: boolean;
   rankRows: KakaoRankRow[];
   latestUpdatedAt: string | null;
@@ -43,10 +45,32 @@ type KakaoSearchItem = {
   image?: string;
 };
 
-function formatCount(value?: number | null) {
-  if (value === null || value === undefined) return "-";
-  return value.toLocaleString("ko-KR");
-}
+const RANK_GROUPS = [
+  {
+    label: "검색",
+    allKey: "searchAll",
+    catKey: "searchCat",
+    tooltip: "해당지역에서 검색시 업체가 노출되는 순위입니다.",
+  },
+  {
+    label: "길찾기",
+    allKey: "directionAll",
+    catKey: "directionCat",
+    tooltip: "해당지역에서 길찾기를 많이 누른 매장 순위입니다.",
+  },
+  {
+    label: "즐겨찾기",
+    allKey: "favoriteAll",
+    catKey: "favoriteCat",
+    tooltip: "해당지역에서 저장한 횟수를 기준으로 한 인기 순위입니다.",
+  },
+  {
+    label: "친구공유",
+    allKey: "shareAll",
+    catKey: "shareCat",
+    tooltip: "해당지역에서 카카오톡 등으로 많이 공유된 매장의 순위입니다.",
+  },
+] as const;
 
 export default function KakaoRankingPage() {
   const { data: session, status } = useSession();
@@ -57,6 +81,9 @@ export default function KakaoRankingPage() {
   const [storeLoading, setStoreLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [deletingStoreId, setDeletingStoreId] = useState<string | null>(null);
+  const [pinningId, setPinningId] = useState<string | null>(null);
+  const [trackingLoadingId, setTrackingLoadingId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [placeQuery, setPlaceQuery] = useState("");
@@ -202,12 +229,77 @@ export default function KakaoRankingPage() {
     }
   };
 
-  const handleToggleTracking = (id: string) => {
-    setStores((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...s, isAutoTracking: !s.isAutoTracking } : s
-      )
-    );
+  const handleUpdateRank = async (store: KakaoStore) => {
+    if (updatingId) return;
+    setUpdatingId(store.id);
+    try {
+      const res = await fetch("/api/check-kakao-rank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ placeId: store.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || data.message || "업데이트 실패");
+        return;
+      }
+      await fetchStores();
+    } catch (e) {
+      console.error(e);
+      alert("업데이트 중 오류가 발생했습니다.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleToggleTracking = async (store: KakaoStore) => {
+    if (trackingLoadingId) return;
+    setTrackingLoadingId(store.id);
+    const nextValue = !store.isAutoTracking;
+    try {
+      const res = await fetch("/api/kakao-toggle-tracking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeId: store.id, enabled: nextValue }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        alert(data?.message || "자동추적 변경 실패");
+        return;
+      }
+      setStores((prev) =>
+        prev.map((s) => (s.id === store.id ? { ...s, isAutoTracking: nextValue } : s))
+      );
+    } catch (e) {
+      console.error(e);
+      alert("자동추적 변경 중 오류가 발생했습니다.");
+    } finally {
+      setTrackingLoadingId(null);
+    }
+  };
+
+  const handleTogglePin = async (store: KakaoStore) => {
+    if (pinningId) return;
+    setPinningId(store.id);
+    try {
+      const res = await fetch("/api/place-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeId: store.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        alert(data?.message || "핀 변경 실패");
+        return;
+      }
+      await fetchStores();
+    } catch (e) {
+      console.error(e);
+      alert("핀 변경 중 오류가 발생했습니다.");
+    } finally {
+      setPinningId(null);
+    }
   };
 
   if (!mounted || status === "loading") {
@@ -232,13 +324,6 @@ export default function KakaoRankingPage() {
     );
   }
 
-  const RANK_GROUPS = [
-    { label: "검색 랭킹", allKey: "searchAll", catKey: "searchCat" },
-    { label: "길찾기 랭킹", allKey: "directionAll", catKey: "directionCat" },
-    { label: "즐겨찾기 랭킹", allKey: "favoriteAll", catKey: "favoriteCat" },
-    { label: "친구공유 랭킹", allKey: "shareAll", catKey: "shareCat" },
-  ] as const;
-
   return (
     <>
       <TopNav active="kakao-ranking" />
@@ -258,7 +343,7 @@ export default function KakaoRankingPage() {
                   </span>
                 </div>
                 <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
-                  카카오맵에 등록된 매장의 지역별 랭킹 변화를 확인하실 수 있습니다.
+                카카오맵에서 제공하는 지역별 인기 순위를 기준으로 분석된 데이터입니다.
                 </p>
               </div>
 
@@ -300,7 +385,7 @@ export default function KakaoRankingPage() {
               </p>
               </div>
               <div className="text-[11px] text-[#9ca3af]">
-                * 월 검색량은 카카오 데이터 미제공으로 네이버 검색량을 표기합니다.
+                * 업종 기준 지역 랭킹을 표시합니다.
               </div>
             </div>
           </div>
@@ -317,144 +402,159 @@ export default function KakaoRankingPage() {
                 </p>
               </div>
             ) : (
-              filteredStores.map((store) => (
-                <div
-                  key={store.id}
-                  className="overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
-                >
-                  {/* Store header */}
-                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-5 py-4 md:px-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              filteredStores.map((store) => {
+                const latestRow = store.rankRows[0] ?? null;
+                return (
+                  <div
+                    key={store.id}
+                    className={`overflow-hidden rounded-[22px] border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition ${
+                      store.isPinned ? "border-[#fca5a5]" : "border-[#e5e7eb]"
+                    }`}
+                  >
+                    <div className="px-5 py-4 md:px-6">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
 
-                      {/* Store info */}
-                      <div className="flex min-w-0 gap-4">
-                        {store.imageUrl ? (
-                          <img
-                            src={store.imageUrl}
-                            alt={store.name}
-                            className="h-[70px] w-[70px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">
-                            이미지
-                          </div>
-                        )}
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-[20px] font-black tracking-[-0.03em] text-[#111827]">
-                              {store.name}
-                            </h3>
-                            {store.category ? (
-                              <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
-                                {store.category}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <p className="mt-1.5 text-[13px] text-[#6b7280]">
-                            {store.address || "-"}
-                          </p>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                              <div className="text-[10px] font-semibold text-[#6b7280]">
-                                월 검색량
-                              </div>
-                              <div className="mt-1 text-[15px] font-black text-[#111827]">
-                                {formatCount(store.monthlyVolume)}
-                              </div>
+                        {/* Store info */}
+                        <div className="flex min-w-0 gap-4">
+                          {store.imageUrl ? (
+                            <img
+                              src={store.imageUrl}
+                              alt={store.name}
+                              className="h-[70px] w-[70px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">
+                              이미지
                             </div>
-                            <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                              <div className="text-[10px] font-semibold text-[#6b7280]">
-                                모바일
-                              </div>
-                              <div className="mt-1 text-[14px] font-extrabold text-[#111827]">
-                                {formatCount(store.mobileVolume)}
-                              </div>
-                            </div>
-                            <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                              <div className="text-[10px] font-semibold text-[#6b7280]">
-                                PC
-                              </div>
-                              <div className="mt-1 text-[14px] font-extrabold text-[#111827]">
-                                {formatCount(store.pcVolume)}
-                              </div>
-                            </div>
-                            <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                              <div className="text-[10px] font-semibold text-[#6b7280]">
-                                자동 추적
-                              </div>
-                              <div className="mt-1 text-[14px] font-black text-[#111827]">
-                                {store.isAutoTracking ? "ON" : "OFF"}
-                              </div>
-                            </div>
-                          </div>
+                          )}
 
-                          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
-                            <span className="font-semibold text-[#6b7280]">바로가기</span>
-                            {store.kakaoUrl ? (
-                              <a
-                                href={store.kakaoUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
-                              >
-                                카카오맵
-                              </a>
-                            ) : (
-                              <span className="text-[#c0c6d0]">카카오맵 없음</span>
-                            )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {store.isPinned && (
+                                <Pin className="h-[14px] w-[14px] fill-[#b91c1c] stroke-[#b91c1c]" />
+                              )}
+                              <h3 className="text-[20px] font-black tracking-[-0.03em] text-[#111827]">
+                                {store.name}
+                              </h3>
+                              {store.category ? (
+                                <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
+                                  {store.category}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <p className="mt-1 text-[13px] text-[#6b7280]">
+                              {store.address || "-"}
+                            </p>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+                              <span className="font-semibold text-[#6b7280]">바로가기</span>
+                              {store.kakaoUrl ? (
+                                <a
+                                  href={store.kakaoUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
+                                >
+                                  카카오맵
+                                </a>
+                              ) : (
+                                <span className="text-[#c0c6d0]">카카오맵 없음</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Actions */}
-                      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
-                        <button
-                          type="button"
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
-                        >
-                          순위변화보기
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleTracking(store.id)}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition ${
-                            store.isAutoTracking
-                              ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
-                              : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
-                          }`}
-                        >
-                          자동추적 {store.isAutoTracking ? "ON" : "OFF"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteStore(store.id)}
-                          disabled={deletingStoreId === store.id}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#fecaca] bg-white px-4 text-[14px] font-bold text-[#dc2626] transition hover:bg-[#fafafa] ${deletingStoreId === store.id ? "opacity-60" : ""}`}
-                        >
-                          {deletingStoreId === store.id ? "삭제 중..." : "삭제"}
-                        </button>
+                        {/* Actions */}
+                        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePin(store)}
+                            disabled={pinningId === store.id}
+                            className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] border transition ${
+                              store.isPinned
+                                ? "border-[#fca5a5] bg-white text-[#b91c1c]"
+                                : "border-[#d1d5db] bg-white hover:bg-[#f9fafb]"
+                            } ${pinningId === store.id ? "opacity-60" : ""}`}
+                            aria-label="상단 고정"
+                          >
+                            <Pin
+                              className={`h-[16px] w-[16px] transition ${
+                                store.isPinned
+                                  ? "fill-[#b91c1c] stroke-[#b91c1c]"
+                                  : "stroke-[#6b7280]"
+                              }`}
+                              strokeWidth={2}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateRank(store)}
+                            disabled={updatingId === store.id}
+                            className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${
+                              updatingId === store.id ? "opacity-60" : ""
+                            }`}
+                          >
+                            {updatingId === store.id ? "업데이트 중..." : "업데이트"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/kakao-ranking/${store.id}`)}
+                            className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                          >
+                            순위변화보기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleTracking(store)}
+                            disabled={trackingLoadingId === store.id}
+                            className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition ${
+                              store.isAutoTracking
+                                ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
+                                : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
+                            } ${trackingLoadingId === store.id ? "opacity-60" : ""}`}
+                          >
+                            {trackingLoadingId === store.id
+                              ? "처리 중..."
+                              : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteStore(store.id)}
+                            disabled={deletingStoreId === store.id}
+                            className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#fecaca] bg-white px-4 text-[14px] font-bold text-[#dc2626] transition hover:bg-[#fafafa] ${deletingStoreId === store.id ? "opacity-60" : ""}`}
+                          >
+                            {deletingStoreId === store.id ? "삭제 중..." : "삭제"}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Ranking table */}
-                  <div className="px-5 py-5 md:px-6">
-                    <div className="overflow-hidden rounded-[18px] border border-[#e5e7eb]">
-                      <div className="overflow-x-auto">
+                    {/* 최신 순위 1행 테이블 */}
+                    <div className="border-t border-[#f3f4f6] px-5 pb-4 md:px-6">
+                      <div className="mb-2 mt-3 flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-[#6b7280]">
+                        해당 지역에서의 랭킹변화 (최신순)
+                        </p>
+                        <p className="text-[11px] text-[#9ca3af]">
+                          마지막 업데이트:{" "}
+                          <span className="font-semibold text-[#6b7280]">
+                            {store.latestUpdatedAt || "-"}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="overflow-x-auto rounded-[14px] border border-[#e5e7eb]">
                         <table className="min-w-full border-collapse">
                           <thead className="bg-[#f9fafb]">
                             <tr>
                               <th
                                 rowSpan={2}
-                                className="border-b border-r border-[#e5e7eb] px-4 py-3.5 text-left text-[12px] font-extrabold text-[#6b7280]"
+                                className="border-b border-r border-[#e5e7eb] px-4 py-2.5 text-left text-[11px] font-extrabold text-[#6b7280]"
                               >
                                 날짜
                               </th>
@@ -462,91 +562,71 @@ export default function KakaoRankingPage() {
                                 <th
                                   key={g.label}
                                   colSpan={2}
-                                  className={`border-b border-[#e5e7eb] px-4 py-2.5 text-center text-[12px] font-extrabold text-[#6b7280] ${
+                                  className={`border-b border-[#e5e7eb] px-3 py-2 text-center text-[11px] font-extrabold text-[#6b7280] ${
                                     i < RANK_GROUPS.length - 1 ? "border-r" : ""
                                   }`}
                                 >
-                                  {g.label}
+                                  <Tooltip content={g.tooltip}>
+                                    <span>{g.label} 랭킹</span>
+                                  </Tooltip>
                                 </th>
                               ))}
                             </tr>
                             <tr>
                               {RANK_GROUPS.map((g, gi) =>
-                                (["전체", store.category || "카테고리"] as const).map(
-                                  (label, li) => (
-                                    <th
-                                      key={`${g.label}-${label}`}
-                                      className={`border-b border-[#e5e7eb] px-3 py-2 text-center text-[11px] font-semibold text-[#9ca3af] ${
-                                        li === 1 && gi < RANK_GROUPS.length - 1
-                                          ? "border-r"
-                                          : ""
-                                      }`}
-                                    >
-                                      {label}
-                                    </th>
-                                  )
-                                )
+                                (["전체", store.category || "업종"] as const).map((label, li) => (
+                                  <th
+                                    key={`${g.label}-${label}-${li}`}
+                                    className={`border-b border-[#e5e7eb] px-3 py-1.5 text-center text-[10px] font-semibold text-[#9ca3af] ${
+                                      li === 1 && gi < RANK_GROUPS.length - 1 ? "border-r" : ""
+                                    }`}
+                                  >
+                                    {label}
+                                  </th>
+                                ))
                               )}
                             </tr>
                           </thead>
                           <tbody>
-                            {store.rankRows.length === 0 ? (
+                            {!latestRow ? (
                               <tr>
                                 <td
                                   colSpan={9}
-                                  className="px-5 py-10 text-center text-[14px] text-[#9ca3af]"
+                                  className="px-4 py-6 text-center text-[12px] text-[#9ca3af]"
                                 >
-                                  아직 순위 데이터가 없습니다.
+                                  아직 순위 데이터가 없습니다. 순위변화보기에서 체크해주세요.
                                 </td>
                               </tr>
                             ) : (
-                              store.rankRows.map((row, i) => (
-                                <tr
-                                  key={i}
-                                  className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
-                                >
-                                  <td className="border-r border-[#f3f4f6] px-4 py-4 text-[12px] font-semibold text-[#6b7280]">
-                                    {row.date}
-                                  </td>
-                                  {RANK_GROUPS.map((g, gi) => (
-                                    <>
-                                      <td
-                                        key={`${g.allKey}-${i}`}
-                                        className="px-3 py-4 text-center text-[13px] font-bold text-[#111827]"
-                                      >
-                                        {row[g.allKey] || "-"}
-                                      </td>
-                                      <td
-                                        key={`${g.catKey}-${i}`}
-                                        className={`px-3 py-4 text-center text-[13px] font-bold text-[#111827] ${
-                                          gi < RANK_GROUPS.length - 1
-                                            ? "border-r border-[#f3f4f6]"
-                                            : ""
-                                        }`}
-                                      >
-                                        {row[g.catKey] || "-"}
-                                      </td>
-                                    </>
-                                  ))}
-                                </tr>
-                              ))
+                              <tr className="bg-white">
+                                <td className="border-r border-[#f3f4f6] px-4 py-3 text-[11px] font-semibold text-[#6b7280]">
+                                  {latestRow.date}
+                                </td>
+                                {RANK_GROUPS.map((g, gi) => (
+                                  <React.Fragment key={`${g.label}-${gi}`}>
+                                    <td className="px-3 py-3 text-center text-[12px] font-bold text-[#6b7280]">
+                                      {latestRow[g.allKey] || "-"}
+                                    </td>
+                                    <td
+                                      className={`px-3 py-3 text-center text-[12px] font-bold ${
+                                        latestRow[g.catKey] && latestRow[g.catKey] !== "-"
+                                          ? "text-[#111827]"
+                                          : "text-[#d1d5db]"
+                                      } ${gi < RANK_GROUPS.length - 1 ? "border-r border-[#f3f4f6]" : ""}`}
+                                    >
+                                      {latestRow[g.catKey] || "-"}
+                                    </td>
+                                  </React.Fragment>
+                                ))}
+                              </tr>
                             )}
                           </tbody>
                         </table>
                       </div>
                     </div>
-
-                    <div className="mt-3 flex justify-end text-[11px] text-[#9ca3af]">
-                      <div>
-                        마지막 업데이트:{" "}
-                        <span className="font-semibold text-[#6b7280]">
-                          {store.latestUpdatedAt || "-"}
-                        </span>
-                      </div>
-                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>

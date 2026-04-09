@@ -46,12 +46,14 @@ model Place {
   y                  String?
   type               String               @default("rank")
   reviewPinned       Boolean              @default(false)
-  rankPinned         Boolean              @default(false)
-  rankPinnedAt       DateTime?
+  rankPinned           Boolean              @default(false)
+  rankPinnedAt         DateTime?
+  kakaoAutoTracking    Boolean              @default(false)
   user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   keywords           PlaceKeyword[]
   reviewHistory      PlaceReviewHistory[]
   rankHistory        RankHistory[]
+  kakaoRankHistory   KakaoRankHistory[]
 placeMonthlyVolume Int? @default(0)
 placeMobileVolume  Int? @default(0)
 placePcVolume      Int? @default(0)
@@ -83,6 +85,24 @@ model RankHistory {
   rank      Int
   createdAt DateTime @default(now())
   place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
+}
+
+model KakaoRankHistory {
+  id           String   @id @default(cuid())
+  placeId      String
+  keyword      String
+  searchAll    Int?
+  searchCat    Int?
+  directionAll Int?
+  directionCat Int?
+  favoriteAll  Int?
+  favoriteCat  Int?
+  shareAll     Int?
+  shareCat     Int?
+  trackedAt    DateTime @default(now())
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@index([placeId])
 }

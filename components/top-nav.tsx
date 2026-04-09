@@ -119,7 +119,7 @@ export default function TopNav({ active }: TopNavProps) {
 
   const getMobileClassName = (key?: NavKey) =>
     key && active === key
-      ? "block rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-[16px] font-black text-[#7c3aed]"
+      ? "block rounded-[12px] bg-[#fff1f2] px-4 py-3 text-[16px] font-black text-[#e11d2e]"
       : "block rounded-[12px] px-4 py-3 text-[16px] font-extrabold text-[#111827] hover:bg-[#f7f7fb] hover:font-black";
 
   const isNaverMapActive =
@@ -302,7 +302,7 @@ export default function TopNav({ active }: TopNavProps) {
                 <span
                   className={
                     isNaverBlogActive
-                      ? "whitespace-nowrap text-[14px] font-extrabold leading-[1.1] text-[#7c3aed]"
+                      ? "whitespace-nowrap text-[15px] font-extrabold leading-[1.1] text-[#e11d2e]"
                       : getClassName("blog")
                   }
                 >
@@ -372,7 +372,7 @@ export default function TopNav({ active }: TopNavProps) {
                 <span
                   className={
                     isNaverMapActive
-                      ? "whitespace-nowrap text-[14px] font-extrabold leading-[1.1] text-[#7c3aed]"
+                      ? "whitespace-nowrap text-[15px] font-extrabold leading-[1.1] text-[#e11d2e]"
                       : getClassName("blog")
                   }
                 >
@@ -437,7 +437,13 @@ export default function TopNav({ active }: TopNavProps) {
                 aria-haspopup="menu"
                 aria-expanded={kakaoMapOpen}
               >
-                <span className={getClassName()}>카카오맵</span>
+                <span
+                  className={
+                    isKakaoMapActive
+                      ? "whitespace-nowrap text-[15px] font-extrabold leading-[1.1] text-[#e11d2e]"
+                      : getClassName()
+                  }
+                >카카오맵</span>
                 <span className="text-[11px] font-black leading-none text-[#6b7280] translate-y-[-1px]">
                   {kakaoMapOpen ? "▴" : "▾"}
                 </span>
@@ -590,7 +596,7 @@ export default function TopNav({ active }: TopNavProps) {
               onClick={() => setNaverBlogOpen((prev) => !prev)}
               className={
                 isNaverBlogActive
-                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-left text-[15px] font-extrabold text-[#7c3aed]"
+                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#fff1f2] px-4 py-3 text-left text-[15px] font-extrabold text-[#e11d2e]"
                   : "flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
               }
               aria-expanded={naverBlogOpen}
@@ -622,7 +628,7 @@ export default function TopNav({ active }: TopNavProps) {
               onClick={() => setNaverMapOpen((prev) => !prev)}
               className={
                 isNaverMapActive
-                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#f5f3ff] px-4 py-3 text-left text-[15px] font-extrabold text-[#7c3aed]"
+                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#fff1f2] px-4 py-3 text-left text-[15px] font-extrabold text-[#e11d2e]"
                   : "flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
               }
               aria-expanded={naverMapOpen}

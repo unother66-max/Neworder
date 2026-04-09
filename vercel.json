@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/place-tracking",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/kakao-tracking",
+      "schedule": "0 18 * * *"
     }
   ]
 }
