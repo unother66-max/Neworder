@@ -23,6 +23,7 @@ type KakaoStore = {
   category: string;
   address: string;
   kakaoUrl: string;
+  imageUrl: string | null;
   monthlyVolume: number | null;
   mobileVolume: number | null;
   pcVolume: number | null;
@@ -157,6 +158,7 @@ export default function KakaoRankingPage() {
           category: item.category.split(">").pop()?.trim() || item.category,
           address: item.address,
           kakaoUrl: item.kakaoUrl,
+          kakaoId: item.kakaoId,
           x: item.x,
           y: item.y,
         }),
@@ -325,15 +327,15 @@ export default function KakaoRankingPage() {
 
                       {/* Store info */}
                       <div className="flex min-w-0 gap-4">
-                        {store.image ? (
+                        {store.imageUrl ? (
                           <img
-                            src={store.image}
+                            src={store.imageUrl}
                             alt={store.name}
                             className="h-[70px] w-[70px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
                             loading="lazy"
                             referrerPolicy="no-referrer"
                             onError={(e) => {
-                              e.currentTarget.style.display = "none";
+                              (e.currentTarget as HTMLImageElement).style.display = "none";
                             }}
                           />
                         ) : (

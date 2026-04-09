@@ -39,6 +39,7 @@ export async function GET() {
       category: place.category ?? "",
       address: place.address ?? "",
       kakaoUrl: place.placeUrl ?? "",
+      imageUrl: place.imageUrl ?? null,
       x: place.x ?? null,
       y: place.y ?? null,
       isAutoTracking: false,

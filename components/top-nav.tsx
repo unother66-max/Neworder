@@ -515,15 +515,19 @@ export default function TopNav({ active }: TopNavProps) {
         <div
           className="fixed inset-0 z-[60] bg-black/35 xl:hidden"
           onClick={() => setOpen(false)}
+          aria-hidden="true"
         />
       )}
 
       <aside
-        className={`fixed left-0 top-0 z-[70] h-full w-[290px] bg-white shadow-2xl transition-transform duration-300 xl:hidden ${
+        className={`fixed left-0 top-0 z-[70] flex h-full w-[290px] flex-col bg-white shadow-2xl transition-transform duration-300 xl:hidden ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
+        onClick={(e) => e.stopPropagation()}
+        aria-modal="true"
+        aria-label="사이드 메뉴"
       >
-        <div className="flex h-[68px] items-center justify-between border-b border-[#e8ebf2] px-4">
+        <div className="flex h-[68px] shrink-0 items-center justify-between border-b border-[#e8ebf2] px-4">
           <Link href="/" onClick={() => setOpen(false)}>
             <img
               src="/logo.png"
@@ -542,7 +546,7 @@ export default function TopNav({ active }: TopNavProps) {
           </button>
         </div>
 
-        <div className="px-4 py-5">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5">
           <div className="mb-4 text-[12px] font-bold uppercase tracking-[0.12em] text-[#9ca3af]">
             Menu
           </div>
