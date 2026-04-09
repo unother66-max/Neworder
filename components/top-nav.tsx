@@ -244,19 +244,19 @@ export default function TopNav({ active }: TopNavProps) {
               <div
                 role="menu"
                 aria-hidden={!smartstoreOpen}
-                className={`absolute left-0 top-full mt-2 w-[280px] overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                className={`absolute left-0 top-full mt-1.5 w-[160px] overflow-hidden rounded-[12px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] origin-top-left transition duration-150 ease-out ${
                   smartstoreOpen
                     ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
                     : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
                 }`}
               >
                 <div className="absolute -top-6 left-0 h-6 w-full" />
-                <div className="py-2">
+                <div className="py-1">
                   {SMARTSTORE_MENU.map((item) => (
                     <Link
                       key={`${item.label}-${item.href}`}
                       href={item.href}
-                      className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
+                      className="flex items-center justify-between gap-2 px-4 py-2 text-[13px] font-bold text-[#111827] hover:bg-[#f8fafc]"
                       onClick={() => setSmartstoreOpen(false)}
                       role="menuitem"
                     >
@@ -317,21 +317,21 @@ export default function TopNav({ active }: TopNavProps) {
               <div
                 role="menu"
                 aria-hidden={!naverBlogOpen}
-                className={`absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                className={`absolute left-0 top-full mt-1.5 w-[160px] overflow-hidden rounded-[12px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] origin-top-left transition duration-150 ease-out ${
                   naverBlogOpen
                     ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
                     : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
                 }`}
               >
                 <div className="absolute -top-6 left-0 h-6 w-full" />
-                <div className="pb-2">
+                <div className="py-1">
                   {NAVER_BLOG_MENU.map((item) => (
                     <Link
                       key={`${item.key}-${item.href}`}
                       href={item.href}
-                      className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(
-                        item.key
-                      )}`}
+                      className={`block px-4 py-2 text-[13px] font-bold hover:bg-[#f8fafc] ${
+                        item.key && active === item.key ? "text-[#e11d2e]" : "text-[#111827]"
+                      }`}
                       onClick={() => setNaverBlogOpen(false)}
                       role="menuitem"
                     >
@@ -387,19 +387,21 @@ export default function TopNav({ active }: TopNavProps) {
               <div
                 role="menu"
                 aria-hidden={!naverMapOpen}
-                className={`absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                className={`absolute left-0 top-full mt-1.5 w-[160px] overflow-hidden rounded-[12px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] origin-top-left transition duration-150 ease-out ${
                   naverMapOpen
                     ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
                     : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
                 }`}
               >
                 <div className="absolute -top-6 left-0 h-6 w-full" />
-                <div className="pb-2">
+                <div className="py-1">
                   {NAVER_MAP_MENU.map((item) => (
                     <Link
                       key={`${item.key}-${item.href}`}
                       href={item.href}
-                      className={`block px-4 py-3 hover:bg-[#f8fafc] ${getClassName(item.key)}`}
+                      className={`block px-4 py-2 text-[13px] font-bold hover:bg-[#f8fafc] ${
+                        item.key && active === item.key ? "text-[#e11d2e]" : "text-[#111827]"
+                      }`}
                       onClick={() => setNaverMapOpen(false)}
                       role="menuitem"
                     >
@@ -453,19 +455,19 @@ export default function TopNav({ active }: TopNavProps) {
               <div
                 role="menu"
                 aria-hidden={!kakaoMapOpen}
-                className={`absolute left-0 top-full mt-2 w-[220px] overflow-hidden rounded-[16px] border border-[#e5e7eb] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] origin-top-left transition duration-150 ease-out ${
+                className={`absolute left-0 top-full mt-1.5 w-[160px] overflow-hidden rounded-[12px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] origin-top-left transition duration-150 ease-out ${
                   kakaoMapOpen
                     ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
                     : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
                 }`}
               >
                 <div className="absolute -top-6 left-0 h-6 w-full" />
-                <div className="py-2">
+                <div className="py-1">
                   {KAKAO_MAP_MENU.map((item) => (
                     <Link
                       key={`${item.label}-${item.href}`}
                       href={item.href}
-                      className="flex items-center justify-between gap-4 px-5 py-3 text-[15px] font-extrabold tracking-[-0.02em] text-[#111827] hover:bg-[#f8fafc]"
+                      className="flex items-center justify-between gap-2 px-4 py-2 text-[13px] font-bold text-[#111827] hover:bg-[#f8fafc]"
                       onClick={() => setKakaoMapOpen(false)}
                       role="menuitem"
                     >
