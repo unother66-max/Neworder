@@ -931,13 +931,20 @@ export async function POST(req: Request) {
       rank,
     });
 
-    const volume = await getKeywordSearchVolume(keyword);
+    const [volume, storeVolume] = await Promise.all([
+      getKeywordSearchVolume(keyword),
+      getKeywordSearchVolume(targetName),
+    ]);
     const mobile = volume?.mobile ?? 0;
     const pc = volume?.pc ?? 0;
     const total = mobile + pc;
 
+    const storeMobile = storeVolume?.mobile ?? 0;
+    const storePc = storeVolume?.pc ?? 0;
+    const storeTotal = storeMobile + storePc;
+
     if (placeKeywordId) {
-      await prisma.placeKeyword.update({
+      const kw = await prisma.placeKeyword.update({
         where: {
           id: placeKeywordId,
         },
@@ -946,7 +953,19 @@ export async function POST(req: Request) {
           pcVolume: pc,
           totalVolume: total,
         },
+        select: { placeId: true },
       });
+
+      if (kw.placeId) {
+        await prisma.place.update({
+          where: { id: kw.placeId },
+          data: {
+            placeMobileVolume: storeMobile,
+            placePcVolume: storePc,
+            placeMonthlyVolume: storeTotal,
+          },
+        });
+      }
     } else {
       await prisma.placeKeyword.updateMany({
         where: {
@@ -961,6 +980,15 @@ export async function POST(req: Request) {
           totalVolume: total,
         },
       });
+
+      await prisma.place.updateMany({
+        where: { name: targetName, type: "rank" },
+        data: {
+          placeMobileVolume: storeMobile,
+          placePcVolume: storePc,
+          placeMonthlyVolume: storeTotal,
+        },
+      });
     }
 
     return Response.json({
@@ -969,6 +997,9 @@ export async function POST(req: Request) {
       mobile,
       pc,
       monthly: total,
+      storeMobile,
+      storePc,
+      storeMonthly: storeTotal,
     });
   } catch (error) {
     console.error("check-place-rank error:", error);

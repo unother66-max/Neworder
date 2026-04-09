@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { useSession } from "next-auth/react";
 
-type NavKey = "blog" | "place" | "place-review" | "place-analysis";
+type NavKey = "blog" | "place" | "place-review" | "place-analysis" | "kakao-ranking";
 
 type TopNavProps = {
   active?: NavKey;
@@ -22,7 +22,7 @@ const SMARTSTORE_MENU: Array<{
   { label: "순위 분석", href: "/" },
   { label: "스마트스토어 분석", href: "/" },
   { label: "키워드 분석", href: "/" },
-  { label: "키워드 추출기", href: "/", badge: "NEW" },
+  { label: "키워드 추출기", href: "/" },
 ];
 
 const NAVER_BLOG_MENU: Array<{ label: string; href: string; key: NavKey }> = [
@@ -40,10 +40,10 @@ const KAKAO_MAP_MENU: Array<{
   href: string;
   badge?: "NEW";
 }> = [
-  { label: "랭킹추적", href: "/" },
-  { label: "순위추적", href: "/", badge: "NEW" },
-  { label: "리뷰추적", href: "/", badge: "NEW" },
-  { label: "순위분석", href: "/", badge: "NEW" },
+  { label: "랭킹추적", href: "/kakao-ranking" },
+  { label: "순위추적", href: "/" },
+  { label: "리뷰추적", href: "/" },
+  { label: "순위분석", href: "/" },
 ];
 
 export default function TopNav({ active }: TopNavProps) {
@@ -127,9 +127,12 @@ export default function TopNav({ active }: TopNavProps) {
 
   const isNaverBlogActive = active === "blog";
 
+  const isKakaoMapActive = active === "kakao-ranking";
+
   const getBreadcrumbCategoryLabel = () => {
     if (isNaverBlogActive) return "네이버 블로그";
     if (isNaverMapActive) return "네이버지도";
+    if (isKakaoMapActive) return "카카오맵";
     return "네이버지도";
   };
 
@@ -138,6 +141,7 @@ export default function TopNav({ active }: TopNavProps) {
     if (active === "place-review") return "플레이스 리뷰 추적";
     if (active === "blog") return "상위 블로그 찾기";
     if (active === "place-analysis") return "플레이스 순위 분석";
+    if (active === "kakao-ranking") return "랭킹 추적";
     return "";
   };
 
@@ -164,11 +168,17 @@ export default function TopNav({ active }: TopNavProps) {
 
     return (
       <Link
-  href="/login"
-  className="inline-flex h-[44px] items-center justify-center rounded-[12px] bg-[#e11d2e] px-5 text-[13px] font-bold text-white transition hover:bg-[#c81624]"
->
-  로그인/가입
-</Link>
+        href="/login"
+        className="inline-flex h-[44px] items-center justify-center gap-2 rounded-[12px] bg-[#e11d2e] px-5 text-[13px] font-bold text-white transition hover:bg-[#c81624]"
+      >
+        <span
+          className="text-[16px] leading-none [filter:brightness(0)_invert(1)]"
+          aria-hidden
+        >
+          🔐
+        </span>
+        <span className="text-white">로그인/가입</span>
+      </Link>
     );
   };
 

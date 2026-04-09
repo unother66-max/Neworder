@@ -246,6 +246,14 @@ export default function PlaceReviewPage() {
   const [updatingStoreId, setUpdatingStoreId] = useState<string | null>(null);
   const [trackingStoreId, setTrackingStoreId] = useState<string | null>(null);
   const [openRegister, setOpenRegister] = useState(false);
+  const [registerQuery, setRegisterQuery] = useState("");
+  const [registerResults, setRegisterResults] = useState<
+    { title: string; category: string; address: string; link: string; image: string }[]
+  >([]);
+  const [registerSearchLoading, setRegisterSearchLoading] = useState(false);
+  const [registerSearchError, setRegisterSearchError] = useState("");
+  const [registeringName, setRegisteringName] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   async function fetchPlaces() {
     try {
@@ -283,6 +291,107 @@ export default function PlaceReviewPage() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, []);
+
+  function closeRegisterModal() {
+    setOpenRegister(false);
+    setRegisterQuery("");
+    setRegisterResults([]);
+    setRegisterSearchError("");
+    setHasSearched(false);
+    setRegisteringName(null);
+  }
+
+  async function handleRegisterSearch() {
+    if (!registerQuery.trim()) {
+      setRegisterSearchError("매장명을 입력해주세요.");
+      setRegisterResults([]);
+      setHasSearched(false);
+      return;
+    }
+    setRegisterSearchLoading(true);
+    setRegisterSearchError("");
+    setHasSearched(true);
+    try {
+      const res = await fetch("/api/search-place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: registerQuery }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRegisterSearchError(data.error || "매장 검색 중 오류가 났어요.");
+        setRegisterResults([]);
+        return;
+      }
+      setRegisterResults(
+        (data.items || []).map((item: { title: string; category: string; address: string; link: string; image?: string }) => ({
+          ...item,
+          image: item.image
+            ? item.image.startsWith("//")
+              ? `https:${item.image}`
+              : item.image
+            : "",
+        }))
+      );
+    } catch {
+      setRegisterSearchError("매장 검색 중 오류가 났어요.");
+      setRegisterResults([]);
+    } finally {
+      setRegisterSearchLoading(false);
+    }
+  }
+
+  async function handleRegisterPlace(item: { title: string; category: string; address: string; link: string; image: string }) {
+    try {
+      setRegisteringName(item.title);
+
+      const resolveRes = await fetch("/api/resolve-place-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: item.title, address: item.address, link: item.link }),
+      });
+      const resolveData = await resolveRes.json();
+
+      if (!resolveRes.ok) {
+        alert(resolveData.error || "플레이스 정보를 가져오지 못했어요.");
+        return;
+      }
+
+      const rawImage = resolveData.image || item.image || "";
+      const publicPlaceId = String(resolveData.placeId || "").trim();
+      const mobileUrl = publicPlaceId
+        ? `https://m.place.naver.com/restaurant/${publicPlaceId}/home`
+        : item.link;
+
+      const saveRes = await fetch("/api/place-review-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: item.title,
+          category: item.category.split(">").pop()?.trim() || item.category,
+          address: item.address,
+          jibunAddress: resolveData.jibunAddress || "",
+          placeUrl: mobileUrl,
+          imageUrl: rawImage,
+          x: resolveData.x || null,
+          y: resolveData.y || null,
+        }),
+      });
+      const saveData = await saveRes.json();
+
+      if (!saveRes.ok) {
+        alert(saveData.error || "리뷰 플레이스 저장 실패");
+        return;
+      }
+
+      closeRegisterModal();
+      await fetchPlaces();
+    } catch {
+      alert("매장 등록 중 오류가 났어요.");
+    } finally {
+      setRegisteringName(null);
+    }
+  }
 
   const filteredStores = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -777,57 +886,117 @@ export default function PlaceReviewPage() {
       </main>
 
       {openRegister && (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-    <div className="w-full max-w-[840px] overflow-hidden rounded-[28px] border border-[#e5e7eb] bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-      <div className="flex items-start justify-between px-7 pb-6 pt-7">
-        <div>
-          <p className="text-[13px] font-bold tracking-[0.22em] text-[#6b7280]">
-            REGISTER PLACE
-          </p>
-          <h2 className="mt-3 text-[26px] font-black tracking-[-0.03em] text-[#111827]">
-            매장 등록
-          </h2>
-          <p className="mt-3 text-[15px] text-[#6b7280]">
-            매장명을 검색해서 추적할 플레이스를 등록하세요.
-          </p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
+          <div className="w-full max-w-[760px] overflow-hidden rounded-[24px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
+            <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
+                    REGISTER PLACE
+                  </p>
+                  <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">
+                    매장 등록
+                  </h2>
+                  <p className="mt-2 text-[14px] text-[#6b7280]">
+                    매장명을 검색해서 리뷰 추적할 플레이스를 등록하세요.
+                  </p>
+                </div>
+                <button
+                  onClick={closeRegisterModal}
+                  className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={registerQuery}
+                  onChange={(e) => setRegisterQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleRegisterSearch(); }}
+                  placeholder="예: 뉴오더클럽 한남"
+                  className="h-[50px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[15px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleRegisterSearch}
+                  disabled={registerSearchLoading}
+                  className={`h-[50px] rounded-[16px] bg-[#b91c1c] px-5 text-[15px] font-bold text-white shadow-[0_14px_30px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b] ${registerSearchLoading ? "opacity-60" : ""}`}
+                >
+                  {registerSearchLoading ? "검색 중..." : "매장 검색"}
+                </button>
+              </div>
+
+              {registerSearchError && (
+                <div className="mt-4 rounded-[14px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] text-[#dc2626]">
+                  {registerSearchError}
+                </div>
+              )}
+
+              <div className="mt-5 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                {!hasSearched ? (
+                  <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-5 py-10 text-center text-[14px] text-[#9ca3af]">
+                    검색 결과가 여기에 표시됩니다.
+                  </div>
+                ) : registerSearchLoading ? (
+                  <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-5 py-10 text-center text-[14px] text-[#9ca3af]">
+                    검색 중입니다...
+                  </div>
+                ) : registerResults.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-5 py-10 text-center text-[14px] text-[#9ca3af]">
+                    검색 결과가 없습니다.
+                  </div>
+                ) : (
+                  registerResults.map((item, idx) => (
+                    <div
+                      key={`${item.title}-${item.address}-${idx}`}
+                      className="flex flex-col gap-4 rounded-[18px] border border-[#e5e7eb] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.03)] md:flex-row md:items-center md:justify-between"
+                    >
+                      <div className="flex min-w-0 gap-4">
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.title}
+                            className="h-[64px] w-[64px] rounded-[14px] object-cover ring-1 ring-[#e5e7eb]"
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="flex h-[64px] w-[64px] items-center justify-center rounded-[14px] bg-[#f3f4f6] text-[12px] text-[#9ca3af]">
+                            이미지
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-[16px] font-black tracking-[-0.02em] text-[#111827]">
+                            {item.title}
+                          </div>
+                          <div className="mt-1 text-[13px] font-semibold text-[#4b5563]">
+                            {item.category}
+                          </div>
+                          <div className="mt-1 text-[13px] text-[#6b7280]">
+                            {item.address}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRegisterPlace(item)}
+                        disabled={registeringName === item.title}
+                        className={`inline-flex h-[42px] items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${registeringName === item.title ? "opacity-60" : ""}`}
+                      >
+                        {registeringName === item.title ? "등록 중..." : "이 매장 등록"}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setOpenRegister(false)}
-          className="inline-flex h-[54px] w-[54px] items-center justify-center rounded-full border border-[#d1d5db] bg-white text-[18px] font-medium text-[#6b7280] transition hover:bg-[#f9fafb]"
-        >
-          ✕
-        </button>
-      </div>
-
-      <div className="border-t border-[#f3f4f6] px-7 py-6">
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <input
-            type="text"
-            placeholder="예: 뉴오더클럽 한남"
-            className="h-[56px] flex-1 rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af]"
-          />
-
-          <button
-            type="button"
-            className="inline-flex h-[56px] min-w-[140px] items-center justify-center rounded-[16px] bg-[#b91c1c] px-6 text-[15px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
-          >
-            매장 검색
-          </button>
-        </div>
-
-        <div className="mt-5 flex h-[170px] items-center justify-center rounded-[20px] border border-dashed border-[#d1d5db] bg-[#fcfcfc] text-[15px] text-[#9ca3af]">
-          검색 결과가 여기에 표시됩니다.
-        </div>
-        
-      </div>
-      
-    </div>
-    
-  </div>
-    
-)}
+      )}
     </>
   );
 }

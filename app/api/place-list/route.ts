@@ -122,21 +122,23 @@ export async function GET() {
             new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         )[0]?.updatedAt ?? null;
 
-      let placeMonthlyVolume = 0;
-      let placeMobileVolume = 0;
-      let placePcVolume = 0;
+      const placeMonthlyVolumeDb = toNumber(place.placeMonthlyVolume ?? 0);
+      const placeMobileVolumeDb = toNumber(place.placeMobileVolume ?? 0);
+      const placePcVolumeDb = toNumber(place.placePcVolume ?? 0);
 
-      // 상세페이지와 최대한 동일하게:
-      // 첫 번째 키워드의 저장된 검색량을 우선 사용
-      const firstKeyword = place.keywords?.[0];
+      let placeMonthlyVolume = placeMonthlyVolumeDb;
+      let placeMobileVolume = placeMobileVolumeDb;
+      let placePcVolume = placePcVolumeDb;
 
-      if (firstKeyword) {
-        placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
-        placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
-
-        const totalVolume = toNumber(firstKeyword.totalVolume);
-        placeMonthlyVolume =
-          totalVolume || placeMobileVolume + placePcVolume;
+      // placeMonthlyVolume이 아직 채워지지 않은 경우 키워드 검색량으로 fallback
+      if (!placeMonthlyVolume) {
+        const firstKeyword = place.keywords?.[0];
+        if (firstKeyword) {
+          placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
+          placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
+          const totalVolume = toNumber(firstKeyword.totalVolume);
+          placeMonthlyVolume = totalVolume || placeMobileVolume + placePcVolume;
+        }
       }
 
       return {
