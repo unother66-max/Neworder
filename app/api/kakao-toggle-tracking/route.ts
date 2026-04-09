@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const session = (await getServerSession(authOptions as any)) as any;
+    const userId = session?.user?.id as string | undefined;
+    if (!userId) {
       return NextResponse.json({ ok: false, message: "로그인 필요" }, { status: 401 });
     }
 
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     const place = await prisma.place.findFirst({
-      where: { id: placeId, userId: session.user.id },
+      where: { id: placeId, userId },
       select: { id: true },
     });
 
