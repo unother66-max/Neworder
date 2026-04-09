@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import UserMenu from "@/components/user-menu";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
 type NavKey = "blog" | "place" | "place-review" | "place-analysis" | "kakao-ranking";
 
@@ -684,11 +684,17 @@ export default function TopNav({ active }: TopNavProps) {
 
           </nav>
 
-          <div className="mt-6 rounded-[14px] bg-[#f6f7fb] px-4 py-4">
-            <div className="text-[13px] font-semibold text-[#4b5563]">
-              전체 1 / 사용 1 / <span className="text-[#7c3aed]">잔여 0</span>
+          {session?.user && (
+            <div className="mt-6 border-t border-[#e8ebf2] pt-4">
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="flex w-full items-center rounded-[12px] px-4 py-3 text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              >
+                로그아웃
+              </button>
             </div>
-          </div>
+          )}
         </div>
       </aside>
     </>

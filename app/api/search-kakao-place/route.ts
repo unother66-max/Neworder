@@ -13,6 +13,35 @@ type KakaoDocument = {
   y: string;
 };
 
+async function fetchKakaoPlaceImage(kakaoId: string): Promise<string> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+
+    const res = await fetch(`https://place.map.kakao.com/${kakaoId}`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+        "Accept-Language": "ko-KR,ko;q=0.9",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    clearTimeout(timer);
+    if (!res.ok) return "";
+
+    const html = await res.text();
+    const match =
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+
+    return match?.[1] ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -49,8 +78,11 @@ export async function POST(request: Request) {
     }
 
     const data = await response.json();
+    const docs: KakaoDocument[] = data.documents || [];
 
-    const items = (data.documents || []).map((doc: KakaoDocument) => ({
+    const images = await Promise.all(docs.map((doc) => fetchKakaoPlaceImage(doc.id)));
+
+    const items = docs.map((doc, i) => ({
       kakaoId: doc.id,
       title: doc.place_name,
       category: doc.category_name,
@@ -58,7 +90,7 @@ export async function POST(request: Request) {
       kakaoUrl: doc.place_url,
       x: doc.x,
       y: doc.y,
-      image: "",
+      image: images[i] ?? "",
     }));
 
     return Response.json({ items });

@@ -1689,6 +1689,10 @@ return (
                             className="h-[64px] w-[64px] rounded-[14px] object-cover ring-1 ring-[#e5e7eb]"
                             loading="lazy"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              console.warn(`[place modal] image load failed: ${item.image}`);
+                              (e.currentTarget as HTMLImageElement).style.display = "none";
+                            }}
                           />
                         ) : (
                           <div className="flex h-[64px] w-[64px] items-center justify-center rounded-[14px] bg-[#f3f4f6] text-[12px] text-[#9ca3af]">

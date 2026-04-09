@@ -40,6 +40,7 @@ type KakaoSearchItem = {
   kakaoUrl: string;
   x: string;
   y: string;
+  image?: string;
 };
 
 function formatCount(value?: number | null) {
@@ -617,9 +618,22 @@ export default function KakaoRankingPage() {
                         className="flex flex-col gap-4 rounded-[18px] border border-[#e5e7eb] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.03)] sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="flex min-w-0 gap-4">
-                          <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-[12px] bg-[#fff7ed] text-[20px] ring-1 ring-[#e5e7eb]">
-                            🗺️
-                          </div>
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.title}
+                              className="h-[60px] w-[60px] shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb]"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[11px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">
+                              이미지
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <div className="text-[15px] font-black text-[#111827]">
                               {item.title}
