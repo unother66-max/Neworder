@@ -1014,47 +1014,49 @@ const addKeywordsToTemp = (keywords: string[]) => {
   try {
     const batches = chunkArray(target.keywords, RANK_CHECK_BATCH_SIZE);
 
+    // 순차 호출: 네이버 키워드도구 API 동시 다발 호출 시 429 등으로 검색량이 0으로 저장되는 경우 방지
     for (const batch of batches) {
-      await Promise.all(
-        batch.map(async (item) => {
-          const response = await fetch("/api/check-place-rank", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              keyword: item.keyword,
-              targetName: target.name,
-              x: target.x,
-              y: target.y,
-            }),
-          });
+      for (const item of batch) {
+        const response = await fetch("/api/check-place-rank", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            keyword: item.keyword,
+            targetName: target.name,
+            x: target.x,
+            y: target.y,
+            ...(item.placeKeywordId
+              ? { placeKeywordId: item.placeKeywordId }
+              : {}),
+          }),
+        });
 
-          const data = await response.json();
+        const data = await response.json();
 
-          if (!response.ok) {
-            console.error("rank check error:", item.keyword, data);
-            return;
+        if (!response.ok) {
+          console.error("rank check error:", item.keyword, data);
+          continue;
+        }
+
+        if (item.placeKeywordId && data.rank && data.rank !== "-") {
+          try {
+            await fetch("/api/place-rank-history-save", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                placeKeywordId: item.placeKeywordId,
+                rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+              }),
+            });
+          } catch (historyError) {
+            console.error("rank history save error", historyError);
           }
-
-          if (item.placeKeywordId && data.rank && data.rank !== "-") {
-            try {
-              await fetch("/api/place-rank-history-save", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  placeKeywordId: item.placeKeywordId,
-                  rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
-                }),
-              });
-            } catch (historyError) {
-              console.error("rank history save error", historyError);
-            }
-          }
-        })
-      );
+        }
+      }
     }
 
     await fetchPlaces();
