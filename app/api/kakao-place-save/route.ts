@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { name, category, address, kakaoUrl, kakaoId, x, y } = body ?? {};
+    const { name, category, address, kakaoUrl, kakaoId, x, y, type: bodyType } = body ?? {};
 
     if (!name) {
       return NextResponse.json({ error: "name은 필수입니다." }, { status: 400 });
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
         imageUrl: imageUrl ?? null,
         x: x ? String(x) : null,
         y: y ? String(y) : null,
-        type: "kakao-rank",
+        type: bodyType === "kakao-place" ? "kakao-place" : "kakao-rank",
       },
     });
 

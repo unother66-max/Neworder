@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin } from "lucide-react";
+import { Pin, Trash2 } from "lucide-react";
 
 type KeywordItem = {
   keyword: string;
@@ -1426,35 +1426,40 @@ return (
                       </div>
 
                       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
-                        
-
+                        {/* 핀 */}
                         <button
-  type="button"
-  onClick={() => handleTogglePin(store)}
-  className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] transition ${
-  store.isPinned
-    ? "bg-white text-[#b91c1c]"
-    : "bg-white hover:bg-[#f9fafb]"
-}`}
-  aria-label="핀 고정"
->
-  <Pin
-  className={`h-[20px] w-[20px] transition ${
-    store.isPinned
-      ? "fill-[#b91c1c] stroke-[#b91c1c]"
-      : "stroke-[#111827]"
-  }`}
-  strokeWidth={2}
-/>
-</button>
-                        
+                          type="button"
+                          onClick={() => handleTogglePin(store)}
+                          className={`inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb]`}
+                          aria-label="핀 고정"
+                        >
+                          <Pin
+                            className={`h-[20px] w-[20px] transition ${
+                              store.isPinned
+                                ? "fill-[#b91c1c] stroke-[#b91c1c]"
+                                : "stroke-[#6b7280]"
+                            }`}
+                            strokeWidth={2}
+                          />
+                        </button>
+                        {/* 업데이트 */}
+                        <button
+                          onClick={() => handleCheckRanks(index)}
+                          disabled={isChecking}
+                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${
+                            isChecking ? "opacity-60" : ""
+                          }`}
+                        >
+                          {isChecking ? "업데이트 중..." : "업데이트"}
+                        </button>
+                        {/* 순위변화보기 */}
                         <button
                           onClick={() => goToPlaceDetail(index)}
                           className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
                         >
                           순위변화보기
                         </button>
-
+                        {/* 자동추적 */}
                         <button
                           onClick={() => handleToggleTrackingByStore(store)}
                           disabled={isTrackingLoading}
@@ -1468,32 +1473,25 @@ return (
                             ? "처리 중..."
                             : `자동추적 ${trackingLabel}`}
                         </button>
-
+                        {/* 키워드관리 */}
                         <button
                           onClick={() => openKeywordModal(index)}
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#b91c1c] px-4 text-[14px] font-bold text-white shadow-[0_8px_20px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
                         >
-                          키워드관리
+                          키워드 관리
                         </button>
-
-                        <button
-                          onClick={() => handleCheckRanks(index)}
-                          disabled={isChecking}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${
-                            isChecking ? "opacity-60" : ""
-                          }`}
-                        >
-                          {isChecking ? "업데이트 중..." : "업데이트"}
-                        </button>
-
+                        {/* 삭제 */}
                         <button
                           onClick={() => handleDeleteStore(store)}
                           disabled={isDeleting}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#fecaca] bg-white px-4 text-[14px] font-bold text-[#dc2626] transition hover:bg-[#fafafa] ${
+                          className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#fef2f2] ${
                             isDeleting ? "opacity-60" : ""
                           }`}
+                          aria-label="삭제"
                         >
-                          {isDeleting ? "삭제 중..." : "삭제"}
+                          {isDeleting
+                            ? <span className="text-[12px] text-[#dc2626]">...</span>
+                            : <Trash2 className="h-[18px] w-[18px] stroke-[#dc2626]" strokeWidth={2} />}
                         </button>
                       </div>
                     </div>

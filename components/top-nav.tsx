@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { signOut, useSession } from "next-auth/react";
 
-type NavKey = "blog" | "place" | "place-review" | "place-analysis" | "kakao-ranking";
+type NavKey = "blog" | "place" | "place-review" | "place-analysis" | "kakao-ranking" | "kakao-place";
 
 type TopNavProps = {
   active?: NavKey;
@@ -41,7 +41,7 @@ const KAKAO_MAP_MENU: Array<{
   badge?: "NEW";
 }> = [
   { label: "랭킹추적", href: "/kakao-ranking" },
-  { label: "순위추적", href: "/" },
+  { label: "순위추적", href: "/kakao-place" },
   { label: "리뷰추적", href: "/" },
   { label: "순위분석", href: "/" },
 ];
@@ -127,7 +127,7 @@ export default function TopNav({ active }: TopNavProps) {
 
   const isNaverBlogActive = active === "blog";
 
-  const isKakaoMapActive = active === "kakao-ranking";
+  const isKakaoMapActive = active === "kakao-ranking" || active === "kakao-place";
 
   const getBreadcrumbCategoryLabel = () => {
     if (isNaverBlogActive) return "네이버 블로그";
@@ -142,6 +142,7 @@ export default function TopNav({ active }: TopNavProps) {
     if (active === "blog") return "상위 블로그 찾기";
     if (active === "place-analysis") return "플레이스 순위 분석";
     if (active === "kakao-ranking") return "랭킹 추적";
+    if (active === "kakao-place") return "순위 추적";
     return "";
   };
 

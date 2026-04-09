@@ -9,6 +9,7 @@ import {
   MoreVertical,
   Pin,
   HelpCircle,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -731,29 +732,25 @@ export default function PlaceReviewPage() {
 
                       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
                       <button
-  type="button"
-  onClick={() => handleTogglePin(store.id)}
-  className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] transition ${
-  store.isPinned
-    ? "bg-white text-[#b91c1c]"
-    : "bg-white hover:bg-[#f9fafb]"
-}`}
-  aria-label="핀 고정"
->
-  <Pin
-  className={`h-[20px] w-[20px] transition ${
-    store.isPinned
-      ? "fill-[#b91c1c] stroke-[#b91c1c]"
-      : "stroke-[#111827]"
-  }`}
-  strokeWidth={2}
-/>
-</button>
+                        type="button"
+                        onClick={() => handleTogglePin(store.id)}
+                        className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb]`}
+                        aria-label="핀 고정"
+                      >
+                        <Pin
+                          className={`h-[20px] w-[20px] transition ${
+                            store.isPinned
+                              ? "fill-[#b91c1c] stroke-[#b91c1c]"
+                              : "stroke-[#6b7280]"
+                          }`}
+                          strokeWidth={2}
+                        />
+                      </button>
                         <button
                           type="button"
                           onClick={() => handleUpdateStore(store.id)}
                           disabled={updatingStoreId === store.id}
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb] disabled:opacity-60"
+                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60"
                         >
                           {updatingStoreId === store.id ? "업데이트 중..." : "업데이트"}
                         </button>
@@ -781,9 +778,10 @@ export default function PlaceReviewPage() {
                         <button
                           type="button"
                           onClick={() => handleDeleteStore(store.id, store.name)}
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#fef2f2]"
+                          aria-label="삭제"
                         >
-                          삭제
+                          <Trash2 className="h-[18px] w-[18px] stroke-[#dc2626]" strokeWidth={2} />
                         </button>
 
                         

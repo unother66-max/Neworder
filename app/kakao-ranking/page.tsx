@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin } from "lucide-react";
+import { Pin, Trash2 } from "lucide-react";
 import Tooltip from "@/components/Tooltip";
 
 type KakaoRankRow = {
@@ -407,9 +407,7 @@ export default function KakaoRankingPage() {
                 return (
                   <div
                     key={store.id}
-                    className={`overflow-hidden rounded-[22px] border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition ${
-                      store.isPinned ? "border-[#fca5a5]" : "border-[#e5e7eb]"
-                    }`}
+                    className="overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition"
                   >
                     <div className="px-5 py-4 md:px-6">
                       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -476,15 +474,11 @@ export default function KakaoRankingPage() {
                             type="button"
                             onClick={() => handleTogglePin(store)}
                             disabled={pinningId === store.id}
-                            className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] border transition ${
-                              store.isPinned
-                                ? "border-[#fca5a5] bg-white text-[#b91c1c]"
-                                : "border-[#d1d5db] bg-white hover:bg-[#f9fafb]"
-                            } ${pinningId === store.id ? "opacity-60" : ""}`}
+                            className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb] ${pinningId === store.id ? "opacity-60" : ""}`}
                             aria-label="상단 고정"
                           >
                             <Pin
-                              className={`h-[16px] w-[16px] transition ${
+                              className={`h-[20px] w-[20px] transition ${
                                 store.isPinned
                                   ? "fill-[#b91c1c] stroke-[#b91c1c]"
                                   : "stroke-[#6b7280]"
@@ -527,9 +521,12 @@ export default function KakaoRankingPage() {
                             type="button"
                             onClick={() => handleDeleteStore(store.id)}
                             disabled={deletingStoreId === store.id}
-                            className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#fecaca] bg-white px-4 text-[14px] font-bold text-[#dc2626] transition hover:bg-[#fafafa] ${deletingStoreId === store.id ? "opacity-60" : ""}`}
+                            className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#fef2f2] ${deletingStoreId === store.id ? "opacity-60" : ""}`}
+                            aria-label="삭제"
                           >
-                            {deletingStoreId === store.id ? "삭제 중..." : "삭제"}
+                            {deletingStoreId === store.id
+                              ? <span className="text-[12px] text-[#dc2626]">...</span>
+                              : <Trash2 className="h-[18px] w-[18px] stroke-[#dc2626]" strokeWidth={2} />}
                           </button>
                         </div>
                       </div>
@@ -537,15 +534,9 @@ export default function KakaoRankingPage() {
 
                     {/* 최신 순위 1행 테이블 */}
                     <div className="border-t border-[#f3f4f6] px-5 pb-4 md:px-6">
-                      <div className="mb-2 mt-3 flex items-center justify-between">
+                      <div className="mb-2 mt-3">
                         <p className="text-[11px] font-semibold text-[#6b7280]">
-                        해당 지역에서의 랭킹변화 (최신순)
-                        </p>
-                        <p className="text-[11px] text-[#9ca3af]">
-                          마지막 업데이트:{" "}
-                          <span className="font-semibold text-[#6b7280]">
-                            {store.latestUpdatedAt || "-"}
-                          </span>
+                          해당 지역에서의 랭킹변화
                         </p>
                       </div>
                       <div className="overflow-x-auto rounded-[14px] border border-[#e5e7eb]">
@@ -609,7 +600,7 @@ export default function KakaoRankingPage() {
                                     </td>
                                     <td
                                       className={`px-3 py-3 text-center text-[12px] font-bold ${
-                                        latestRow[g.catKey] && latestRow[g.catKey] !== "-"
+                                        latestRow[g.catKey] && latestRow[g.catKey] !== "-" && latestRow[g.catKey] !== "100위 밖"
                                           ? "text-[#111827]"
                                           : "text-[#d1d5db]"
                                       } ${gi < RANK_GROUPS.length - 1 ? "border-r border-[#f3f4f6]" : ""}`}
@@ -623,6 +614,10 @@ export default function KakaoRankingPage() {
                           </tbody>
                         </table>
                       </div>
+                      <p className="mt-2 text-right text-[11px] text-[#9ca3af]">
+                        마지막 업데이트:{" "}
+                        <span className="font-semibold text-[#6b7280]">{store.latestUpdatedAt || "-"}</span>
+                      </p>
                     </div>
                   </div>
                 );

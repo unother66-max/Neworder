@@ -35,8 +35,8 @@ function formatTrackedAt(date: Date): string {
 }
 
 function formatRank(rank: number | null | undefined): string {
-  if (rank === null || rank === undefined) return "-";
-  if (rank <= 0) return "-";
+  if (rank === null || rank === undefined) return "100위 밖";
+  if (rank <= 0) return "100위 밖";
   return `${rank}위`;
 }
 

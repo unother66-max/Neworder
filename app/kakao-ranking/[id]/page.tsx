@@ -64,7 +64,7 @@ const RANK_GROUPS = [
 
 // app/place와 동일한 증감 헬퍼
 function parseRankValue(rank?: string | number | null): number | null {
-  if (rank === null || rank === undefined || rank === "" || rank === "-") return null;
+  if (rank === null || rank === undefined || rank === "" || rank === "-" || rank === "100위 밖") return null;
   if (typeof rank === "number") return Number.isFinite(rank) && rank > 0 ? rank : null;
   const matched = String(rank).match(/\d+/);
   if (!matched) return null;
@@ -101,6 +101,7 @@ export default function KakaoRankingDetailPage() {
   const [mounted, setMounted] = useState(false);
   const [store, setStore] = useState<KakaoStoreDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [pinning, setPinning] = useState(false);
   const [trackingLoading, setTrackingLoading] = useState(false);
@@ -118,18 +119,20 @@ export default function KakaoRankingDetailPage() {
     if (!placeId) return;
     try {
       setLoading(true);
+      setFetchError(null);
       const res = await fetch(`/api/kakao-place-detail?id=${placeId}`, {
         cache: "no-store",
         credentials: "include",
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        console.error(data?.message || "상세 정보 불러오기 실패");
+        setFetchError(data?.message || "상세 정보를 불러오지 못했습니다.");
         return;
       }
       setStore(data.place);
     } catch (e) {
-      console.error(e);
+      console.warn("[kakao-place-detail] fetch error:", e);
+      setFetchError("네트워크 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -157,7 +160,7 @@ export default function KakaoRankingDetailPage() {
       }
       await fetchDetail();
     } catch (e) {
-      console.error(e);
+      console.warn("[check-kakao-rank] error:", e);
       alert("순위 조회 중 오류가 났어요.");
     } finally {
       setChecking(false);
@@ -227,6 +230,24 @@ export default function KakaoRankingDetailPage() {
         <TopNav active="kakao-ranking" />
         <main className="flex min-h-screen items-center justify-center bg-[#f4f4f5]">
           <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
+        </main>
+      </>
+    );
+  }
+
+  if (!loading && fetchError) {
+    return (
+      <>
+        <TopNav active="kakao-ranking" />
+        <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f4f4f5]">
+          <p className="text-[15px] text-[#6b7280]">{fetchError}</p>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-[14px] border border-[#d1d5db] bg-white px-5 py-2 text-[14px] font-bold text-[#111827] hover:bg-[#f9fafb]"
+          >
+            ← 목록으로
+          </button>
         </main>
       </>
     );
@@ -347,11 +368,11 @@ export default function KakaoRankingDetailPage() {
                         type="button"
                         onClick={handleCheckRank}
                         disabled={checking}
-                        className={`inline-flex h-[42px] items-center justify-center rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white shadow-[0_8px_20px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b] ${
+                        className={`inline-flex h-[42px] items-center justify-center rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${
                           checking ? "opacity-60" : ""
                         }`}
                       >
-                        {checking ? "조회 중..." : "지금 순위 체크"}
+                        {checking ? "업데이트 중..." : "업데이트"}
                       </button>
                     </div>
                   </div>
@@ -426,7 +447,7 @@ export default function KakaoRankingDetailPage() {
                             아직 순위 데이터가 없습니다.
                             <br />
                             <span className="text-[13px]">
-                              위 &ldquo;지금 순위 체크&rdquo; 버튼을 눌러 첫 데이터를 수집하세요.
+                              위 &ldquo;업데이트&rdquo; 버튼을 눌러 첫 데이터를 수집하세요.
                             </span>
                           </td>
                         </tr>
@@ -467,7 +488,7 @@ export default function KakaoRankingDetailPage() {
                                     >
                                       <div
                                         className={`text-[13px] font-bold ${
-                                          row[g.catKey] && row[g.catKey] !== "-"
+                                          row[g.catKey] && row[g.catKey] !== "-" && row[g.catKey] !== "100위 밖"
                                             ? "text-[#111827]"
                                             : "text-[#d1d5db]"
                                         }`}
