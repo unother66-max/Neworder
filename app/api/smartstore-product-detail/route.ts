@@ -35,6 +35,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "상품을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    if (row.category == null || !String(row.category).trim()) {
+      console.log("[smartstore-product-detail] category=null", {
+        id: row.id,
+        productId: row.productId,
+        name: row.name?.slice(0, 80),
+        hint: "DB에 category 없음",
+      });
+    }
+
     const { histories, ...rest } = row;
     return NextResponse.json({
       ok: true,

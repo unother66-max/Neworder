@@ -3,8 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { SMARTSTORE_TRACE_LOG } from "@/lib/fetch-smartstore-product-meta";
-
-
+import { getSmartstoreProductSnapshot } from "@/lib/get-smartstore-product-snapshot";
 import {
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
@@ -15,8 +14,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/smartstore-product-save
- * - productUrl 수신 → productId 추출 → 네이버 상품 JSON API 호출(HTML 없음)
- * - name, category(wholeCategoryName 등), thumbnail(representImage·productImages) 추출 후 DB 저장
+ * - productUrl 수신 → productId 추출 → Playwright로 상품 페이지 스냅샷(name, image, category)
  * - skipMetaFetch·name/category/imageUrl 오버라이드는 기존 호환용
  */
 export async function POST(req: Request) {
@@ -64,6 +62,10 @@ export async function POST(req: Request) {
       );
     }
 
+    const channelUid =
+      normalizedUrl.match(/brand\.naver\.com\/([^/?#]+)/)?.[1] ?? null;
+    console.log("[channelUid]", channelUid);
+
     const fallbackName = `상품 #${naverProductId}`;
 
     let meta: {
@@ -71,114 +73,37 @@ export async function POST(req: Request) {
       imageUrl: string | null;
       category: string | null;
     } = { name: null, imageUrl: null, category: null };
-   let productPageFetch: {
-  requestUrl?: string;
-  status?: number;
-  responseUrl?: string;
-  contentType?: string;
-  bodyHeadSample?: string;
-} | null = null;
 
-
-
-// 1️⃣ 채널 UID 가져오기
-// 🔥 채널 UID 추출 (확실한 방식)
-let channelUid = null;
-
-try {
- const res = await fetch(
-  `https://search.shopping.naver.com/api/product/${naverProductId}`,
-  {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",
-    },
-  }
-);
-
-  const text = await res.text();
-
-  try {
-    const json = JSON.parse(text);
-    channelUid = json?.product?.mallPcUrl
-  ? json.product.mallPcUrl.match(/brand\.naver\.com\/([^\/]+)/)?.[1]
-  : null;
-  } catch {}
-
-  console.log("[channelUid]", channelUid);
-
-  if (!channelUid) {
-  const match = normalizedUrl.match(/brand\.naver\.com\/([^\/]+)/);
-  if (match) {
-    channelUid = match[1];
-    console.log("[channelUid fallback]", channelUid);
-  }
-}
-} catch (e) {
-  console.error("[channelUid 추출 실패]", e);
-}
+    let productPageFetch: {
+      requestUrl?: string;
+      status?: number;
+      responseUrl?: string;
+      contentType?: string;
+      bodyHeadSample?: string;
+    } | null = null;
 
     if (!skipMetaFetch) {
-      // 🔥 네이버 JSON API 직접 호출 (핵심 수정)
-
-      if (!channelUid) {
-  console.log("[channelUid 없음]");
-  return NextResponse.json(
-    { error: "channelUid 추출 실패" },
-    { status: 400 }
-  );
-}
-
-const apiUrl = `https://brand.naver.com/n/v2/channels/${channelUid}/products/${naverProductId}?withWindow=false`;
-
-let json: any = null;
-
-try {
- const res = await fetch(apiUrl, {
-  headers: {
-    "User-Agent":
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache",
-    "Referer": normalizedUrl,
-    "Origin": "https://brand.naver.com",
-  },
-});
-
-  const text = await res.text();
-
-  productPageFetch = {
-  requestUrl: apiUrl,
-  status: res.status,
-  responseUrl: res.url,
-  contentType: res.headers.get("content-type") || "",
-  bodyHeadSample: text.slice(0, 200),
-};
-
-  try {
-    json = JSON.parse(text);
-  } catch {
-    console.log("[JSON parse 실패]", text.slice(0, 200));
-  }
-
-  console.log("[smartstore] JSON status:", res.status);
-
-} catch (e) {
-  console.error("[smartstore] API fetch 실패", e);
-}
-
-// 🔥 여기서 값 추출
-meta = {
-  name: json?.dispName || json?.name || null,
-  imageUrl:
-    json?.representImage?.url ||
-    json?.productImages?.[0]?.url ||
-    null,
-  category: json?.category?.categoryName || null,
-};
-    
+      const snapshot = await getSmartstoreProductSnapshot(normalizedUrl);
+      meta = {
+        name: snapshot.name || null,
+        imageUrl: snapshot.imageUrl || null,
+        category: snapshot.category || null,
+      };
+      productPageFetch = {
+        requestUrl: normalizedUrl,
+        status: 200,
+        responseUrl: snapshot.finalUrl || normalizedUrl,
+        contentType: "playwright",
+        bodyHeadSample: "[collected by playwright]",
+      };
+      if (!meta.category?.trim()) {
+        console.log(`${SMARTSTORE_TRACE_LOG} 저장 API: category 없음(스냅샷)`, {
+          productId: naverProductId,
+          requestUrl: normalizedUrl,
+          finalUrl: snapshot.finalUrl,
+          note: "JSON-LD·DOM·meta에서 breadcrumb 미수집 — 페이지 구조 또는 로딩 시간 확인",
+        });
+      }
     }
 
     const nameFromFetcher = skipMetaFetch ? "" : (meta.name?.trim() || "").trim();

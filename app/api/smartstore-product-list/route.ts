@@ -159,6 +159,18 @@ export async function GET() {
       };
     });
 
+    const missingCategory = payload.filter(
+      (row) => row.category == null || !String(row.category).trim()
+    );
+    if (missingCategory.length > 0) {
+      console.log("[smartstore-product-list] category 비어 있음", {
+        total: payload.length,
+        emptyCount: missingCategory.length,
+        ids: missingCategory.map((r) => r.id),
+        hint: "DB category 컬럼 null/공백 — 상품 재저장 시 Playwright breadcrumb 수집 여부 확인",
+      });
+    }
+
     return NextResponse.json({ ok: true, products: payload });
   } catch (e) {
     console.error("[smartstore-product-list]", e);

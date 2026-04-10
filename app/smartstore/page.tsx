@@ -102,6 +102,7 @@ export default function SmartstoreRankPage() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pinningId, setPinningId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [trackingLoadingId, setTrackingLoadingId] = useState<string | null>(null);
 
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -125,24 +126,27 @@ export default function SmartstoreRankPage() {
     if (!session) router.replace("/login");
   }, [session, status, router]);
 
-  const fetchProducts = useCallback(async (): Promise<SmartstoreProductRow[]> => {
-    setListLoading(true);
-    try {
-      const res = await fetch("/api/smartstore-product-list", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      const data = await res.json();
-      const list: SmartstoreProductRow[] = data.ok ? (data.products ?? []) : [];
-      if (data.ok) setProducts(list);
-      return list;
-    } catch (e) {
-      console.warn("[smartstore] fetchProducts error:", e);
-      return [];
-    } finally {
-      setListLoading(false);
-    }
-  }, []);
+  const fetchProducts = useCallback(
+    async (opts?: { silent?: boolean }): Promise<SmartstoreProductRow[]> => {
+      if (!opts?.silent) setListLoading(true);
+      try {
+        const res = await fetch("/api/smartstore-product-list", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json();
+        const list: SmartstoreProductRow[] = data.ok ? (data.products ?? []) : [];
+        if (data.ok) setProducts(list);
+        return list;
+      } catch (e) {
+        console.warn("[smartstore] fetchProducts error:", e);
+        return [];
+      } finally {
+        if (!opts?.silent) setListLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!mounted || !session) return;
@@ -155,6 +159,7 @@ export default function SmartstoreRankPage() {
     if (p.name.includes(q)) return true;
     if (p.naverProductId?.includes(q)) return true;
     if (p.productUrl.includes(q)) return true;
+    if (p.category?.includes(q)) return true;
     return p.keywords.some((k) => k.keyword.includes(q));
   });
 
@@ -189,6 +194,35 @@ export default function SmartstoreRankPage() {
       console.warn(e);
     } finally {
       setTrackingLoadingId(null);
+    }
+  };
+
+  const handleUpdateProduct = async (p: SmartstoreProductRow) => {
+    if (updatingId) return;
+    const url = p.productUrl?.trim();
+    if (!url) {
+      alert("상품 URL이 없어 업데이트할 수 없어요.");
+      return;
+    }
+    setUpdatingId(p.id);
+    try {
+      const res = await fetch("/api/smartstore-product-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ productUrl: url }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        alert(data.error || "업데이트 실패");
+        return;
+      }
+      await fetchProducts({ silent: true });
+    } catch (e) {
+      console.warn(e);
+      alert("업데이트 중 오류가 발생했습니다.");
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -245,64 +279,43 @@ export default function SmartstoreRankPage() {
   };
 
   const handleRegisterSave = async () => {
-  if (regSaving) return;
+    if (regSaving) return;
 
-  const url = regUrl.trim();
-  if (!url) {
-    setRegError("상품 URL을 입력해주세요.");
-    return;
-  }
-
-  setRegSaving(true);
-  setRegError("");
-
-  try {
-    // 1️⃣ productId 추출
-    const productIdMatch = url.match(/products\/(\d+)/);
-    const productId = productIdMatch?.[1];
-
-    if (!productId) {
-      setRegError("상품 ID 추출 실패");
+    const url = regUrl.trim();
+    if (!url) {
+      setRegError("상품 URL을 입력해주세요.");
       return;
     }
 
-    // 2️⃣ channelUid 추출
-    const channelMatch = url.match(/brand\.naver\.com\/([^\/]+)/);
-    const channelUid = channelMatch?.[1];
+    setRegSaving(true);
+    setRegError("");
 
-    if (!channelUid) {
-      setRegError("채널 정보 추출 실패");
-      return;
+    try {
+      const saveRes = await fetch("/api/smartstore-product-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          productUrl: url,
+        }),
+      });
+
+      const data = await saveRes.json();
+
+      if (!data.ok) {
+        setRegError(data.error || "등록 실패");
+        return;
+      }
+
+      closeRegister();
+      await fetchProducts();
+    } catch (e) {
+      console.warn(e);
+      setRegError("등록 중 오류가 발생했습니다.");
+    } finally {
+      setRegSaving(false);
     }
-
-    // 3️⃣ 서버 저장 (🔥 핵심)
-    const saveRes = await fetch("/api/smartstore-product-save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        productUrl: url,
-      }),
-    });
-
-    const data = await saveRes.json();
-
-    if (!data.ok) {
-      setRegError(data.error || "등록 실패");
-      return;
-    }
-
-    // 4️⃣ 성공 처리
-    closeRegister();
-    await fetchProducts();
-
-  } catch (e) {
-    console.warn(e);
-    setRegError("등록 중 오류가 발생했습니다.");
-  } finally {
-    setRegSaving(false);
-  }
-};
+  };
 
   const openKwModal = (p: SmartstoreProductRow) => {
     setKwModalProduct(p);
@@ -551,19 +564,13 @@ export default function SmartstoreRankPage() {
                             <h3 className="text-[20px] font-black tracking-[-0.03em] text-[#111827]">
                               {cardProductTitle(p)}
                             </h3>
-                            {p.category?.trim() ? (
-                              <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
-                                {p.category.trim()}
-                              </span>
-                            ) : null}
                           </div>
 
-                          <p
-                            className="mt-1.5 truncate text-[13px] text-[#6b7280]"
-                            title={p.productUrl || undefined}
-                          >
-                            {p.productUrl || "-"}
-                          </p>
+                          {p.category?.trim() ? (
+                            <p className="mt-1 text-[12px] font-semibold leading-snug text-[#9ca3af] break-words">
+                              {p.category.trim()}
+                            </p>
+                          ) : null}
 
                           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
                             <span className="font-semibold text-[#6b7280]">바로가기</span>
@@ -599,6 +606,14 @@ export default function SmartstoreRankPage() {
                             }`}
                             strokeWidth={2}
                           />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateProduct(p)}
+                          disabled={updatingId === p.id}
+                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {updatingId === p.id ? "업데이트 중..." : "업데이트"}
                         </button>
                         <button
                           type="button"
@@ -788,6 +803,11 @@ export default function SmartstoreRankPage() {
                   <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">
                     {kwModalProduct.name}
                   </h2>
+                  {kwModalProduct.category?.trim() ? (
+                    <p className="mt-1 text-[13px] font-semibold leading-snug text-[#9ca3af] break-words">
+                      {kwModalProduct.category.trim()}
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-[14px] text-[#6b7280]">
                     등록된 키워드는 아래 표에서 확인·삭제할 수 있고, 새 키워드는 추가 후 저장하면
                     네이버 검색광고 키워드도구로 월 검색량을 불러옵니다.
