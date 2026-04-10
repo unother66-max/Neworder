@@ -8,10 +8,11 @@ datasource db {
 }
 
 model User {
-  id     String  @id @default(cuid())
-  email  String  @unique
-  name   String?
-  places Place[]
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  name               String?
+  places             Place[]
+  smartstoreProducts SmartstoreProduct[]
 }
 
 model Track {
@@ -46,18 +47,17 @@ model Place {
   y                  String?
   type               String               @default("rank")
   reviewPinned       Boolean              @default(false)
-  rankPinned           Boolean              @default(false)
-  rankPinnedAt         DateTime?
-  kakaoAutoTracking    Boolean              @default(false)
+  rankPinned         Boolean              @default(false)
+  rankPinnedAt       DateTime?
+  kakaoAutoTracking  Boolean              @default(false)
   user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   keywords           PlaceKeyword[]
   reviewHistory      PlaceReviewHistory[]
   rankHistory        RankHistory[]
   kakaoRankHistory   KakaoRankHistory[]
-placeMonthlyVolume Int? @default(0)
-placeMobileVolume  Int? @default(0)
-placePcVolume      Int? @default(0)
-
+  placeMonthlyVolume Int?                 @default(0)
+  placeMobileVolume  Int?                 @default(0)
+  placePcVolume      Int?                 @default(0)
 
   @@index([userId])
 }
@@ -123,4 +123,64 @@ model PlaceReviewHistory {
   @@unique([placeId, trackedDate])
   @@index([placeId])
   @@index([trackedDate])
+}
+
+//// 스마트스토어 가격비교 순위 추적 (Place / Kakao와 분리)
+model SmartstoreProduct {
+  id             String    @id @default(cuid())
+  userId         String
+  productId      String
+  productUrl     String
+  name           String
+  category       String?
+  // 네이버 상품 API: representImage.url · productImages 등에서 추출한 대표 썸네일
+  thumbnailLink  String?
+  // 목록·카드 UI 호환 (thumbnailLink와 동일 값으로 유지)
+  imageUrl       String?
+  mallName       String?
+  rankPinned     Boolean   @default(false)
+  rankPinnedAt   DateTime?
+  autoTracking   Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keywords  SmartstoreKeyword[]
+  histories SmartstoreRankHistory[]
+
+  @@unique([userId, productId], name: "userId_productId")
+  @@index([userId])
+}
+
+model SmartstoreKeyword {
+  id           String   @id @default(cuid())
+  productId    String
+  keyword      String
+  mobileVolume Int?
+  pcVolume     Int?
+  totalVolume  Int?
+  isTracking   Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product SmartstoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, keyword])
+  @@index([productId])
+}
+
+model SmartstoreRankHistory {
+  id        String   @id @default(cuid())
+  productId String
+  keyword   String
+  rank      Int?
+  pageNum   Int?
+  position  Int?
+  rankLabel String?
+  createdAt DateTime @default(now())
+
+  product SmartstoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([productId, keyword])
 }

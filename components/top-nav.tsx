@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { signOut, useSession } from "next-auth/react";
 
@@ -30,7 +30,7 @@ type SmartstoreMenuItem =
   | { label: string; href: string; subId: string; badge?: "NEW" };
 
 const SMARTSTORE_MENU: SmartstoreMenuItem[] = [
-  { variant: "rankNaverPrice", href: "/", subId: "rank-naver-price" },
+  { variant: "rankNaverPrice", href: "/smartstore", subId: "rank-naver-price" },
   { label: "순위 추적  플러스스토어", href: "/", subId: "plus-store" },
   { label: "리뷰 추적", href: "/", subId: "review-track" },
   { label: "순위 분석", href: "/", subId: "rank-analysis" },
@@ -49,7 +49,7 @@ function SmartstoreMenuLabel({ item }: { item: SmartstoreMenuItem }) {
       <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-inherit">
         <span className="shrink-0 font-inherit text-inherit">순위 추적</span>
         <img
-          src="/naver_가격비교.svg"
+          src={NAVER_PRICE_COMPARE_SVG_SRC}
           alt=""
           width={78}
           height={16}
@@ -142,21 +142,34 @@ function isSubmenuKeyActive(
   return pathMatchesNavKey(pathname, key);
 }
 
-/**
- * usePathname()이 null/""로 오는 경우(클라 초기·dynamic ssr:false 등)에도
- * window.location.pathname으로 폴백. 끝 슬래시 제거해 /place/ ↔ /place 일치.
- */
-function normalizeTopNavPathname(fromHook: string | null): string {
-  const win =
-    typeof window !== "undefined" ? window.location.pathname : "";
-  let p = fromHook != null && fromHook !== "" ? fromHook : win;
+/** 끝 슬래시 제거해 /place/ ↔ /place 일치 */
+function trimPathnameSegments(p: string): string {
   if (!p) return "";
-  p = p.trim();
-  if (p.length > 1 && p.endsWith("/")) {
-    p = p.slice(0, -1);
-  }
-  return p;
+  let s = p.trim();
+  if (s.length > 1 && s.endsWith("/")) s = s.slice(0, -1);
+  return s;
 }
+
+/**
+ * usePathname()이 클라이언트에서 잠깐 또는 잘못 `"/"`로 남는 경우가 있어
+ * (실제 location은 이미 `/smartstore` 등). 이때는 location을 우선해 active가 틀어지지 않게 한다.
+ * SSR에서는 훅 값만 사용.
+ */
+function resolveTopNavPathname(fromHook: string | null | undefined): string {
+  const h = trimPathnameSegments(fromHook ?? "");
+  if (typeof window === "undefined") {
+    return h;
+  }
+  const w = trimPathnameSegments(window.location.pathname);
+  if (h === "/" && w !== "" && w !== "/") {
+    return w;
+  }
+  if (h !== "") return h;
+  return w;
+}
+
+/** 한글 파일명은 내부 fetch/프리페치 시 ByteString 제약에 걸릴 수 있어 경로만 퍼센트 인코딩 */
+const NAVER_PRICE_COMPARE_SVG_SRC = encodeURI("/naver_가격비교.svg");
 
 const NAVER_BLOG_MENU: Array<{ label: string; href: string; key: NavKey }> = [
   { label: "상위 블로그 찾기", href: "/top-blog", key: "blog" },
@@ -184,7 +197,11 @@ export default function TopNav({
   activeSmartstoreSub,
 }: TopNavProps) {
   const pathnameFromHook = usePathname();
-  const pathname = normalizeTopNavPathname(pathnameFromHook);
+  const [pathSyncTick, setPathSyncTick] = useState(0);
+  const pathname = useMemo(
+    () => resolveTopNavPathname(pathnameFromHook),
+    [pathnameFromHook, pathSyncTick]
+  );
   const [open, setOpen] = useState(false);
   const [smartstoreOpen, setSmartstoreOpen] = useState(false);
   const [kakaoMapOpen, setKakaoMapOpen] = useState(false);
@@ -248,7 +265,28 @@ export default function TopNav({
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const bump = () => setPathSyncTick((t) => t + 1);
+    window.addEventListener("popstate", bump);
+    return () => window.removeEventListener("popstate", bump);
+  }, []);
+
+  useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
+
+    const winPath =
+      typeof window !== "undefined" ? window.location.pathname : "(ssr)";
+    const hookStr = pathnameFromHook ?? "";
+    const hookTrim = trimPathnameSegments(hookStr);
+    const winTrim =
+      typeof window !== "undefined"
+        ? trimPathnameSegments(window.location.pathname)
+        : "";
+    const mismatch =
+      typeof window !== "undefined" &&
+      hookTrim === "/" &&
+      winTrim !== "" &&
+      winTrim !== "/";
 
     const naverMap = pathMatchesNaverMapSection(pathname);
     const naverBlog = pathMatchesNaverBlogSection(pathname);
@@ -256,11 +294,15 @@ export default function TopNav({
 
     console.log("[TopNav active debug]", {
       usePathname_raw: pathnameFromHook,
-      pathname_normalized: pathname,
+      pathname_resolved: pathname,
       active_prop: active ?? null,
+      activeSmartstoreSub: activeSmartstoreSub ?? null,
+      window_pathname: winPath,
+      hook_vs_location_mismatch_fixed: mismatch,
       isNaverMapActive: naverMap,
       isNaverBlogActive: naverBlog,
       isKakaoMapActive: kakaoMap,
+      isSmartstoreSection: pathMatchesSmartstoreSection(pathname),
       submenuKeyActive_place: isSubmenuKeyActive("place", pathname, active),
       submenuKeyActive_placeReview: isSubmenuKeyActive(
         "place-review",
@@ -272,10 +314,14 @@ export default function TopNav({
         pathname,
         active
       ),
-      window_pathname:
-        typeof window !== "undefined" ? window.location.pathname : "(ssr)",
     });
-  }, [pathname, pathnameFromHook, active]);
+  }, [
+    pathname,
+    pathnameFromHook,
+    active,
+    activeSmartstoreSub,
+    pathSyncTick,
+  ]);
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
@@ -313,15 +359,22 @@ export default function TopNav({
   const isSmartstoreSectionActive =
     pathMatchesSmartstoreSection(pathname) || Boolean(activeSmartstoreSub);
 
-  const isSmartstoreSubActive = (item: SmartstoreMenuItem) =>
-    Boolean(
-      activeSmartstoreSub && item.subId === activeSmartstoreSub
-    );
+  const isSmartstoreSubActive = (item: SmartstoreMenuItem) => {
+    if (activeSmartstoreSub && item.subId === activeSmartstoreSub) return true;
+    if (
+      item.subId === "rank-naver-price" &&
+      pathMatchesSmartstoreSection(pathname)
+    ) {
+      return true;
+    }
+    return false;
+  };
 
   const getBreadcrumbCategoryLabel = () => {
     if (isNaverBlogActive) return "네이버 블로그";
     if (isNaverMapActive) return "네이버지도";
     if (isKakaoMapActive) return "카카오맵";
+    if (pathMatchesSmartstoreSection(pathname)) return "스마트스토어";
     return "네이버지도";
   };
 
@@ -346,6 +399,9 @@ export default function TopNav({
     }
     if (active === "kakao-analysis" || pathMatchesNavKey(pathname, "kakao-analysis")) {
       return "순위 분석";
+    }
+    if (pathMatchesSmartstoreSection(pathname)) {
+      return "순위 추적(가격비교)";
     }
     return "";
   };
@@ -477,7 +533,7 @@ export default function TopNav({
                       role="menuitem"
                       aria-label={
                         "variant" in item && item.variant === "rankNaverPrice"
-                          ? "순위 추적 네이버 가격비교"
+                          ? "Rank tracking, Naver price compare"
                           : undefined
                       }
                     >
@@ -624,14 +680,6 @@ export default function TopNav({
                       pathname,
                       active
                     );
-                    if (process.env.NODE_ENV === "development") {
-                      console.log("[NAVER_MAP_MENU item]", {
-                        itemKey: item.key,
-                        pathname,
-                        activeProp: active ?? null,
-                        submenuKeyActive: subActive,
-                      });
-                    }
                     return (
                       <Link
                         key={`${item.key}-${item.href}`}
@@ -834,7 +882,7 @@ export default function TopNav({
                     }`}
                     aria-label={
                       "variant" in item && item.variant === "rankNaverPrice"
-                        ? "순위 추적 네이버 가격비교"
+                        ? "Rank tracking, Naver price compare"
                         : undefined
                     }
                   >
@@ -903,14 +951,6 @@ export default function TopNav({
                     pathname,
                     active
                   );
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("[NAVER_MAP_MENU item mobile]", {
-                      itemKey: item.key,
-                      pathname,
-                      activeProp: active ?? null,
-                      submenuKeyActive: subActive,
-                    });
-                  }
                   return (
                     <Link
                       key={`${item.key}-${item.href}-mobile`}
