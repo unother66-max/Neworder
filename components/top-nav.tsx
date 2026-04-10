@@ -5,7 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { signOut, useSession } from "next-auth/react";
 
-type NavKey = "blog" | "place" | "place-review" | "place-analysis" | "kakao-ranking" | "kakao-place";
+type NavKey =
+  | "blog"
+  | "place"
+  | "place-review"
+  | "place-analysis"
+  | "kakao-ranking"
+  | "kakao-place"
+  | "kakao-analysis";
 
 type TopNavProps = {
   active?: NavKey;
@@ -38,12 +45,12 @@ const NAVER_MAP_MENU: Array<{ label: string; href: string; key: NavKey }> = [
 const KAKAO_MAP_MENU: Array<{
   label: string;
   href: string;
+  key: NavKey;
   badge?: "NEW";
 }> = [
-  { label: "랭킹추적", href: "/kakao-ranking" },
-  { label: "순위추적", href: "/kakao-place" },
-  { label: "리뷰추적", href: "/" },
-  { label: "순위분석", href: "/" },
+  { label: "랭킹추적", href: "/kakao-ranking", key: "kakao-ranking" },
+  { label: "순위추적", href: "/kakao-place", key: "kakao-place" },
+  { label: "순위분석", href: "/kakao-analysis", key: "kakao-analysis" },
 ];
 
 export default function TopNav({ active }: TopNavProps) {
@@ -127,7 +134,8 @@ export default function TopNav({ active }: TopNavProps) {
 
   const isNaverBlogActive = active === "blog";
 
-  const isKakaoMapActive = active === "kakao-ranking" || active === "kakao-place";
+  const isKakaoMapActive =
+    active === "kakao-ranking" || active === "kakao-place" || active === "kakao-analysis";
 
   const getBreadcrumbCategoryLabel = () => {
     if (isNaverBlogActive) return "네이버 블로그";
@@ -143,6 +151,7 @@ export default function TopNav({ active }: TopNavProps) {
     if (active === "place-analysis") return "플레이스 순위 분석";
     if (active === "kakao-ranking") return "랭킹 추적";
     if (active === "kakao-place") return "순위 추적";
+    if (active === "kakao-analysis") return "순위 분석";
     return "";
   };
 
@@ -467,7 +476,9 @@ export default function TopNav({ active }: TopNavProps) {
                     <Link
                       key={`${item.label}-${item.href}`}
                       href={item.href}
-                      className="flex items-center justify-between gap-2 px-4 py-2 text-[13px] font-bold text-[#111827] hover:bg-[#f8fafc]"
+                      className={`flex items-center justify-between gap-2 px-4 py-2 text-[13px] font-bold hover:bg-[#f8fafc] ${
+                        item.key && active === item.key ? "text-[#e11d2e]" : "text-[#111827]"
+                      }`}
                       onClick={() => setKakaoMapOpen(false)}
                       role="menuitem"
                     >
@@ -661,7 +672,11 @@ export default function TopNav({ active }: TopNavProps) {
             <button
               type="button"
               onClick={() => setKakaoMapOpen((prev) => !prev)}
-              className="flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              className={
+                isKakaoMapActive
+                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#fff1f2] px-4 py-3 text-left text-[15px] font-extrabold text-[#e11d2e]"
+                  : "flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              }
               aria-expanded={kakaoMapOpen}
             >
               <span>카카오맵</span>
@@ -678,7 +693,7 @@ export default function TopNav({ active }: TopNavProps) {
                       setOpen(false);
                       setKakaoMapOpen(false);
                     }}
-                    className="flex items-center justify-between gap-3 rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]"
+                    className={`flex items-center justify-between gap-3 ${getMobileClassName(item.key)}`}
                   >
                     <span className="truncate">{item.label}</span>
                     {item.badge ? (
