@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import UserMenu from "@/components/user-menu";
 import { signOut, useSession } from "next-auth/react";
@@ -16,30 +17,155 @@ type NavKey =
 
 type TopNavProps = {
   active?: NavKey;
+  /** 스마트스토어 하위 메뉴 선택 표시용 (항목의 subId와 일치) */
+  activeSmartstoreSub?: string;
 };
 
-const SMARTSTORE_MENU: Array<{
-  label: string;
-  href: string;
-  badge?: "NEW";
-}> = [
-  { label: "순위 추적  가격비교", href: "/" },
-  { label: "순위 추적  플러스스토어", href: "/" },
-  { label: "리뷰 추적", href: "/" },
-  { label: "순위 분석", href: "/" },
-  { label: "스마트스토어 분석", href: "/" },
-  { label: "키워드 분석", href: "/" },
-  { label: "키워드 추출기", href: "/" },
+/** 드롭다운 Link는 <a>라 globals.css의 비레이어 `a { color: inherit }`가 유틸보다 우선할 수 있어 !text 로 고정 */
+const SUBMENU_ACTIVE = "font-black !text-[#e11d2e]";
+const SUBMENU_INACTIVE = "font-bold !text-[#111827]";
+
+type SmartstoreMenuItem =
+  | { variant: "rankNaverPrice"; href: string; subId: string; badge?: "NEW" }
+  | { label: string; href: string; subId: string; badge?: "NEW" };
+
+const SMARTSTORE_MENU: SmartstoreMenuItem[] = [
+  { variant: "rankNaverPrice", href: "/", subId: "rank-naver-price" },
+  { label: "순위 추적  플러스스토어", href: "/", subId: "plus-store" },
+  { label: "리뷰 추적", href: "/", subId: "review-track" },
+  { label: "순위 분석", href: "/", subId: "rank-analysis" },
+  { label: "스마트스토어 분석", href: "/", subId: "store-analysis" },
+  { label: "키워드 분석", href: "/", subId: "keyword-analysis" },
+  { label: "키워드 추출기", href: "/", subId: "keyword-extractor" },
 ];
+
+function smartstoreMenuKey(item: SmartstoreMenuItem) {
+  return item.subId;
+}
+
+function SmartstoreMenuLabel({ item }: { item: SmartstoreMenuItem }) {
+  if ("variant" in item && item.variant === "rankNaverPrice") {
+    return (
+      <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-inherit">
+        <span className="shrink-0 font-inherit text-inherit">순위 추적</span>
+        <img
+          src="/naver_가격비교.svg"
+          alt=""
+          width={78}
+          height={16}
+          className="h-4 w-auto shrink-0"
+        />
+      </span>
+    );
+  }
+  return (
+    <span className="truncate font-inherit text-inherit">
+      {(item as { label: string }).label}
+    </span>
+  );
+}
+
+/**
+ * base와 pathname 일치: 동일 세그먼트, /base/ 하위, /base- 로 시작하는 파생(/place-review-register 등)
+ * /place 만 /place-review 와 헷갈리지 않게 예외 처리
+ */
+function pathMatchesNavBase(pathname: string, base: string): boolean {
+  if (!pathname || !base) return false;
+  if (base === "/place") {
+    return pathname === "/place" || pathname.startsWith("/place/");
+  }
+  return (
+    pathname === base ||
+    pathname.startsWith(`${base}/`) ||
+    pathname.startsWith(`${base}-`)
+  );
+}
+
+function pathMatchesAnyBase(
+  pathname: string,
+  bases: readonly string[]
+): boolean {
+  return bases.some((b) => pathMatchesNavBase(pathname, b));
+}
+
+/** 하위 메뉴(NavKey)별 대표 경로 prefix */
+const NAV_KEY_PATHS: Record<NavKey, readonly string[]> = {
+  blog: ["/top-blog", "/blog"],
+  place: ["/place"],
+  "place-review": ["/place-review"],
+  "place-analysis": ["/place-analysis"],
+  "kakao-ranking": ["/kakao-ranking"],
+  "kakao-place": ["/kakao-place"],
+  "kakao-analysis": ["/kakao-analysis"],
+};
+
+function pathMatchesNavKey(pathname: string, key: NavKey): boolean {
+  return pathMatchesAnyBase(pathname, NAV_KEY_PATHS[key]);
+}
+
+/** 상위 메뉴: 네이버 지도 섹션 */
+const NAVER_MAP_SECTION_BASES = [
+  "/place",
+  "/place-review",
+  "/place-analysis",
+] as const;
+
+/** 상위 메뉴: 네이버 블로그 섹션 */
+const NAVER_BLOG_SECTION_BASES = ["/top-blog", "/blog"] as const;
+
+/** 상위 메뉴: 스마트스토어 섹션 (하위 라우트 추가 시 여기만 확장) */
+const SMARTSTORE_SECTION_BASES = ["/smartstore", "/smart-store"] as const;
+
+function pathMatchesNaverMapSection(pathname: string): boolean {
+  return pathMatchesAnyBase(pathname, NAVER_MAP_SECTION_BASES);
+}
+
+function pathMatchesNaverBlogSection(pathname: string): boolean {
+  return pathMatchesAnyBase(pathname, NAVER_BLOG_SECTION_BASES);
+}
+
+/** 카카오맵 관련 경로 전체 (/kakao-...) */
+function pathMatchesKakaoMapSection(pathname: string): boolean {
+  return pathname.startsWith("/kakao");
+}
+
+function pathMatchesSmartstoreSection(pathname: string): boolean {
+  return pathMatchesAnyBase(pathname, SMARTSTORE_SECTION_BASES);
+}
+
+function isSubmenuKeyActive(
+  key: NavKey,
+  pathname: string,
+  activeProp?: NavKey
+): boolean {
+  if (activeProp === key) return true;
+  return pathMatchesNavKey(pathname, key);
+}
+
+/**
+ * usePathname()이 null/""로 오는 경우(클라 초기·dynamic ssr:false 등)에도
+ * window.location.pathname으로 폴백. 끝 슬래시 제거해 /place/ ↔ /place 일치.
+ */
+function normalizeTopNavPathname(fromHook: string | null): string {
+  const win =
+    typeof window !== "undefined" ? window.location.pathname : "";
+  let p = fromHook != null && fromHook !== "" ? fromHook : win;
+  if (!p) return "";
+  p = p.trim();
+  if (p.length > 1 && p.endsWith("/")) {
+    p = p.slice(0, -1);
+  }
+  return p;
+}
 
 const NAVER_BLOG_MENU: Array<{ label: string; href: string; key: NavKey }> = [
   { label: "상위 블로그 찾기", href: "/top-blog", key: "blog" },
 ];
 
 const NAVER_MAP_MENU: Array<{ label: string; href: string; key: NavKey }> = [
-  { label: "플레이스 순위 추적", href: "/place", key: "place" },
-  { label: "플레이스 리뷰 추적", href: "/place-review", key: "place-review" },
-  { label: "플레이스 순위 분석", href: "/place-analysis", key: "place-analysis" },
+  { label: "매장 순위 추적", href: "/place", key: "place" },
+  { label: "매장 리뷰 추적", href: "/place-review", key: "place-review" },
+  { label: "매장 순위 분석", href: "/place-analysis", key: "place-analysis" },
 ];
 
 const KAKAO_MAP_MENU: Array<{
@@ -53,7 +179,12 @@ const KAKAO_MAP_MENU: Array<{
   { label: "순위분석", href: "/kakao-analysis", key: "kakao-analysis" },
 ];
 
-export default function TopNav({ active }: TopNavProps) {
+export default function TopNav({
+  active,
+  activeSmartstoreSub,
+}: TopNavProps) {
+  const pathnameFromHook = usePathname();
+  const pathname = normalizeTopNavPathname(pathnameFromHook);
   const [open, setOpen] = useState(false);
   const [smartstoreOpen, setSmartstoreOpen] = useState(false);
   const [kakaoMapOpen, setKakaoMapOpen] = useState(false);
@@ -62,6 +193,22 @@ export default function TopNav({ active }: TopNavProps) {
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
   const closeTimerRef = useRef<number | null>(null);
+
+  const submenuKeyActive = (key: NavKey) =>
+    isSubmenuKeyActive(key, pathname, active);
+
+  const getMobileSubmenuClassName = (
+    key?: NavKey,
+    layout: "block" | "row" = "block"
+  ) => {
+    const rowClasses =
+      key && submenuKeyActive(key)
+        ? "rounded-[12px] bg-[#fff1f2] px-4 py-3 text-[16px] font-black !text-[#e11d2e]"
+        : "rounded-[12px] px-4 py-3 text-[16px] font-extrabold !text-[#111827] hover:bg-[#f7f7fb] hover:font-black";
+    return layout === "row"
+      ? `flex items-center justify-between gap-3 ${rowClasses}`
+      : `block ${rowClasses}`;
+  };
 
   const closeAllDesktopMenus = () => {
     setSmartstoreOpen(false);
@@ -101,6 +248,36 @@ export default function TopNav({ active }: TopNavProps) {
   }, []);
 
   useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+
+    const naverMap = pathMatchesNaverMapSection(pathname);
+    const naverBlog = pathMatchesNaverBlogSection(pathname);
+    const kakaoMap = pathMatchesKakaoMapSection(pathname);
+
+    console.log("[TopNav active debug]", {
+      usePathname_raw: pathnameFromHook,
+      pathname_normalized: pathname,
+      active_prop: active ?? null,
+      isNaverMapActive: naverMap,
+      isNaverBlogActive: naverBlog,
+      isKakaoMapActive: kakaoMap,
+      submenuKeyActive_place: isSubmenuKeyActive("place", pathname, active),
+      submenuKeyActive_placeReview: isSubmenuKeyActive(
+        "place-review",
+        pathname,
+        active
+      ),
+      submenuKeyActive_placeAnalysis: isSubmenuKeyActive(
+        "place-analysis",
+        pathname,
+        active
+      ),
+      window_pathname:
+        typeof window !== "undefined" ? window.location.pathname : "(ssr)",
+    });
+  }, [pathname, pathnameFromHook, active]);
+
+  useEffect(() => {
     const handler = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
@@ -120,22 +297,26 @@ export default function TopNav({ active }: TopNavProps) {
       "whitespace-nowrap text-[15px] font-extrabold leading-[1.1] text-[#111827] transition";
     const inactive = "hover:font-black";
     const activeClass = "font-black";
+    const keyActive =
+      Boolean(key) &&
+      (active === key || pathMatchesNavKey(pathname, key as NavKey));
 
-    return `${base} ${key && active === key ? activeClass : inactive}`;
+    return `${base} ${keyActive ? activeClass : inactive}`;
   };
 
-  const getMobileClassName = (key?: NavKey) =>
-    key && active === key
-      ? "block rounded-[12px] bg-[#fff1f2] px-4 py-3 text-[16px] font-black text-[#e11d2e]"
-      : "block rounded-[12px] px-4 py-3 text-[16px] font-extrabold text-[#111827] hover:bg-[#f7f7fb] hover:font-black";
+  const isNaverMapActive = pathMatchesNaverMapSection(pathname);
 
-  const isNaverMapActive =
-    active === "place" || active === "place-review" || active === "place-analysis";
+  const isNaverBlogActive = pathMatchesNaverBlogSection(pathname);
 
-  const isNaverBlogActive = active === "blog";
+  const isKakaoMapActive = pathMatchesKakaoMapSection(pathname);
 
-  const isKakaoMapActive =
-    active === "kakao-ranking" || active === "kakao-place" || active === "kakao-analysis";
+  const isSmartstoreSectionActive =
+    pathMatchesSmartstoreSection(pathname) || Boolean(activeSmartstoreSub);
+
+  const isSmartstoreSubActive = (item: SmartstoreMenuItem) =>
+    Boolean(
+      activeSmartstoreSub && item.subId === activeSmartstoreSub
+    );
 
   const getBreadcrumbCategoryLabel = () => {
     if (isNaverBlogActive) return "네이버 블로그";
@@ -145,13 +326,27 @@ export default function TopNav({ active }: TopNavProps) {
   };
 
   const getBreadcrumbLabel = () => {
-    if (active === "place") return "플레이스 순위 추적";
-    if (active === "place-review") return "플레이스 리뷰 추적";
-    if (active === "blog") return "상위 블로그 찾기";
-    if (active === "place-analysis") return "플레이스 순위 분석";
-    if (active === "kakao-ranking") return "랭킹 추적";
-    if (active === "kakao-place") return "순위 추적";
-    if (active === "kakao-analysis") return "순위 분석";
+    if (active === "place-review" || pathMatchesNavKey(pathname, "place-review")) {
+      return "매장 리뷰 추적";
+    }
+    if (active === "place-analysis" || pathMatchesNavKey(pathname, "place-analysis")) {
+      return "매장 순위 분석";
+    }
+    if (active === "place" || pathMatchesNavKey(pathname, "place")) {
+      return "매장 순위 추적";
+    }
+    if (active === "blog" || pathMatchesNavKey(pathname, "blog")) {
+      return "상위 블로그 찾기";
+    }
+    if (active === "kakao-ranking" || pathMatchesNavKey(pathname, "kakao-ranking")) {
+      return "랭킹 추적";
+    }
+    if (active === "kakao-place" || pathMatchesNavKey(pathname, "kakao-place")) {
+      return "순위 추적";
+    }
+    if (active === "kakao-analysis" || pathMatchesNavKey(pathname, "kakao-analysis")) {
+      return "순위 분석";
+    }
     return "";
   };
 
@@ -244,7 +439,15 @@ export default function TopNav({ active }: TopNavProps) {
                 aria-haspopup="menu"
                 aria-expanded={smartstoreOpen}
               >
-                <span className={getClassName()}>스마트스토어</span>
+                <span
+                  className={
+                    isSmartstoreSectionActive
+                      ? "whitespace-nowrap text-[15px] font-extrabold leading-[1.1] text-[#e11d2e]"
+                      : getClassName()
+                  }
+                >
+                  스마트스토어
+                </span>
                 <span className="text-[11px] font-black leading-none text-[#6b7280] translate-y-[-1px]">
                   {smartstoreOpen ? "▴" : "▾"}
                 </span>
@@ -253,7 +456,7 @@ export default function TopNav({ active }: TopNavProps) {
               <div
                 role="menu"
                 aria-hidden={!smartstoreOpen}
-                className={`absolute left-0 top-full mt-1.5 w-[160px] overflow-hidden rounded-[12px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] origin-top-left transition duration-150 ease-out ${
+                className={`absolute left-0 top-full mt-1.5 w-[230px] overflow-hidden rounded-[12px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] origin-top-left transition duration-150 ease-out ${
                   smartstoreOpen
                     ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
                     : "pointer-events-none opacity-0 -translate-y-1 scale-[0.98]"
@@ -263,13 +466,22 @@ export default function TopNav({ active }: TopNavProps) {
                 <div className="py-1">
                   {SMARTSTORE_MENU.map((item) => (
                     <Link
-                      key={`${item.label}-${item.href}`}
+                      key={smartstoreMenuKey(item)}
                       href={item.href}
-                      className="flex items-center justify-between gap-2 px-4 py-2 text-[13px] font-bold text-[#111827] hover:bg-[#f8fafc]"
+                      className={`flex items-center justify-between gap-2 px-4 py-2 text-[13px] hover:bg-[#f8fafc] ${
+                        isSmartstoreSubActive(item)
+                          ? SUBMENU_ACTIVE
+                          : SUBMENU_INACTIVE
+                      }`}
                       onClick={() => setSmartstoreOpen(false)}
                       role="menuitem"
+                      aria-label={
+                        "variant" in item && item.variant === "rankNaverPrice"
+                          ? "순위 추적 네이버 가격비교"
+                          : undefined
+                      }
                     >
-                      <span className="truncate">{item.label}</span>
+                      <SmartstoreMenuLabel item={item} />
                       {item.badge ? (
                         <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2.5 py-1 text-[12px] font-black text-white">
                           {item.badge}
@@ -338,8 +550,10 @@ export default function TopNav({ active }: TopNavProps) {
                     <Link
                       key={`${item.key}-${item.href}`}
                       href={item.href}
-                      className={`block px-4 py-2 text-[13px] font-bold hover:bg-[#f8fafc] ${
-                        item.key && active === item.key ? "text-[#e11d2e]" : "text-[#111827]"
+                      className={`block px-4 py-2 text-[13px] hover:bg-[#f8fafc] ${
+                        submenuKeyActive(item.key)
+                          ? SUBMENU_ACTIVE
+                          : SUBMENU_INACTIVE
                       }`}
                       onClick={() => setNaverBlogOpen(false)}
                       role="menuitem"
@@ -383,7 +597,7 @@ export default function TopNav({ active }: TopNavProps) {
                   className={
                     isNaverMapActive
                       ? "whitespace-nowrap text-[15px] font-extrabold leading-[1.1] text-[#e11d2e]"
-                      : getClassName("blog")
+                      : getClassName()
                   }
                 >
                   네이버 지도
@@ -404,19 +618,34 @@ export default function TopNav({ active }: TopNavProps) {
               >
                 <div className="absolute -top-6 left-0 h-6 w-full" />
                 <div className="py-1">
-                  {NAVER_MAP_MENU.map((item) => (
-                    <Link
-                      key={`${item.key}-${item.href}`}
-                      href={item.href}
-                      className={`block px-4 py-2 text-[13px] font-bold hover:bg-[#f8fafc] ${
-                        item.key && active === item.key ? "text-[#e11d2e]" : "text-[#111827]"
-                      }`}
-                      onClick={() => setNaverMapOpen(false)}
-                      role="menuitem"
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
+                  {NAVER_MAP_MENU.map((item) => {
+                    const subActive = isSubmenuKeyActive(
+                      item.key,
+                      pathname,
+                      active
+                    );
+                    if (process.env.NODE_ENV === "development") {
+                      console.log("[NAVER_MAP_MENU item]", {
+                        itemKey: item.key,
+                        pathname,
+                        activeProp: active ?? null,
+                        submenuKeyActive: subActive,
+                      });
+                    }
+                    return (
+                      <Link
+                        key={`${item.key}-${item.href}`}
+                        href={item.href}
+                        className={`block px-4 py-2 text-[13px] hover:bg-[#f8fafc] ${
+                          subActive ? SUBMENU_ACTIVE : SUBMENU_INACTIVE
+                        }`}
+                        onClick={() => setNaverMapOpen(false)}
+                        role="menuitem"
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -476,8 +705,10 @@ export default function TopNav({ active }: TopNavProps) {
                     <Link
                       key={`${item.label}-${item.href}`}
                       href={item.href}
-                      className={`flex items-center justify-between gap-2 px-4 py-2 text-[13px] font-bold hover:bg-[#f8fafc] ${
-                        item.key && active === item.key ? "text-[#e11d2e]" : "text-[#111827]"
+                      className={`flex items-center justify-between gap-2 px-4 py-2 text-[13px] hover:bg-[#f8fafc] ${
+                        submenuKeyActive(item.key)
+                          ? SUBMENU_ACTIVE
+                          : SUBMENU_INACTIVE
                       }`}
                       onClick={() => setKakaoMapOpen(false)}
                       role="menuitem"
@@ -575,7 +806,11 @@ export default function TopNav({ active }: TopNavProps) {
             <button
               type="button"
               onClick={() => setSmartstoreOpen((prev) => !prev)}
-              className="flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              className={
+                isSmartstoreSectionActive
+                  ? "flex w-full items-center justify-between rounded-[12px] bg-[#fff1f2] px-4 py-3 text-left text-[15px] font-extrabold text-[#e11d2e]"
+                  : "flex w-full items-center justify-between rounded-[12px] px-4 py-3 text-left text-[15px] font-extrabold text-[#111827] hover:bg-[#f7f7fb]"
+              }
               aria-expanded={smartstoreOpen}
             >
               <span>스마트스토어</span>
@@ -586,15 +821,24 @@ export default function TopNav({ active }: TopNavProps) {
               <div className="space-y-1 pl-2">
                 {SMARTSTORE_MENU.map((item) => (
                   <Link
-                    key={`${item.label}-${item.href}-mobile`}
+                    key={`${smartstoreMenuKey(item)}-mobile`}
                     href={item.href}
                     onClick={() => {
                       setOpen(false);
                       setSmartstoreOpen(false);
                     }}
-                    className="flex items-center justify-between gap-3 rounded-[12px] px-4 py-3 text-[15px] font-semibold text-[#111827] hover:bg-[#f7f7fb]"
+                    className={`flex items-center justify-between gap-3 rounded-[12px] px-4 py-3 text-[15px] hover:bg-[#f7f7fb] ${
+                      isSmartstoreSubActive(item)
+                        ? "font-black text-[#e11d2e] bg-[#fff1f2]"
+                        : "font-semibold text-[#111827]"
+                    }`}
+                    aria-label={
+                      "variant" in item && item.variant === "rankNaverPrice"
+                        ? "순위 추적 네이버 가격비교"
+                        : undefined
+                    }
                   >
-                    <span className="truncate">{item.label}</span>
+                    <SmartstoreMenuLabel item={item} />
                     {item.badge ? (
                       <span className="shrink-0 rounded-[10px] bg-[#ef4444] px-2 py-0.5 text-[11px] font-black text-white">
                         {item.badge}
@@ -629,7 +873,7 @@ export default function TopNav({ active }: TopNavProps) {
                       setOpen(false);
                       setNaverBlogOpen(false);
                     }}
-                    className={getMobileClassName(item.key)}
+                    className={getMobileSubmenuClassName(item.key)}
                   >
                     {item.label}
                   </Link>
@@ -653,19 +897,34 @@ export default function TopNav({ active }: TopNavProps) {
 
             {naverMapOpen && (
               <div className="space-y-1 pl-2">
-                {NAVER_MAP_MENU.map((item) => (
-                  <Link
-                    key={`${item.key}-${item.href}-mobile`}
-                    href={item.href}
-                    onClick={() => {
-                      setOpen(false);
-                      setNaverMapOpen(false);
-                    }}
-                    className={getMobileClassName(item.key)}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
+                {NAVER_MAP_MENU.map((item) => {
+                  const subActive = isSubmenuKeyActive(
+                    item.key,
+                    pathname,
+                    active
+                  );
+                  if (process.env.NODE_ENV === "development") {
+                    console.log("[NAVER_MAP_MENU item mobile]", {
+                      itemKey: item.key,
+                      pathname,
+                      activeProp: active ?? null,
+                      submenuKeyActive: subActive,
+                    });
+                  }
+                  return (
+                    <Link
+                      key={`${item.key}-${item.href}-mobile`}
+                      href={item.href}
+                      onClick={() => {
+                        setOpen(false);
+                        setNaverMapOpen(false);
+                      }}
+                      className={getMobileSubmenuClassName(item.key)}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
               </div>
             )}
 
@@ -693,7 +952,7 @@ export default function TopNav({ active }: TopNavProps) {
                       setOpen(false);
                       setKakaoMapOpen(false);
                     }}
-                    className={`flex items-center justify-between gap-3 ${getMobileClassName(item.key)}`}
+                    className={getMobileSubmenuClassName(item.key, "row")}
                   >
                     <span className="truncate">{item.label}</span>
                     {item.badge ? (

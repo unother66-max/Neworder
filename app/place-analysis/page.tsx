@@ -279,7 +279,7 @@ await loadSavedPlaces();
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
-                    플레이스 순위 분석
+                    매장 순위 분석
                   </h1>
                 </div>
 
