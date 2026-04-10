@@ -186,7 +186,7 @@ async function buildRelatedKeywords(keyword: string) {
 
   const unique = Array.from(
     new Set(candidates.map((item) => String(item || "").trim()).filter(Boolean))
-  ).slice(0, 5);
+  ).slice(0, 3);
 
   return Promise.all(
     unique.map(async (item) => {

@@ -289,7 +289,10 @@ export default function KakaoAnalysisPage() {
 
               {relatedKeywords.length > 0 && (
                 <div className="pt-1">
-                  <div className="mb-3 text-[13px] font-bold text-[#4b5563]">연관 검색어</div>
+                  <div className="mb-1 text-[13px] font-bold text-[#4b5563]">연관 검색어</div>
+                  <p className="mb-3 text-[11px] leading-relaxed text-[#9ca3af]">
+                    검색량은 네이버 광고 데이터 기준입니다.
+                  </p>
                   <div className="flex flex-wrap gap-2.5">
                     {relatedKeywords.map((item, idx) => (
                       <button

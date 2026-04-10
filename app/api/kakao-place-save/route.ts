@@ -63,6 +63,19 @@ export async function POST(req: Request) {
       },
     });
 
+    const resolvedType = bodyType === "kakao-place" ? "kakao-place" : "kakao-rank";
+    const normalizedUrl =
+      kakaoUrl !== undefined && kakaoUrl !== null ? String(kakaoUrl).trim() : "";
+
+    if (normalizedUrl) {
+      const existing = await prisma.place.findFirst({
+        where: { userId, type: resolvedType, placeUrl: normalizedUrl },
+      });
+      if (existing) {
+        return NextResponse.json({ ok: true, place: existing, alreadyExisted: true });
+      }
+    }
+
     const imageUrl = kakaoId ? await fetchKakaoPlaceImage(String(kakaoId)) : null;
 
     const place = await prisma.place.create({
@@ -71,11 +84,11 @@ export async function POST(req: Request) {
         name,
         category: category ?? null,
         address: address ?? null,
-        placeUrl: kakaoUrl ?? null,
+        placeUrl: normalizedUrl || null,
         imageUrl: imageUrl ?? null,
         x: x ? String(x) : null,
         y: y ? String(y) : null,
-        type: bodyType === "kakao-place" ? "kakao-place" : "kakao-rank",
+        type: resolvedType,
       },
     });
 

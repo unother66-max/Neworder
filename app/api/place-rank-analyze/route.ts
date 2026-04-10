@@ -170,7 +170,7 @@ async function buildRelatedKeywords(keyword: string) {
         .map((item) => String(item || "").trim())
         .filter(Boolean)
     )
-  ).slice(0, 5);
+  ).slice(0, 3);
 
   return Promise.all(
     unique.map(async (item) => {
@@ -186,6 +186,10 @@ async function buildRelatedKeywords(keyword: string) {
           pc,
         };
       } catch (e) {
+        console.warn(
+          `[place-rank-analyze] buildRelatedKeywords 실패 keyword="${item}"`,
+          e
+        );
         return {
           keyword: item,
           total: 0,
