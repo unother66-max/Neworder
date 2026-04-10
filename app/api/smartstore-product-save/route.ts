@@ -11,6 +11,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Playwright + 네이버 상세 로딩 여유 (Vercel 플랜 상한 내에서 조정) */
+export const maxDuration = 60;
 
 /**
  * POST /api/smartstore-product-save
@@ -96,6 +98,33 @@ export async function POST(req: Request) {
         contentType: "playwright",
         bodyHeadSample: "[collected by playwright]",
       };
+
+      console.log(`${SMARTSTORE_TRACE_LOG} 스냅샷 직후(저장 전)`, {
+        runtime: "nodejs",
+        platform: process.platform,
+        arch: process.arch,
+        NODE_ENV: process.env.NODE_ENV ?? "(unset)",
+        VERCEL: process.env.VERCEL ?? "(unset)",
+        finalUrl: snapshot.finalUrl,
+        snapshotName: snapshot.name,
+        snapshotImageUrl: snapshot.imageUrl,
+        snapshotCategory: snapshot.category,
+        launchMode: snapshot.launchMode ?? "(unknown)",
+        lastError: snapshot.lastError ?? null,
+        imageDiag: snapshot.imageDiag ?? null,
+      });
+
+      if (!snapshot.imageUrl?.trim()) {
+        console.warn(`${SMARTSTORE_TRACE_LOG} 스냅샷 imageUrl=null`, {
+          productId: naverProductId,
+          requestUrl: normalizedUrl,
+          finalUrl: snapshot.finalUrl,
+          launchMode: snapshot.launchMode,
+          lastError: snapshot.lastError,
+          imageDiag: snapshot.imageDiag,
+        });
+      }
+
       if (!meta.category?.trim()) {
         console.log(`${SMARTSTORE_TRACE_LOG} 저장 API: category 없음(스냅샷)`, {
           productId: naverProductId,
