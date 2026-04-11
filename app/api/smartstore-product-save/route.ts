@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { SMARTSTORE_TRACE_LOG } from "@/lib/fetch-smartstore-product-meta";
+import {
+  fetchSmartstoreProductMeta,
+  SMARTSTORE_TRACE_LOG,
+} from "@/lib/fetch-smartstore-product-meta";
 import {
   fetchSmartstoreMetaFromPlaywrightService,
   isSmartstorePlaywrightServiceConfigured,
 } from "@/lib/fetch-smartstore-playwright-service";
-import { getSmartstoreProductSnapshot } from "@/lib/get-smartstore-product-snapshot";
 import {
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
@@ -15,25 +17,28 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Playwright + 네이버 상세 로딩 여유 (Vercel 플랜 상한 내에서 조정) */
-export const maxDuration = 60;
 
 /**
  * POST /api/smartstore-product-save
- * - productUrl 수신 → productId 추출 → 메타(name, image, category) 수집
- *   - SMARTSTORE_PLAYWRIGHT_URL 설정 시: 별도 Playwright HTTP 서버 POST /extract 1회 (맥+Tunnel URL 등)
- *   - 미설정 시: 기존처럼 서버에서 getSmartstoreProductSnapshot (로컬/Vercel Chromium)
- * - skipMetaFetch·name/category/imageUrl 오버라이드는 기존 호환용
+ * - productUrl 수신 → productId 추출
+ * - SMARTSTORE_PLAYWRIGHT_URL 있으면 Playwright 서비스 우선 호출
+ * - 없으면 기존 fetchSmartstoreProductMeta fallback
+ * - 최종 name/category/imageUrl 저장
  */
 export async function POST(req: Request) {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
+
     if (!userId) {
-      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+      return NextResponse.json(
+        { error: "로그인이 필요합니다." },
+        { status: 401 }
+      );
     }
 
     const body = await req.json();
+
     const productUrl = String(body?.productUrl ?? "").trim();
     const skipMetaFetch = body?.skipMetaFetch === true;
     const nameOverride = body?.name != null ? String(body.name).trim() : "";
@@ -45,7 +50,10 @@ export async function POST(req: Request) {
       body?.thumbnailLink != null ? String(body.thumbnailLink).trim() : "";
 
     if (!productUrl) {
-      return NextResponse.json({ error: "상품 URL을 입력해주세요." }, { status: 400 });
+      return NextResponse.json(
+        { error: "상품 URL을 입력해주세요." },
+        { status: 400 }
+      );
     }
 
     const normalizedUrl = productUrl.startsWith("http")
@@ -63,6 +71,7 @@ export async function POST(req: Request) {
     }
 
     const naverProductId = extractNaverSmartstoreProductId(normalizedUrl);
+
     if (!naverProductId) {
       return NextResponse.json(
         { error: "상품 URL에서 상품 번호를 찾을 수 없습니다." },
@@ -70,137 +79,99 @@ export async function POST(req: Request) {
       );
     }
 
-    const channelUid =
-      normalizedUrl.match(/brand\.naver\.com\/([^/?#]+)/)?.[1] ?? null;
-    console.log("[channelUid]", channelUid);
-
     const fallbackName = `상품 #${naverProductId}`;
 
     let meta: {
       name: string | null;
       imageUrl: string | null;
       category: string | null;
-    } = { name: null, imageUrl: null, category: null };
+    } = {
+      name: null,
+      imageUrl: null,
+      category: null,
+    };
 
-    let productPageFetch: {
-      requestUrl?: string;
-      status?: number;
-      responseUrl?: string;
-      contentType?: string;
-      bodyHeadSample?: string;
-    } | null = null;
+    let productPageFetch: Awaited<
+      ReturnType<typeof fetchSmartstoreProductMeta>
+    >["productPageFetch"] = null;
+
+    const playwrightConfigured = isSmartstorePlaywrightServiceConfigured();
+
+    console.log(`${SMARTSTORE_TRACE_LOG} [save] 시작`, {
+      userId,
+      productUrl: normalizedUrl,
+      productId: naverProductId,
+      skipMetaFetch,
+      playwrightConfigured,
+      SMARTSTORE_PLAYWRIGHT_URL:
+        process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() || "(없음)",
+    });
 
     if (!skipMetaFetch) {
-      console.log(`${SMARTSTORE_TRACE_LOG} 단계=메타수집시작`, {
-        입력URL: normalizedUrl,
-        playwright서비스사용: isSmartstorePlaywrightServiceConfigured(),
-        SMARTSTORE_PLAYWRIGHT_URL: process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() ?? "(미설정)",
-      });
-
-      if (isSmartstorePlaywrightServiceConfigured()) {
+      if (playwrightConfigured) {
         try {
-          const cr = await fetchSmartstoreMetaFromPlaywrightService(normalizedUrl);
-          meta = {
-            name: cr.name,
-            imageUrl: cr.imageUrl,
-            category: cr.category,
-          };
-          productPageFetch = {
-            requestUrl: normalizedUrl,
-            status: 200,
-            responseUrl: normalizedUrl,
-            contentType: "remote-playwright-http",
-            bodyHeadSample: "[collected by playwright service]",
-          };
-
-          console.log(`${SMARTSTORE_TRACE_LOG} Playwright서비스 직후(저장 전)`, {
-            snapshotName: meta.name,
-            snapshotImageUrl: meta.imageUrl,
-            snapshotCategory: meta.category,
+          console.log(`${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 시작`, {
+            productUrl: normalizedUrl,
+            serviceUrl: process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() || "(없음)",
           });
 
-          if (!meta.imageUrl?.trim()) {
-            console.warn(`${SMARTSTORE_TRACE_LOG} Playwright서비스 imageUrl=null`, {
-              productId: naverProductId,
-              requestUrl: normalizedUrl,
-            });
-          }
-
-          if (!meta.category?.trim()) {
-            console.log(`${SMARTSTORE_TRACE_LOG} 저장 API: category 없음(Playwright서비스)`, {
-              productId: naverProductId,
-              requestUrl: normalizedUrl,
-            });
-          }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          console.error(`${SMARTSTORE_TRACE_LOG} 단계=Playwright서비스실패`, {
-            입력URL: normalizedUrl,
-            error: msg,
+          meta = await fetchSmartstoreMetaFromPlaywrightService(normalizedUrl, {
+            timeoutMs: 55_000,
           });
-          return NextResponse.json(
+
+          console.log(`${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 성공`, {
+            meta,
+          });
+        } catch (error) {
+          console.error(
+            `${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 실패`,
+            error
+          );
+
+          console.log(
+            `${SMARTSTORE_TRACE_LOG} [save] 기존 fetchSmartstoreProductMeta fallback 시작`,
             {
-              error:
-                msg ||
-                "상품 정보를 가져오지 못했습니다. 맥 Playwright 서버·Tunnel·SMARTSTORE_PLAYWRIGHT_URL 을 확인해주세요.",
-            },
-            { status: 502 }
+              productUrl: normalizedUrl,
+              productId: naverProductId,
+            }
+          );
+
+          const fetched = await fetchSmartstoreProductMeta(
+            normalizedUrl,
+            naverProductId
+          );
+          meta = fetched.meta;
+          productPageFetch = fetched.productPageFetch;
+
+          console.log(
+            `${SMARTSTORE_TRACE_LOG} [save] 기존 fetchSmartstoreProductMeta fallback 완료`,
+            {
+              meta,
+              productPageFetch,
+            }
           );
         }
       } else {
-        const snapshot = await getSmartstoreProductSnapshot(normalizedUrl);
-        meta = {
-          name: snapshot.name || null,
-          imageUrl: snapshot.imageUrl || null,
-          category: snapshot.category || null,
-        };
-        productPageFetch = {
-          requestUrl: normalizedUrl,
-          status: 200,
-          responseUrl: snapshot.finalUrl || normalizedUrl,
-          contentType: "playwright",
-          bodyHeadSample: "[collected by playwright]",
-        };
-
-        console.log(`${SMARTSTORE_TRACE_LOG} 스냅샷 직후(저장 전)`, {
-          runtime: "nodejs",
-          platform: process.platform,
-          arch: process.arch,
-          NODE_ENV: process.env.NODE_ENV ?? "(unset)",
-          VERCEL: process.env.VERCEL ?? "(unset)",
-          finalUrl: snapshot.finalUrl,
-          snapshotName: snapshot.name,
-          snapshotImageUrl: snapshot.imageUrl,
-          snapshotCategory: snapshot.category,
-          launchMode: snapshot.launchMode ?? "(unknown)",
-          lastError: snapshot.lastError ?? null,
-          imageDiag: snapshot.imageDiag ?? null,
-        });
-
-        if (!snapshot.imageUrl?.trim()) {
-          console.warn(`${SMARTSTORE_TRACE_LOG} 스냅샷 imageUrl=null`, {
+        console.log(
+          `${SMARTSTORE_TRACE_LOG} [save] Playwright 미설정 → 기존 fetchSmartstoreProductMeta 사용`,
+          {
+            productUrl: normalizedUrl,
             productId: naverProductId,
-            requestUrl: normalizedUrl,
-            finalUrl: snapshot.finalUrl,
-            launchMode: snapshot.launchMode,
-            lastError: snapshot.lastError,
-            imageDiag: snapshot.imageDiag,
-          });
-        }
+          }
+        );
 
-        if (!meta.category?.trim()) {
-          console.log(`${SMARTSTORE_TRACE_LOG} 저장 API: category 없음(스냅샷)`, {
-            productId: naverProductId,
-            requestUrl: normalizedUrl,
-            finalUrl: snapshot.finalUrl,
-            note: "JSON-LD·DOM·meta에서 breadcrumb 미수집 — 페이지 구조 또는 로딩 시간 확인",
-          });
-        }
+        const fetched = await fetchSmartstoreProductMeta(
+          normalizedUrl,
+          naverProductId
+        );
+        meta = fetched.meta;
+        productPageFetch = fetched.productPageFetch;
       }
     }
 
     const nameFromFetcher = skipMetaFetch ? "" : (meta.name?.trim() || "").trim();
     const nameFromOverride = (nameOverride || "").trim();
+
     const nameFinal = (
       nameFromOverride ||
       nameFromFetcher ||
@@ -210,9 +181,13 @@ export async function POST(req: Request) {
     const categoryRaw = skipMetaFetch
       ? (categoryOverride || "").trim()
       : (categoryOverride || meta.category?.trim() || "").trim();
+
     const category = categoryRaw.length > 0 ? categoryRaw : null;
 
-    const thumbFromMeta = skipMetaFetch ? "" : (meta.imageUrl?.trim() || "").trim();
+    const thumbFromMeta = skipMetaFetch
+      ? ""
+      : (meta.imageUrl?.trim() || "").trim();
+
     const thumbFromOverride = (thumbnailOverride || imageOverride || "").trim();
     const thumbRaw = (thumbFromOverride || thumbFromMeta || "").trim();
     const thumbnailLink = thumbRaw.length > 0 ? thumbRaw : null;
@@ -223,6 +198,7 @@ export async function POST(req: Request) {
       (Boolean(meta.name?.trim()) ||
         Boolean(meta.imageUrl?.trim()) ||
         Boolean(meta.category?.trim()));
+
     const metaFetchIncomplete = !skipMetaFetch && !gotServerMeta;
 
     const data = {
@@ -235,6 +211,7 @@ export async function POST(req: Request) {
 
     console.log(`${SMARTSTORE_TRACE_LOG} ⑦ DB 저장 직전`, {
       skipMetaFetch,
+      playwrightConfigured,
       name: data.name,
       thumbnailLink: data.thumbnailLink,
       imageUrl: data.imageUrl,
@@ -262,6 +239,7 @@ export async function POST(req: Request) {
       contentType: productPageFetch?.contentType ?? "(없음)",
       bodyHeadSample: productPageFetch?.bodyHeadSample ?? "(없음)",
       skipMetaFetch,
+      playwrightConfigured,
       metaFetchIncomplete,
       최종저장: {
         name: data.name,
@@ -289,6 +267,7 @@ export async function POST(req: Request) {
         },
         include: { keywords: true },
       });
+
       const listShape = await prisma.smartstoreProduct.findUnique({
         where: { id: product.id },
         select: {
@@ -298,12 +277,17 @@ export async function POST(req: Request) {
           category: true,
         },
       });
-      console.log(`${SMARTSTORE_TRACE_LOG} ⑧ list API와 동일 필드 확인(DB 재조회)`, {
-        name: listShape?.name,
-        thumbnailLink: listShape?.thumbnailLink ?? null,
-        imageUrl: listShape?.imageUrl ?? null,
-        category: listShape?.category ?? null,
-      });
+
+      console.log(
+        `${SMARTSTORE_TRACE_LOG} ⑧ list API와 동일 필드 확인(DB 재조회)`,
+        {
+          name: listShape?.name,
+          thumbnailLink: listShape?.thumbnailLink ?? null,
+          imageUrl: listShape?.imageUrl ?? null,
+          category: listShape?.category ?? null,
+        }
+      );
+
       return NextResponse.json({
         ok: true,
         product,
@@ -324,6 +308,7 @@ export async function POST(req: Request) {
       },
       include: { keywords: true },
     });
+
     const listShape = await prisma.smartstoreProduct.findUnique({
       where: { id: product.id },
       select: {
@@ -333,12 +318,16 @@ export async function POST(req: Request) {
         category: true,
       },
     });
-    console.log(`${SMARTSTORE_TRACE_LOG} ⑧ list API와 동일 필드 확인(DB 재조회)`, {
-      name: listShape?.name,
-      thumbnailLink: listShape?.thumbnailLink ?? null,
-      imageUrl: listShape?.imageUrl ?? null,
-      category: listShape?.category ?? null,
-    });
+
+    console.log(
+      `${SMARTSTORE_TRACE_LOG} ⑧ list API와 동일 필드 확인(DB 재조회)`,
+      {
+        name: listShape?.name,
+        thumbnailLink: listShape?.thumbnailLink ?? null,
+        imageUrl: listShape?.imageUrl ?? null,
+        category: listShape?.category ?? null,
+      }
+    );
 
     return NextResponse.json({
       ok: true,
