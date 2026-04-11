@@ -3,6 +3,10 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { SMARTSTORE_TRACE_LOG } from "@/lib/fetch-smartstore-product-meta";
+import {
+  fetchSmartstoreMetaFromPlaywrightService,
+  isSmartstorePlaywrightServiceConfigured,
+} from "@/lib/fetch-smartstore-playwright-service";
 import { getSmartstoreProductSnapshot } from "@/lib/get-smartstore-product-snapshot";
 import {
   extractNaverSmartstoreProductId,
@@ -16,7 +20,9 @@ export const maxDuration = 60;
 
 /**
  * POST /api/smartstore-product-save
- * - productUrl 수신 → productId 추출 → Playwright로 상품 페이지 스냅샷(name, image, category)
+ * - productUrl 수신 → productId 추출 → 메타(name, image, category) 수집
+ *   - SMARTSTORE_PLAYWRIGHT_URL 설정 시: 별도 Playwright HTTP 서버 POST /extract 1회 (맥+Tunnel URL 등)
+ *   - 미설정 시: 기존처럼 서버에서 getSmartstoreProductSnapshot (로컬/Vercel Chromium)
  * - skipMetaFetch·name/category/imageUrl 오버라이드는 기존 호환용
  */
 export async function POST(req: Request) {
@@ -85,53 +91,111 @@ export async function POST(req: Request) {
     } | null = null;
 
     if (!skipMetaFetch) {
-      const snapshot = await getSmartstoreProductSnapshot(normalizedUrl);
-      meta = {
-        name: snapshot.name || null,
-        imageUrl: snapshot.imageUrl || null,
-        category: snapshot.category || null,
-      };
-      productPageFetch = {
-        requestUrl: normalizedUrl,
-        status: 200,
-        responseUrl: snapshot.finalUrl || normalizedUrl,
-        contentType: "playwright",
-        bodyHeadSample: "[collected by playwright]",
-      };
-
-      console.log(`${SMARTSTORE_TRACE_LOG} 스냅샷 직후(저장 전)`, {
-        runtime: "nodejs",
-        platform: process.platform,
-        arch: process.arch,
-        NODE_ENV: process.env.NODE_ENV ?? "(unset)",
-        VERCEL: process.env.VERCEL ?? "(unset)",
-        finalUrl: snapshot.finalUrl,
-        snapshotName: snapshot.name,
-        snapshotImageUrl: snapshot.imageUrl,
-        snapshotCategory: snapshot.category,
-        launchMode: snapshot.launchMode ?? "(unknown)",
-        lastError: snapshot.lastError ?? null,
-        imageDiag: snapshot.imageDiag ?? null,
+      console.log(`${SMARTSTORE_TRACE_LOG} 단계=메타수집시작`, {
+        입력URL: normalizedUrl,
+        playwright서비스사용: isSmartstorePlaywrightServiceConfigured(),
+        SMARTSTORE_PLAYWRIGHT_URL: process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() ?? "(미설정)",
       });
 
-      if (!snapshot.imageUrl?.trim()) {
-        console.warn(`${SMARTSTORE_TRACE_LOG} 스냅샷 imageUrl=null`, {
-          productId: naverProductId,
-          requestUrl: normalizedUrl,
-          finalUrl: snapshot.finalUrl,
-          launchMode: snapshot.launchMode,
-          lastError: snapshot.lastError,
-          imageDiag: snapshot.imageDiag,
-        });
-      }
+      if (isSmartstorePlaywrightServiceConfigured()) {
+        try {
+          const cr = await fetchSmartstoreMetaFromPlaywrightService(normalizedUrl);
+          meta = {
+            name: cr.name,
+            imageUrl: cr.imageUrl,
+            category: cr.category,
+          };
+          productPageFetch = {
+            requestUrl: normalizedUrl,
+            status: 200,
+            responseUrl: normalizedUrl,
+            contentType: "remote-playwright-http",
+            bodyHeadSample: "[collected by playwright service]",
+          };
 
-      if (!meta.category?.trim()) {
-        console.log(`${SMARTSTORE_TRACE_LOG} 저장 API: category 없음(스냅샷)`, {
-          productId: naverProductId,
+          console.log(`${SMARTSTORE_TRACE_LOG} Playwright서비스 직후(저장 전)`, {
+            snapshotName: meta.name,
+            snapshotImageUrl: meta.imageUrl,
+            snapshotCategory: meta.category,
+          });
+
+          if (!meta.imageUrl?.trim()) {
+            console.warn(`${SMARTSTORE_TRACE_LOG} Playwright서비스 imageUrl=null`, {
+              productId: naverProductId,
+              requestUrl: normalizedUrl,
+            });
+          }
+
+          if (!meta.category?.trim()) {
+            console.log(`${SMARTSTORE_TRACE_LOG} 저장 API: category 없음(Playwright서비스)`, {
+              productId: naverProductId,
+              requestUrl: normalizedUrl,
+            });
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error(`${SMARTSTORE_TRACE_LOG} 단계=Playwright서비스실패`, {
+            입력URL: normalizedUrl,
+            error: msg,
+          });
+          return NextResponse.json(
+            {
+              error:
+                msg ||
+                "상품 정보를 가져오지 못했습니다. 맥 Playwright 서버·Tunnel·SMARTSTORE_PLAYWRIGHT_URL 을 확인해주세요.",
+            },
+            { status: 502 }
+          );
+        }
+      } else {
+        const snapshot = await getSmartstoreProductSnapshot(normalizedUrl);
+        meta = {
+          name: snapshot.name || null,
+          imageUrl: snapshot.imageUrl || null,
+          category: snapshot.category || null,
+        };
+        productPageFetch = {
           requestUrl: normalizedUrl,
+          status: 200,
+          responseUrl: snapshot.finalUrl || normalizedUrl,
+          contentType: "playwright",
+          bodyHeadSample: "[collected by playwright]",
+        };
+
+        console.log(`${SMARTSTORE_TRACE_LOG} 스냅샷 직후(저장 전)`, {
+          runtime: "nodejs",
+          platform: process.platform,
+          arch: process.arch,
+          NODE_ENV: process.env.NODE_ENV ?? "(unset)",
+          VERCEL: process.env.VERCEL ?? "(unset)",
           finalUrl: snapshot.finalUrl,
-          note: "JSON-LD·DOM·meta에서 breadcrumb 미수집 — 페이지 구조 또는 로딩 시간 확인",
+          snapshotName: snapshot.name,
+          snapshotImageUrl: snapshot.imageUrl,
+          snapshotCategory: snapshot.category,
+          launchMode: snapshot.launchMode ?? "(unknown)",
+          lastError: snapshot.lastError ?? null,
+          imageDiag: snapshot.imageDiag ?? null,
         });
+
+        if (!snapshot.imageUrl?.trim()) {
+          console.warn(`${SMARTSTORE_TRACE_LOG} 스냅샷 imageUrl=null`, {
+            productId: naverProductId,
+            requestUrl: normalizedUrl,
+            finalUrl: snapshot.finalUrl,
+            launchMode: snapshot.launchMode,
+            lastError: snapshot.lastError,
+            imageDiag: snapshot.imageDiag,
+          });
+        }
+
+        if (!meta.category?.trim()) {
+          console.log(`${SMARTSTORE_TRACE_LOG} 저장 API: category 없음(스냅샷)`, {
+            productId: naverProductId,
+            requestUrl: normalizedUrl,
+            finalUrl: snapshot.finalUrl,
+            note: "JSON-LD·DOM·meta에서 breadcrumb 미수집 — 페이지 구조 또는 로딩 시간 확인",
+          });
+        }
       }
     }
 
