@@ -17,7 +17,10 @@ function formatRankLabel(row: {
   position: number | null;
   rankLabel: string | null;
 }): string {
-  if (row.rankLabel?.trim()) return row.rankLabel.trim();
+  if (row.rankLabel?.trim()) {
+    const t = row.rankLabel.trim();
+    return t === "미노출" ? "1000위 밖" : t;
+  }
   if (row.rank == null && row.pageNum == null && row.position == null) {
     return "-";
   }

@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
 import { Pin, Trash2 } from "lucide-react";
-import { registerSmartstoreProductWithClientMetaFallback } from "@/lib/smartstore-register-client-meta";
-
 const MAX_KEYWORDS = 10;
 const NAVER_PRICE_COMPARE_SVG_SRC = encodeURI("/naver_가격비교.svg");
 /** place 카드와 동일한 ‘이미지 없음’ 자리용 */
@@ -217,7 +215,37 @@ export default function SmartstoreRankPage() {
         alert(data.error || "업데이트 실패");
         return;
       }
+
+      const rankErrors: string[] = [];
+      let rankConfigError: string | null = null;
+      if (p.keywords.length > 0) {
+        for (const kw of p.keywords) {
+          const rr = await fetch("/api/smartstore-keyword-check-rank", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ keywordId: kw.id, maxResults: 1000 }),
+          });
+          const rd = await rr.json().catch(() => ({}));
+          if (!rr.ok) {
+            if (rr.status === 503 && typeof rd.error === "string") {
+              rankConfigError = rd.error;
+              break;
+            }
+            rankErrors.push(`${kw.keyword}: ${rd.error || `HTTP ${rr.status}`}`);
+          }
+        }
+      }
+
       await fetchProducts({ silent: true });
+
+      if (rankConfigError) {
+        alert(`상품 정보는 갱신됐어요.\n\n키워드 순위: ${rankConfigError}`);
+      } else if (rankErrors.length > 0) {
+        const head = rankErrors.slice(0, 4).join("\n");
+        const more = rankErrors.length > 4 ? `\n… 외 ${rankErrors.length - 4}건` : "";
+        alert(`상품 정보는 갱신됐어요.\n\n일부 키워드 순위 조회 실패:\n${head}${more}`);
+      }
     } catch (e) {
       console.warn(e);
       alert("업데이트 중 오류가 발생했습니다.");
@@ -509,7 +537,7 @@ export default function SmartstoreRankPage() {
                 </p>
               </div>
               <div className="text-[11px] text-[#9ca3af]">
-                * 검색 순위는 수집 API 연동 후 표시됩니다. 월 검색량은 키워드 저장 시 조회됩니다.
+                * 검색 순위는 각 상품 「업데이트」로 갱신됩니다. 월 검색량은 키워드 저장 시 조회됩니다.
               </div>
             </div>
           </div>
@@ -561,7 +589,7 @@ export default function SmartstoreRankPage() {
                             {p.isPinned && (
                               <Pin className="h-[14px] w-[14px] fill-[#b91c1c] stroke-[#b91c1c]" />
                             )}
-                            <h3 className="text-[20px] font-black tracking-[-0.03em] text-[#111827]">
+                            <h3 className="text-[14px] font-bold leading-snug tracking-[-0.02em] text-[#111827] md:text-[15px]">
                               {cardProductTitle(p)}
                             </h3>
                           </div>
@@ -613,7 +641,11 @@ export default function SmartstoreRankPage() {
                           disabled={updatingId === p.id}
                           className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60`}
                         >
-                          {updatingId === p.id ? "업데이트 중..." : "업데이트"}
+                          {updatingId === p.id
+                            ? p.keywords.length > 0
+                              ? "업데이트·순위 조회 중..."
+                              : "업데이트 중..."
+                            : "업데이트"}
                         </button>
                         <button
                           type="button"
@@ -686,9 +718,10 @@ export default function SmartstoreRankPage() {
                           {p.keywords.length === 0 ? (
                             <tr>
                               <td colSpan={5} className="px-4 py-6 text-center text-[12px] text-[#9ca3af]">
-                                키워드를 등록하면 가격비교 검색 기준 순위를 표시할 수 있어요.
+                                키워드를 등록한 뒤 상단 「업데이트」로 순위를 갱신하면 네이버 쇼핑 검색 기준 순위가
+                                표시돼요.
                                 <br />
-                                <span className="font-semibold">[키워드 관리]</span> 버튼으로 시작하세요.
+                                <span className="font-semibold">[키워드 관리]</span>에서 키워드를 추가하세요.
                               </td>
                             </tr>
                           ) : (
@@ -711,8 +744,13 @@ export default function SmartstoreRankPage() {
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                   <span
-                                    className={`text-[13px] font-bold ${
-                                      kw.latestRankLabel !== "-" ? "text-[#111827]" : "text-[#9ca3af]"
+                                    className={`text-[13px] ${
+                                      kw.latestRankLabel === "-"
+                                        ? "font-bold text-[#9ca3af]"
+                                        : kw.latestRankLabel === "1000위 밖" ||
+                                            kw.latestRankLabel === "미노출"
+                                          ? "font-bold text-[#94a3b8]"
+                                          : "font-bold text-[#111827]"
                                     }`}
                                   >
                                     {kw.latestRankLabel}
@@ -800,7 +838,7 @@ export default function SmartstoreRankPage() {
                   <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
                     KEYWORD MANAGER
                   </p>
-                  <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">
+                  <h2 className="mt-2 text-[15px] font-bold leading-snug tracking-[-0.02em] text-[#111827] md:text-[16px]">
                     {kwModalProduct.name}
                   </h2>
                   {kwModalProduct.category?.trim() ? (
