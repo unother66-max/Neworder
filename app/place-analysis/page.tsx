@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import TopNav from "@/components/top-nav";
+import {
+  NAVER_PCMAP_GRAPHQL_URL,
+  buildGetPlacesListBatch,
+  buildGetPlacesListFetchHeaders,
+} from "@/lib/naver-map-businesses-shared";
 
 type RelatedKeywordItem = {
   keyword: string;
@@ -63,6 +68,36 @@ function extractPublicPlaceId(placeUrl?: string | null) {
 function buildMobilePlaceLink(placeId?: string) {
   if (!placeId) return "";
   return `https://m.place.naver.com/restaurant/${placeId}/home`;
+}
+
+/**
+ * map.naver.com과 동일 Origin에서 열렸을 때만 성공할 수 있음.
+ * localhost 등 다른 출처에서는 CORS로 막히는 경우가 많음 → 서버 경로로 폴백.
+ */
+async function tryFetchBusinessesBatchInBrowser(
+  keyword: string
+): Promise<unknown[] | null> {
+  try {
+    const batch = buildGetPlacesListBatch(keyword);
+    const headers = buildGetPlacesListFetchHeaders(keyword);
+    const res = await fetch(NAVER_PCMAP_GRAPHQL_URL, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify(batch),
+      mode: "cors",
+    });
+    const text = await res.text();
+    const parsed = JSON.parse(text) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed;
+  } catch (e) {
+    console.warn(
+      "[place-analysis] 브라우저 직접 GraphQL 실패(CORS·비세션 등), 서버만 사용",
+      e
+    );
+    return null;
+  }
 }
 
 export default function PlaceAnalysisPage() {
@@ -142,12 +177,25 @@ export default function PlaceAnalysisPage() {
       setLoading(true);
       setError("");
 
+      const clientBatch = await tryFetchBusinessesBatchInBrowser(trimmed);
+
+      const payload: {
+        keyword: string;
+        businessesGraphqlBatch?: unknown[];
+      } = { keyword: trimmed };
+      if (clientBatch && clientBatch.length > 0) {
+        payload.businessesGraphqlBatch = clientBatch;
+        console.log("[place-analysis] businessesGraphqlBatch 전달", {
+          batchLength: clientBatch.length,
+        });
+      }
+
       const res = await fetch("/api/place-rank-analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ keyword: trimmed }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
