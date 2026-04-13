@@ -27,7 +27,8 @@ async function fetchRawBatchOnce(
   opts?: { mapReferer?: boolean; pages?: number }
 ): Promise<unknown[] | null> {
   const coords = resolveBusinessesCoords(keyword, coordAnchorKeyword);
-  const pages = opts?.mapReferer ? 1 : Math.max(1, opts?.pages ?? 2);
+  // place 순위조회: 최대 280위까지 확보 (display=30 기준 10페이지=300)
+  const pages = opts?.mapReferer ? 1 : Math.max(1, opts?.pages ?? 10);
   const batchBody = buildGetPlacesListPagedBatch(keyword, coords, pages);
   const headers = opts?.mapReferer
     ? buildGetPlacesListFetchHeaders(keyword)

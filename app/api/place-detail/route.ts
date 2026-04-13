@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,28 @@ export async function GET(req: Request) {
     const rankHistory = (place.rankHistory || []) as RankHistoryItem[];
     const keywords = (place.keywords || []) as PlaceKeywordItem[];
 
+    // 검색량이 비어 있는 키워드는 서버에서 보정(최대 10개)
+    // - 화면에서 '-'가 뜨는 문제 해결 목적
+    // - 레이트리밋 고려해 순차 처리
+    for (const kw of keywords) {
+      const needs =
+        kw.mobileVolume == null || kw.pcVolume == null || kw.totalVolume == null;
+      if (!needs) continue;
+      const vol = await getKeywordSearchVolume(String(kw.keyword || ""));
+      await prisma.placeKeyword.update({
+        where: { id: kw.id },
+        data: {
+          mobileVolume: kw.mobileVolume ?? vol.mobile,
+          pcVolume: kw.pcVolume ?? vol.pc,
+          totalVolume: kw.totalVolume ?? vol.total,
+        },
+      });
+      kw.mobileVolume = kw.mobileVolume ?? vol.mobile;
+      kw.pcVolume = kw.pcVolume ?? vol.pc;
+      kw.totalVolume = kw.totalVolume ?? vol.total;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+
     const normalizedKeywords = keywords.map((item: PlaceKeywordItem) => {
       const mobileVolume = toNumber(item.mobileVolume ?? 0);
       const pcVolume = toNumber(item.pcVolume ?? 0);
@@ -131,16 +154,41 @@ export async function GET(req: Request) {
     let placeMobileVolume = 0;
     let placePcVolume = 0;
 
-    // 첫 번째 키워드의 저장된 검색량을 우선 사용
-    const firstKeyword = normalizedKeywords[0];
+    // 업체(매장) 검색량은 "첫 번째 키워드"가 아니라 "매장명" 기준(또는 DB 컬럼)을 우선한다.
+    const placeMonthlyVolumeDb = toNumber((place as any).placeMonthlyVolume ?? 0);
+    const placeMobileVolumeDb = toNumber((place as any).placeMobileVolume ?? 0);
+    const placePcVolumeDb = toNumber((place as any).placePcVolume ?? 0);
 
-    if (firstKeyword) {
-      placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
-      placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
+    placeMonthlyVolume = placeMonthlyVolumeDb;
+    placeMobileVolume = placeMobileVolumeDb;
+    placePcVolume = placePcVolumeDb;
 
-      const totalVolume = toNumber(firstKeyword.totalVolume);
-      placeMonthlyVolume =
-        totalVolume || placeMobileVolume + placePcVolume;
+    if (!placeMonthlyVolume) {
+      // 1) 매장명으로 조회 시도
+      const vol = await getKeywordSearchVolume(String(place.name || ""));
+      if (vol.total || vol.mobile || vol.pc) {
+        placeMobileVolume = vol.mobile;
+        placePcVolume = vol.pc;
+        placeMonthlyVolume = vol.total || vol.mobile + vol.pc;
+
+        await prisma.place.update({
+          where: { id: place.id },
+          data: {
+            placeMonthlyVolume,
+            placeMobileVolume,
+            placePcVolume,
+          },
+        });
+      } else {
+        // 2) 정말로 DB도 비고 매장명도 못 가져오면 마지막 폴백으로 키워드
+        const firstKeyword = normalizedKeywords[0];
+        if (firstKeyword) {
+          placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
+          placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
+          const totalVolume = toNumber(firstKeyword.totalVolume);
+          placeMonthlyVolume = totalVolume || placeMobileVolume + placePcVolume;
+        }
+      }
     }
 
     return Response.json({

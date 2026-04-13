@@ -343,7 +343,9 @@ export function buildGetPlacesListPagedBatch(
   pageCount: number = BUSINESSES_GRAPHQL_PAGE_COUNT,
   display: number = BUSINESSES_DISPLAY
 ): PcmapGraphqlBatchPayload[] {
-  const n = Math.max(1, Math.min(3, Math.floor(pageCount)));
+  // place 순위조회는 최대 280까지 필요할 수 있어 페이지 상한을 넉넉히 둔다.
+  // (display=30이면 10페이지=300개)
+  const n = Math.max(1, Math.min(10, Math.floor(pageCount)));
   const out: PcmapGraphqlBatchPayload[] = [];
   for (let i = 0; i < n; i++) {
     out.push({

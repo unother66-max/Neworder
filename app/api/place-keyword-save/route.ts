@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 const MAX_KEYWORDS_PER_STORE = 10;
 
@@ -46,6 +47,17 @@ export async function POST(req: Request) {
       );
     }
 
+    // 검색량이 비어 있으면 서버에서 키워드도구로 채움(클라이언트는 null로 보내는 경우가 많음)
+    let nextMobile: number | null = mobileVolume ?? null;
+    let nextPc: number | null = pcVolume ?? null;
+    let nextTotal: number | null = totalVolume ?? null;
+    if (nextMobile == null || nextPc == null || nextTotal == null) {
+      const vol = await getKeywordSearchVolume(String(keyword));
+      nextMobile = nextMobile ?? vol.mobile;
+      nextPc = nextPc ?? vol.pc;
+      nextTotal = nextTotal ?? vol.total;
+    }
+
     const placeKeyword = await prisma.placeKeyword.upsert({
       where: {
         placeId_keyword: {
@@ -54,16 +66,16 @@ export async function POST(req: Request) {
         },
       },
       update: {
-        mobileVolume: mobileVolume ?? null,
-        pcVolume: pcVolume ?? null,
-        totalVolume: totalVolume ?? null,
+        mobileVolume: nextMobile,
+        pcVolume: nextPc,
+        totalVolume: nextTotal,
       },
       create: {
         placeId,
         keyword,
-        mobileVolume: mobileVolume ?? null,
-        pcVolume: pcVolume ?? null,
-        totalVolume: totalVolume ?? null,
+        mobileVolume: nextMobile,
+        pcVolume: nextPc,
+        totalVolume: nextTotal,
       },
     });
 

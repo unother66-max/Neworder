@@ -1,18 +1,78 @@
 import { NextResponse } from "next/server";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 import { fetchAllSearchPlacesAutoDetailed } from "@/lib/naver-map-all-search-auto";
-import { mapAllSearchRowsToCheckPlaceRankList } from "@/lib/naver-map-all-search";
+import {
+  type CheckPlaceRankListItem,
+  mapAllSearchRowsToCheckPlaceRankList,
+} from "@/lib/naver-map-all-search";
+import { fetchBestPcmapBusinessesBatchJson } from "@/lib/pcmap-businesses-batch-fetch";
+import {
+  mergePcmapGraphqlBatch,
+  parseNaverReviewCountField,
+} from "@/lib/merge-pcmap-businesses-batch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const DISPLAY = 15;
+// place 순위조회: 원래처럼 최대 280위까지 계산/표시
+const DISPLAY = 280;
+const SEARCH_CAP = 280;
+
+function normalizeText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s/g, "")
+    .replace(/&/g, "and")
+    .replace(/앤/g, "and")
+    .replace(/[()[\]{}'"`.,·•\-_/]/g, "")
+    .trim();
+}
+
+function pickImageUrl(item: Record<string, unknown>): string {
+  const candidates = [
+    item["imageUrl"],
+    item["thumbnail"],
+    item["thumUrl"],
+    item["image"],
+  ];
+  for (const c of candidates) {
+    const s = String(c ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function mapPcmapItemsToCheckPlaceRankList(
+  items: unknown[],
+  display: number
+): CheckPlaceRankListItem[] {
+  return items.slice(0, display).map((raw, index) => {
+    const it = (raw ?? {}) as Record<string, unknown>;
+    const visitor = parseNaverReviewCountField(it["visitorReviewCount"]);
+    const blog = parseNaverReviewCountField(it["blogCafeReviewCount"]);
+    const total =
+      parseNaverReviewCountField(it["totalReviewCount"]) || visitor + blog;
+
+    return {
+      rank: index + 1,
+      placeId: String(it["id"] ?? "").trim(),
+      name: String(it["name"] ?? "").trim(),
+      category: String(it["category"] ?? it["businessCategory"] ?? "").trim(),
+      address: String(
+        it["roadAddress"] ?? it["address"] ?? it["fullAddress"] ?? ""
+      ).trim(),
+      imageUrl: pickImageUrl(it),
+      review: { visitor, blog, total },
+    };
+  });
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const keyword = String(body.keyword || "").trim();
+    const targetName = String(body.targetName || "").trim();
 
     if (!keyword) {
       return NextResponse.json(
@@ -23,18 +83,69 @@ export async function POST(req: Request) {
 
     console.log("[check-place-rank] 시작:", keyword);
 
-    const auto = await fetchAllSearchPlacesAutoDetailed(keyword);
-    const pack = auto.ok ? auto : null;
+    // 1) allSearch는 NCAPTCHA로 자주 막히므로, PC맵 GraphQL(places/businesses)을 먼저 시도
+    // 랭크 계산은 넉넉히(SEARCH_CAP) 보고, UI 표시는 DISPLAY만 내려준다.
+    let fullList: CheckPlaceRankListItem[] = [];
+    let usedSource: "pcmap-graphql" | "allSearch" = "pcmap-graphql";
+    try {
+      const { batch, mode } = await fetchBestPcmapBusinessesBatchJson(keyword);
+      if (batch) {
+        const merged = mergePcmapGraphqlBatch(batch);
+        const mapped = mapPcmapItemsToCheckPlaceRankList(
+          merged.items,
+          SEARCH_CAP
+        );
+        if (mapped.length > 0) {
+          fullList = mapped;
+          console.log("[check-place-rank pcmap]", {
+            mode,
+            mergedCount: merged.items.length,
+            parsed: mapped.length,
+            gqlErrors: merged.graphqlErrors,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[check-place-rank pcmap] 실패", e);
+    }
 
-    const list =
-      pack && pack.places.length > 0
-        ? mapAllSearchRowsToCheckPlaceRankList(pack.places, DISPLAY)
-        : [];
+    // 2) PC맵이 비었을 때만 allSearch(토큰/Playwright 포함)로 폴백
+    let autoOk = false;
+    if (fullList.length === 0) {
+      usedSource = "allSearch";
+      const auto = await fetchAllSearchPlacesAutoDetailed(keyword);
+      autoOk = auto.ok;
+      const pack = auto.ok ? auto : null;
+      fullList =
+        pack && pack.places.length > 0
+          ? mapAllSearchRowsToCheckPlaceRankList(pack.places, SEARCH_CAP)
+          : [];
+    }
+
+    const rank =
+      targetName && fullList.length > 0
+        ? (() => {
+            const nTarget = normalizeText(targetName);
+            const idxExact = fullList.findIndex(
+              (row) => normalizeText(row.name) === nTarget
+            );
+            const idx =
+              idxExact >= 0
+                ? idxExact
+                : fullList.findIndex((row) => {
+                    const n = normalizeText(row.name);
+                    return n.includes(nTarget) || nTarget.includes(n);
+                  });
+            return idx >= 0 ? String(idx + 1) : "-";
+          })()
+        : "-";
+    const list = fullList.slice(0, DISPLAY);
 
     console.log("[check-place-rank 결과]", {
-      total: pack?.places.length ?? 0,
-      parsed: list.length,
-      autoOk: auto.ok,
+      source: usedSource,
+      parsed: fullList.length,
+      autoOk,
+      rank,
     });
 
     const relatedCandidates = [keyword, `${keyword} 추천`, `${keyword} 근처`];
@@ -63,6 +174,7 @@ export async function POST(req: Request) {
       keyword,
       related,
       list,
+      rank,
     });
   } catch (e) {
     console.error("[check-place-rank ERROR]", e);
