@@ -93,10 +93,7 @@ async function fetchHtml(url: string) {
     cache: "no-store",
   });
 
-  if (!res.ok) {
-    return "";
-  }
-
+  // 404/차단 등의 경우에도 바디 일부를 남겨 디버깅/파싱 폴백에 활용
   return res.text();
 }
 
@@ -432,94 +429,126 @@ export async function getNaverPlaceReviewSnapshot(
   };
 }
 
-    const urls = buildReviewUrls(publicPlaceId);
+    const hintType: "restaurant" | "place" =
+      /\/restaurant\//.test(placeUrl) ? "restaurant" : "place";
+    const tryTypes: Array<"restaurant" | "place"> =
+      hintType === "restaurant" ? ["restaurant", "place"] : ["place", "restaurant"];
 
-    // ✅ 키워드 가져오기 (information 페이지)
-const infoUrl = `https://pcmap.place.naver.com/restaurant/${publicPlaceId}/information`;
+    const parseForType = async (type: "restaurant" | "place") => {
+      const mobileHomeUrl = `https://m.place.naver.com/${type}/${publicPlaceId}/home`;
+      const mobileVisitorReviewUrl = `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`;
+      const pcEntryUrl = `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`;
+      const infoUrl = `https://pcmap.place.naver.com/${type}/${publicPlaceId}/information`;
 
-const infoHtml = await fetchHtml(infoUrl);
+      const [infoHtml, homeHtml, visitorHtml, pcHtml] = await Promise.all([
+        fetchHtml(infoUrl),
+        fetchHtml(mobileHomeUrl),
+        fetchHtml(mobileVisitorReviewUrl),
+        fetchHtml(pcEntryUrl),
+      ]);
 
-const keywordMatch = infoHtml.match(/"keywordList":\[(.*?)\]/);
+      const keywordMatch = infoHtml.match(/"keywordList":\[(.*?)\]/);
+      const keywordList = keywordMatch
+        ? keywordMatch[1]
+            .split(",")
+            .map((k) => k.replace(/"/g, "").trim())
+            .filter(Boolean)
+        : [];
 
-const keywordList = keywordMatch
-  ? keywordMatch[1]
-      .split(",")
-      .map((k) => k.replace(/"/g, "").trim())
-  : [];
+      const homeJson = findNextDataJson(homeHtml);
+      const visitorJson = findNextDataJson(visitorHtml);
+      const pcJson = findNextDataJson(pcHtml);
 
-    const [homeHtml, visitorHtml, pcHtml] = await Promise.all([
-      fetchHtml(urls.mobileHomeUrl),
-      fetchHtml(urls.mobileVisitorReviewUrl),
-      fetchHtml(urls.pcEntryUrl),
-    ]);
+      const homeJsonParsed = extractCountsFromJsonObject(homeJson);
+      const visitorJsonParsed = extractCountsFromJsonObject(visitorJson);
+      const pcJsonParsed = extractCountsFromJsonObject(pcJson);
 
-    const homeJson = findNextDataJson(homeHtml);
-    const visitorJson = findNextDataJson(visitorHtml);
-    const pcJson = findNextDataJson(pcHtml);
+      const visitorReviewCount =
+        homeJsonParsed.visitorReviewCount ??
+        visitorJsonParsed.visitorReviewCount ??
+        pcJsonParsed.visitorReviewCount ??
+        extractCountByLabel(visitorHtml, ["방문자 리뷰", "방문자리뷰"]) ??
+        extractCountByLabel(homeHtml, ["방문자 리뷰", "방문자리뷰"]) ??
+        extractCountByLabel(pcHtml, ["방문자 리뷰", "방문자리뷰"]) ??
+        null;
 
-    const homeJsonParsed = extractCountsFromJsonObject(homeJson);
-    const visitorJsonParsed = extractCountsFromJsonObject(visitorJson);
-    const pcJsonParsed = extractCountsFromJsonObject(pcJson);
+      const blogReviewCount =
+        homeJsonParsed.blogReviewCount ??
+        visitorJsonParsed.blogReviewCount ??
+        pcJsonParsed.blogReviewCount ??
+        extractCountByLabel(visitorHtml, ["블로그 리뷰", "블로그리뷰"]) ??
+        extractCountByLabel(homeHtml, ["블로그 리뷰", "블로그리뷰"]) ??
+        extractCountByLabel(pcHtml, ["블로그 리뷰", "블로그리뷰"]) ??
+        null;
 
-    const visitorReviewCount =
-      homeJsonParsed.visitorReviewCount ??
-      visitorJsonParsed.visitorReviewCount ??
-      pcJsonParsed.visitorReviewCount ??
-      extractCountByLabel(visitorHtml, ["방문자 리뷰", "방문자리뷰"]) ??
-      extractCountByLabel(homeHtml, ["방문자 리뷰", "방문자리뷰"]) ??
-      extractCountByLabel(pcHtml, ["방문자 리뷰", "방문자리뷰"]) ??
-      null;
-
-    const blogReviewCount =
-      homeJsonParsed.blogReviewCount ??
-      visitorJsonParsed.blogReviewCount ??
-      pcJsonParsed.blogReviewCount ??
-      extractCountByLabel(visitorHtml, ["블로그 리뷰", "블로그리뷰"]) ??
-      extractCountByLabel(homeHtml, ["블로그 리뷰", "블로그리뷰"]) ??
-      extractCountByLabel(pcHtml, ["블로그 리뷰", "블로그리뷰"]) ??
-      null;
-
-    const saveCountFromGraphql =
-  placeName
-    ? await fetchSaveCountFromGraphql(placeName, placeName, x, y)
-    : null;
-
-    const saveCount =
-      saveCountFromGraphql ??
-      homeJsonParsed.saveCount ??
-      visitorJsonParsed.saveCount ??
-      pcJsonParsed.saveCount ??
-      extractSaveCountFromRawHtml(homeHtml) ??
-      extractSaveCountFromRawHtml(visitorHtml) ??
-      extractSaveCountFromRawHtml(pcHtml) ??
-      extractCountByLabel(homeHtml, ["저장", "저장수"]) ??
-      extractCountByLabel(visitorHtml, ["저장", "저장수"]) ??
-      extractCountByLabel(pcHtml, ["저장", "저장수"]) ??
-      null;
-
-    const totalReviewCount =
-      visitorReviewCount !== null || blogReviewCount !== null
-        ? (visitorReviewCount ?? 0) + (blogReviewCount ?? 0)
+      const saveCountFromGraphql = placeName
+        ? await fetchSaveCountFromGraphql(placeName, placeName, x, y)
         : null;
 
-     console.log("[snapshot raw input]", input);   
+      const saveCount =
+        saveCountFromGraphql ??
+        homeJsonParsed.saveCount ??
+        visitorJsonParsed.saveCount ??
+        pcJsonParsed.saveCount ??
+        extractSaveCountFromRawHtml(homeHtml) ??
+        extractSaveCountFromRawHtml(visitorHtml) ??
+        extractSaveCountFromRawHtml(pcHtml) ??
+        extractCountByLabel(homeHtml, ["저장", "저장수"]) ??
+        extractCountByLabel(visitorHtml, ["저장", "저장수"]) ??
+        extractCountByLabel(pcHtml, ["저장", "저장수"]) ??
+        null;
+
+      const totalReviewCount =
+        visitorReviewCount !== null || blogReviewCount !== null
+          ? (visitorReviewCount ?? 0) + (blogReviewCount ?? 0)
+          : null;
+
+      return {
+        type,
+        keywordList,
+        totalReviewCount,
+        visitorReviewCount,
+        blogReviewCount,
+        saveCount,
+      };
+    };
+
+    let parsed:
+      | (Awaited<ReturnType<typeof parseForType>> & { saveCount: number | null })
+      | null = null;
+
+    for (const type of tryTypes) {
+      const r = await parseForType(type);
+      if (
+        r.visitorReviewCount !== null ||
+        r.blogReviewCount !== null ||
+        r.saveCount !== null
+      ) {
+        parsed = r;
+        break;
+      }
+      if (!parsed) parsed = r;
+    }
+
+    console.log("[snapshot raw input]", input);
     console.log("[review snapshot parsed]", {
       publicPlaceId,
       placeName,
       x,
       y,
-      visitorReviewCount,
-      blogReviewCount,
-      saveCount,
+      chosenType: parsed?.type,
+      visitorReviewCount: parsed?.visitorReviewCount ?? null,
+      blogReviewCount: parsed?.blogReviewCount ?? null,
+      saveCount: parsed?.saveCount ?? null,
     });
 
     return {
-  totalReviewCount,
-  visitorReviewCount,
-  blogReviewCount,
-  saveCountText: saveCount !== null ? String(saveCount) : null,
-  keywordList,
-};
+      totalReviewCount: parsed?.totalReviewCount ?? null,
+      visitorReviewCount: parsed?.visitorReviewCount ?? null,
+      blogReviewCount: parsed?.blogReviewCount ?? null,
+      saveCountText: parsed?.saveCount != null ? String(parsed.saveCount) : null,
+      keywordList: parsed?.keywordList ?? [],
+    };
 
     } catch (error) {
   console.error("[getNaverPlaceReviewSnapshot error]", error);

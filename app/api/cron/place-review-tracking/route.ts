@@ -1,11 +1,23 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
+import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function randomBetween(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+// 👉 한국 날짜 기준 YYYY-MM-DD
+function getKstDateString() {
+  const now = new Date();
+  const kst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const yyyy = kst.getFullYear();
+  const mm = String(kst.getMonth() + 1).padStart(2, "0");
+  const dd = String(kst.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 export async function GET(req: Request) {
@@ -13,13 +25,14 @@ export async function GET(req: Request) {
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
 
-    if (cronSecret) {
-      if (authHeader !== `Bearer ${cronSecret}`) {
-        return NextResponse.json(
-          { ok: false, message: "Unauthorized" },
-          { status: 401 }
-        );
-      }
+    const isVercelCron = req.headers.get("x-vercel-cron") === "1";
+    const isValidCronSecret =
+      Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`;
+    if (cronSecret && !isValidCronSecret && !isVercelCron) {
+      return NextResponse.json(
+        { ok: false, message: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const places = await prisma.place.findMany({
@@ -40,67 +53,118 @@ export async function GET(req: Request) {
       placeId: string;
       name: string;
       saved: boolean;
+      date?: string;
       totalReviewCount?: number;
       visitorReviewCount?: number;
       blogReviewCount?: number;
       saveCount?: string;
+      keywords?: string[];
       reason?: string;
     }> = [];
 
+    const trackedDate = getKstDateString();
+
     for (const place of places) {
       try {
-        const latest = place.reviewHistory[0];
-
-        let totalReviewCount = 0;
-        let visitorReviewCount = 0;
-        let blogReviewCount = 0;
-        let saveCount = "0+";
-
-        if (latest) {
-          const totalDiff = randomBetween(3, 20);
-          const visitorDiff = randomBetween(1, Math.max(1, Math.floor(totalDiff / 2)));
-          const blogDiff = totalDiff - visitorDiff;
-
-          totalReviewCount = latest.totalReviewCount + totalDiff;
-          visitorReviewCount = latest.visitorReviewCount + visitorDiff;
-          blogReviewCount = latest.blogReviewCount + blogDiff;
-
-          const latestSave = Number(String(latest.saveCount).replace(/[^\d]/g, "")) || 0;
-          const nextSave = latestSave + randomBetween(10, 120);
-          saveCount = `${nextSave}+`;
-        } else {
-          totalReviewCount = randomBetween(200, 1200);
-          visitorReviewCount = Math.floor(totalReviewCount * 0.45);
-          blogReviewCount = totalReviewCount - visitorReviewCount;
-          saveCount = `${randomBetween(1000, 30000)}+`;
+        if (!place.placeUrl) {
+          results.push({
+            placeId: place.id,
+            name: place.name,
+            saved: false,
+            date: trackedDate,
+            reason: "placeUrl 없음",
+          });
+          continue;
         }
 
-        const keywords = ["맛집", "분위기", "데이트", "가성비", "친절"];
+        const snapshot = await getNaverPlaceReviewSnapshot({
+          placeUrl: String(place.placeUrl || ""),
+          placeName: String(place.name || ""),
+          x: place.x ? String(place.x) : "",
+          y: place.y ? String(place.y) : "",
+        });
 
-       const now = new Date();
-const trackedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        if (
+          snapshot.visitorReviewCount === null &&
+          snapshot.blogReviewCount === null &&
+          snapshot.saveCountText === null
+        ) {
+          results.push({
+            placeId: place.id,
+            name: place.name,
+            saved: false,
+            date: trackedDate,
+            reason: "리뷰 파싱 실패",
+          });
+          continue;
+        }
 
-await prisma.placeReviewHistory.create({
-  data: {
-    placeId: place.id,
-    trackedDate,
-    totalReviewCount,
-    visitorReviewCount,
-    blogReviewCount,
-    saveCount,
-    keywords,
-  },
-});
+        const latest = place.reviewHistory[0];
+        const keywords =
+          snapshot.keywordList && snapshot.keywordList.length > 0
+            ? snapshot.keywordList
+            : latest?.keywords && latest.keywords.length > 0
+              ? latest.keywords
+              : ["맛집", "분위기", "데이트", "가성비", "친절"];
+
+        const visitorReviewCount = snapshot.visitorReviewCount ?? 0;
+        const blogReviewCount = snapshot.blogReviewCount ?? 0;
+        const totalReviewCount = visitorReviewCount + blogReviewCount;
+        const saveCount = snapshot.saveCountText ?? "0";
+
+        const volume = await getKeywordSearchVolume(place.name);
+        const placeMobileVolume = volume?.mobile ?? 0;
+        const placePcVolume = volume?.pc ?? 0;
+        const placeMonthlyVolume = placeMobileVolume + placePcVolume;
+
+        await prisma.placeReviewHistory.upsert({
+          where: {
+            placeId_trackedDate: {
+              placeId: place.id,
+              trackedDate,
+            },
+          },
+          update: {
+            totalReviewCount,
+            visitorReviewCount,
+            blogReviewCount,
+            saveCount,
+            keywords,
+          },
+          create: {
+            placeId: place.id,
+            trackedDate,
+            totalReviewCount,
+            visitorReviewCount,
+            blogReviewCount,
+            saveCount,
+            keywords,
+          },
+        });
+
+        await prisma.place.update({
+          where: { id: place.id },
+          data: {
+            placeMobileVolume,
+            placePcVolume,
+            placeMonthlyVolume,
+          },
+        });
 
         results.push({
           placeId: place.id,
           name: place.name,
           saved: true,
+          date: trackedDate,
           totalReviewCount,
           visitorReviewCount,
           blogReviewCount,
           saveCount,
+          keywords,
         });
+
+        // 네이버 호출/저장 API 레이트리밋 완화용
+        await sleep(250);
       } catch (error) {
         console.error(`[place-review-tracking] save failed: ${place.name}`, error);
 
@@ -108,6 +172,7 @@ await prisma.placeReviewHistory.create({
           placeId: place.id,
           name: place.name,
           saved: false,
+          date: trackedDate,
           reason: error instanceof Error ? error.message : "저장 실패",
         });
       }
@@ -116,6 +181,7 @@ await prisma.placeReviewHistory.create({
     return NextResponse.json({
       ok: true,
       count: results.length,
+      date: trackedDate,
       results,
     });
   } catch (error) {
