@@ -159,16 +159,8 @@ export async function GET() {
       let placeMobileVolume = placeMobileVolumeDb;
       let placePcVolume = placePcVolumeDb;
 
-      // placeMonthlyVolume이 아직 채워지지 않은 경우 키워드 검색량으로 fallback
-      if (!placeMonthlyVolume) {
-        const firstKeyword = place.keywords?.[0];
-        if (firstKeyword) {
-          placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
-          placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
-          const totalVolume = toNumber(firstKeyword.totalVolume);
-          placeMonthlyVolume = totalVolume || placeMobileVolume + placePcVolume;
-        }
-      }
+      // 업체(매장) 검색량은 키워드 검색량으로 폴백하지 않는다.
+      // (키워드 검색량이 업체 검색량을 덮어쓰는 문제 방지)
 
       return {
         ...place,

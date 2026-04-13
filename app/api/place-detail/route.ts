@@ -179,15 +179,6 @@ export async function GET(req: Request) {
             placePcVolume,
           },
         });
-      } else {
-        // 2) 정말로 DB도 비고 매장명도 못 가져오면 마지막 폴백으로 키워드
-        const firstKeyword = normalizedKeywords[0];
-        if (firstKeyword) {
-          placeMobileVolume = toNumber(firstKeyword.mobileVolume ?? 0);
-          placePcVolume = toNumber(firstKeyword.pcVolume ?? 0);
-          const totalVolume = toNumber(firstKeyword.totalVolume);
-          placeMonthlyVolume = totalVolume || placeMobileVolume + placePcVolume;
-        }
       }
     }
 
