@@ -1,0 +1,119 @@
+/**
+ * map.naver.com → pcmap-api.place.naver.com GraphQL 배치 응답 병합.
+ * @see DevTools Network graphql — businesses(오가닉) + adBusinesses(광고)
+ */
+
+export function parseNaverReviewCountField(v: unknown): number {
+  if (v == null) return 0;
+  if (typeof v === "number" && Number.isFinite(v))
+    return Math.max(0, Math.floor(v));
+  const s = String(v).replace(/,/g, "").trim();
+  if (!s) return 0;
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function collectBatchErrors(batch: unknown[]): string[] {
+  const out: string[] = [];
+  for (const item of batch) {
+    if (!Array.isArray((item as { errors?: unknown })?.errors)) continue;
+    for (const err of (item as { errors: { message?: string }[] }).errors) {
+      const m = err?.message;
+      if (typeof m === "string" && m.trim()) out.push(m.trim());
+    }
+  }
+  return out;
+}
+
+/** map.naver 왼쪽 목록은 DevTools 기준 `places` 우선 — 없을 때만 `businesses` */
+function pickOrganicRoot(data: Record<string, unknown>): {
+  total?: number;
+  items?: unknown[];
+} | null {
+  const b = data.businesses as { total?: number; items?: unknown[] } | undefined;
+  const p = data.places as { total?: number; items?: unknown[] } | undefined;
+  const bLen = Array.isArray(b?.items) ? b!.items!.length : 0;
+  const pLen = Array.isArray(p?.items) ? p!.items!.length : 0;
+  if (pLen > 0) return p!;
+  if (bLen > 0) return b!;
+  if (p && Array.isArray(p.items)) return p;
+  if (b && Array.isArray(b.items)) return b;
+  return null;
+}
+
+export type MergePcmapBatchResult = {
+  items: unknown[];
+  total: number;
+  graphqlErrors: string[];
+};
+
+/**
+ * 광고(adBusinesses)를 모은 뒤 오가닉(places·businesses)을 이어 붙임.
+ * 동일 place id가 양쪽에 있으면 광고 행만 유지(오가닉에서 제거).
+ */
+export function mergePcmapGraphqlBatch(batch: unknown): MergePcmapBatchResult {
+  if (!Array.isArray(batch) || batch.length === 0) {
+    return { items: [], total: 0, graphqlErrors: [] };
+  }
+
+  const gqlErrors = collectBatchErrors(batch);
+  const adItems: unknown[] = [];
+  const organicChunks: unknown[] = [];
+  let organicTotal = 0;
+  let adTotal = 0;
+  const adSeenIds = new Set<string>();
+
+  for (const part of batch) {
+    const data = (part as { data?: Record<string, unknown> })?.data;
+    if (!data || typeof data !== "object") continue;
+
+    const adRoot = data.adBusinesses as
+      | { total?: number; items?: unknown[] }
+      | undefined;
+    if (adRoot && typeof adRoot === "object" && Array.isArray(adRoot.items)) {
+      adTotal = Math.max(adTotal, Number(adRoot.total || 0));
+      for (const it of adRoot.items) {
+        const row = it as { id?: string; adId?: string };
+        const id = String(row?.id ?? "").trim();
+        if (!id || adSeenIds.has(id)) continue;
+        adSeenIds.add(id);
+        adItems.push({
+          ...(it as Record<string, unknown>),
+          isPromotedAd: true,
+          adId: String(row?.adId ?? "").trim() || undefined,
+        });
+      }
+    }
+
+    const bizRoot = pickOrganicRoot(data);
+    if (bizRoot && Array.isArray(bizRoot.items)) {
+      organicTotal = Math.max(organicTotal, Number(bizRoot.total || 0));
+      for (const it of bizRoot.items) {
+        organicChunks.push(it);
+      }
+    }
+  }
+
+  const organicSeen = new Set<string>();
+  const organicDeduped: unknown[] = [];
+  for (const it of organicChunks) {
+    const row = it as { id?: string };
+    const id = String(row?.id ?? "").trim();
+    if (id) {
+      if (organicSeen.has(id)) continue;
+      organicSeen.add(id);
+    }
+    organicDeduped.push(it);
+  }
+
+  const organicFiltered = organicDeduped.filter((it) => {
+    const row = it as { id?: string };
+    const id = String(row?.id ?? "").trim();
+    return !id || !adSeenIds.has(id);
+  });
+
+  const items = [...adItems, ...organicFiltered];
+  const total = Math.max(organicTotal, adTotal, items.length);
+
+  return { items, total, graphqlErrors: gqlErrors };
+}

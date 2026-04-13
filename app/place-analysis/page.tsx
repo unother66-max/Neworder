@@ -3,9 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import TopNav from "@/components/top-nav";
 import {
+  buildLocationFallbackSearchKeyword,
+  countBusinessesItemsInBatch,
+  normalizePlaceSearchKeywordTypos,
+} from "@/lib/place-keyword-fallback";
+import {
   NAVER_PCMAP_GRAPHQL_URL,
   buildGetPlacesListBatch,
   buildGetPlacesListFetchHeaders,
+  buildGetPlacesListFetchHeadersForServer,
+  pickBusinessesCoords,
+  resolveBusinessesCoords,
 } from "@/lib/naver-map-businesses-shared";
 
 type RelatedKeywordItem = {
@@ -22,6 +30,8 @@ type RankPlaceItem = {
   category?: string;
   address?: string;
   imageUrl?: string;
+  /** pcmap GraphQL 광고(PlaceAdSummary) 행 */
+  isPromotedAd?: boolean;
   review?: {
     total?: number;
     visitor?: number;
@@ -70,34 +80,88 @@ function buildMobilePlaceLink(placeId?: string) {
   return `https://m.place.naver.com/restaurant/${placeId}/home`;
 }
 
+type BatchAttempt = {
+  label: string;
+  body: ReturnType<typeof buildGetPlacesListBatch>;
+  headers: Record<string, string>;
+};
+
 /**
- * map.naver.com과 동일 Origin에서 열렸을 때만 성공할 수 있음.
- * localhost 등 다른 출처에서는 CORS로 막히는 경우가 많음 → 서버 경로로 폴백.
+ * 브라우저 세션(credentials)으로 pcmap GraphQL 호출 — 서버보다 지역 businesses가 잘 나옴.
+ * pcmap Referer → map.naver Referer 순으로 여러 번 시도(폴백 쿼리·좌표는 서버와 동일 규칙).
  */
 async function tryFetchBusinessesBatchInBrowser(
   keyword: string
 ): Promise<unknown[] | null> {
-  try {
-    const batch = buildGetPlacesListBatch(keyword);
-    const headers = buildGetPlacesListFetchHeaders(keyword);
-    const res = await fetch(NAVER_PCMAP_GRAPHQL_URL, {
-      method: "POST",
-      headers,
-      credentials: "include",
-      body: JSON.stringify(batch),
-      mode: "cors",
+  const trimmed = keyword.trim();
+  if (!trimmed) return null;
+
+  const attempts: BatchAttempt[] = [];
+  const fb = buildLocationFallbackSearchKeyword(trimmed);
+
+  /* map.naver와 동일한 순위를 위해 전체 검색어를 먼저 시도, 0건일 때만 업종-only 폴백 */
+  {
+    const coords = pickBusinessesCoords(trimmed);
+    attempts.push({
+      label: "pcmap:fullQuery",
+      body: buildGetPlacesListBatch(trimmed, coords),
+      headers: buildGetPlacesListFetchHeadersForServer(trimmed, coords),
     });
-    const text = await res.text();
-    const parsed = JSON.parse(text) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return parsed;
-  } catch (e) {
-    console.warn(
-      "[place-analysis] 브라우저 직접 GraphQL 실패(CORS·비세션 등), 서버만 사용",
-      e
-    );
-    return null;
   }
+
+  {
+    const coords = pickBusinessesCoords(trimmed);
+    attempts.push({
+      label: "map:fullQuery",
+      body: buildGetPlacesListBatch(trimmed, coords),
+      headers: buildGetPlacesListFetchHeaders(trimmed),
+    });
+  }
+
+  if (fb) {
+    const coords = resolveBusinessesCoords(fb, trimmed);
+    attempts.push({
+      label: "pcmap:fallback+anchorCoords",
+      body: buildGetPlacesListBatch(fb, coords),
+      headers: buildGetPlacesListFetchHeadersForServer(fb, coords),
+    });
+    attempts.push({
+      label: "map:fallback+anchorCoords",
+      body: buildGetPlacesListBatch(fb, coords),
+      headers: buildGetPlacesListFetchHeaders(fb),
+    });
+  }
+
+  for (const a of attempts) {
+    try {
+      const res = await fetch(NAVER_PCMAP_GRAPHQL_URL, {
+        method: "POST",
+        headers: a.headers,
+        credentials: "include",
+        body: JSON.stringify(a.body),
+        mode: "cors",
+      });
+      const text = await res.text();
+      const parsed = JSON.parse(text) as unknown;
+      if (!Array.isArray(parsed)) continue;
+      const n = countBusinessesItemsInBatch(parsed);
+      if (n > 0) {
+        console.log("[place-analysis] businessesGraphQL 성공", {
+          label: a.label,
+          itemCount: n,
+        });
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("[place-analysis] GraphQL 시도 실패", a.label, e);
+    }
+    await new Promise((r) => setTimeout(r, 120));
+  }
+
+  console.warn(
+    "[place-analysis] 브라우저에서 businesses 0건(CORS·비로그인 등) → 서버 보조"
+  );
+  return null;
 }
 
 export default function PlaceAnalysisPage() {
@@ -109,6 +173,18 @@ export default function PlaceAnalysisPage() {
   );
   const [list, setList] = useState<RankPlaceItem[]>([]);
   const [error, setError] = useState("");
+  /** 브라우저 GraphQL로 businesses 배치를 받아 API에 넘겼는지 */
+  const [naverMapDataSource, setNaverMapDataSource] = useState<
+    null | "batch" | "allSearch"
+  >(null);
+  const [placeSearchHint, setPlaceSearchHint] = useState("");
+  const [analysisDiagnostics, setAnalysisDiagnostics] = useState<{
+    failureCode: string | null;
+    dataSourceHint: string | null;
+    hints: string[];
+    resolvedSource: string;
+    compactSummary?: string | null;
+  } | null>(null);
 
   const [savedRankPlaceIds, setSavedRankPlaceIds] = useState<Set<string>>(new Set());
   const [savedReviewPlaceIds, setSavedReviewPlaceIds] = useState<Set<string>>(new Set());
@@ -166,28 +242,156 @@ export default function PlaceAnalysisPage() {
   }, []);
 
   const handleAnalyze = async () => {
-    const trimmed = keyword.trim();
+    const trimmedRaw = keyword.trim();
 
-    if (!trimmed) {
+    if (!trimmedRaw) {
       alert("키워드를 입력해주세요.");
       return;
+    }
+
+    const { normalized: trimmed, typoCorrected } =
+      normalizePlaceSearchKeywordTypos(trimmedRaw);
+    if (typoCorrected && trimmed !== trimmedRaw) {
+      setKeyword(trimmed);
     }
 
     try {
       setLoading(true);
       setError("");
+      setNaverMapDataSource(null);
+      setPlaceSearchHint("");
+      setAnalysisDiagnostics(null);
 
-      const clientBatch = await tryFetchBusinessesBatchInBrowser(trimmed);
+      let clientBatch: unknown[] | null = null;
+      let mapAllSearchPlaces: unknown[] | null = null;
+      let mapAllSearchTotalCount: number | undefined;
+      let clientMapAllSearch:
+        | { tokenSent: boolean; apiOk?: boolean; apiCode?: string }
+        | undefined;
+
+      /* GraphQL 배치(businesses+adBusinesses)가 지도 왼쪽 목록과 가장 잘 맞으므로 프록시·브라우저를 allSearch보다 먼저 시도 */
+      try {
+        const proxyRes = await fetch("/api/pcmap-businesses-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keyword: trimmed }),
+        });
+        if (proxyRes.ok) {
+          const pj = (await proxyRes.json()) as {
+            typoCorrected?: boolean;
+            normalizedKeyword?: string;
+            batch?: unknown[];
+            itemCount?: number;
+            mode?: string;
+          };
+          if (
+            pj.typoCorrected &&
+            typeof pj.normalizedKeyword === "string" &&
+            pj.normalizedKeyword
+          ) {
+            setKeyword(pj.normalizedKeyword);
+          }
+          if (pj.batch?.length && (pj.itemCount ?? 0) > 0) {
+            clientBatch = pj.batch;
+            console.log("[place-analysis] pcmap-businesses-batch", {
+              mode: pj.mode,
+              itemCount: pj.itemCount,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[place-analysis] pcmap-businesses-batch 실패", e);
+      }
+
+      if (!clientBatch || countBusinessesItemsInBatch(clientBatch) === 0) {
+        const fromBrowser = await tryFetchBusinessesBatchInBrowser(trimmed);
+        if (
+          fromBrowser?.length &&
+          countBusinessesItemsInBatch(fromBrowser) > 0
+        ) {
+          clientBatch = fromBrowser;
+        }
+      }
+
+      const hasClientItems =
+        Boolean(clientBatch?.length) &&
+        countBusinessesItemsInBatch(clientBatch) > 0;
+
+      if (!hasClientItems) {
+        try {
+          const mapToken =
+            typeof sessionStorage !== "undefined"
+              ? sessionStorage
+                  .getItem("PLACE_ANALYSIS_NAVER_MAP_TOKEN")
+                  ?.trim() ?? ""
+              : "";
+          clientMapAllSearch = { tokenSent: Boolean(mapToken) };
+          const mapRes = await fetch("/api/naver-map-all-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              keyword: trimmed,
+              ...(mapToken ? { token: mapToken } : {}),
+            }),
+          });
+          if (mapRes.ok) {
+            const mj = (await mapRes.json()) as {
+              ok?: boolean;
+              places?: unknown[];
+              totalCount?: number;
+              code?: string;
+            };
+            clientMapAllSearch.apiOk = mj.ok === true;
+            clientMapAllSearch.apiCode =
+              typeof mj.code === "string" ? mj.code : undefined;
+            if (mj.ok && Array.isArray(mj.places) && mj.places.length > 0) {
+              mapAllSearchPlaces = mj.places;
+              mapAllSearchTotalCount =
+                typeof mj.totalCount === "number" ? mj.totalCount : undefined;
+              setNaverMapDataSource("allSearch");
+              console.log("[place-analysis] naver-map-all-search (폴백)", {
+                n: mj.places.length,
+                totalCount: mj.totalCount,
+              });
+            }
+          } else {
+            clientMapAllSearch.apiOk = false;
+          }
+        } catch (e) {
+          console.warn("[place-analysis] naver-map-all-search 실패", e);
+          if (clientMapAllSearch) {
+            clientMapAllSearch.apiOk = false;
+          }
+        }
+      }
 
       const payload: {
         keyword: string;
+        mapAllSearchPlaces?: unknown[];
+        mapAllSearchTotalCount?: number;
         businessesGraphqlBatch?: unknown[];
+        clientMapAllSearch?: {
+          tokenSent: boolean;
+          apiOk?: boolean;
+          apiCode?: string;
+        };
       } = { keyword: trimmed };
-      if (clientBatch && clientBatch.length > 0) {
+
+      if (clientMapAllSearch) {
+        payload.clientMapAllSearch = clientMapAllSearch;
+      }
+
+      if (hasClientItems && clientBatch) {
         payload.businessesGraphqlBatch = clientBatch;
+        setNaverMapDataSource("batch");
         console.log("[place-analysis] businessesGraphqlBatch 전달", {
           batchLength: clientBatch.length,
         });
+      } else if (mapAllSearchPlaces?.length) {
+        payload.mapAllSearchPlaces = mapAllSearchPlaces;
+        if (mapAllSearchTotalCount != null) {
+          payload.mapAllSearchTotalCount = mapAllSearchTotalCount;
+        }
       }
 
       const res = await fetch("/api/place-rank-analyze", {
@@ -204,17 +408,68 @@ export default function PlaceAnalysisPage() {
         setError(data?.message || "분석 중 오류가 발생했습니다.");
         setRelatedKeywords([]);
         setList([]);
+        setPlaceSearchHint("");
+        setAnalysisDiagnostics(null);
         return;
       }
 
       setSearchedKeyword(data.keyword || trimmed);
       setRelatedKeywords(Array.isArray(data.related) ? data.related : []);
-      setList(Array.isArray(data.list) ? data.list : []);
+      const listArr = Array.isArray(data.list) ? data.list : [];
+      setList(listArr);
+
+      const diag = data.diagnostics as
+        | {
+            failureCode?: string | null;
+            dataSourceHint?: string | null;
+            hints?: unknown;
+            resolvedSource?: string;
+            compactSummary?: string | null;
+          }
+        | undefined;
+
+      if (diag && typeof diag === "object") {
+        const hintList = Array.isArray(diag.hints)
+          ? diag.hints.filter((h): h is string => typeof h === "string")
+          : [];
+        setAnalysisDiagnostics({
+          failureCode:
+            typeof diag.failureCode === "string" ? diag.failureCode : null,
+          dataSourceHint:
+            typeof diag.dataSourceHint === "string"
+              ? diag.dataSourceHint
+              : null,
+          hints: hintList,
+          resolvedSource:
+            typeof diag.resolvedSource === "string" ? diag.resolvedSource : "",
+          compactSummary:
+            typeof diag.compactSummary === "string"
+              ? diag.compactSummary
+              : diag.compactSummary === null
+                ? null
+                : undefined,
+        });
+      } else {
+        setAnalysisDiagnostics(null);
+      }
+
+      if (
+        listArr.length === 0 &&
+        !(Array.isArray(diag?.hints) && diag.hints.length > 0)
+      ) {
+        setPlaceSearchHint(
+          "결과가 비었습니다. map.naver.com에서 로그인·검색 후 다시 시도하거나, allSearch token을 sessionStorage(PLACE_ANALYSIS_NAVER_MAP_TOKEN) 또는 NAVER_MAP_ALL_SEARCH_TOKEN으로 설정해 보세요."
+        );
+      } else {
+        setPlaceSearchHint("");
+      }
     } catch (e) {
       console.error(e);
       setError("분석 중 오류가 발생했습니다.");
       setRelatedKeywords([]);
       setList([]);
+      setPlaceSearchHint("");
+      setAnalysisDiagnostics(null);
     } finally {
       setLoading(false);
     }
@@ -335,6 +590,11 @@ await loadSavedPlaces();
                   검색한 키워드 기준으로 네이버 플레이스 순위와 리뷰 지표를
                   확인합니다.
                 </p>
+
+                <p className="mt-2 rounded-[12px] border border-sky-200 bg-[#f0f9ff] px-3 py-2 text-[12px] leading-relaxed text-[#0c4a6e] md:text-[13px]">
+                  같은 브라우저에서 map.naver.com에 로그인한 뒤, 같은 키워드로
+                  지도 검색을 한 번 한 다음 분석하면 목록이 지도와 더 잘 맞습니다.
+                </p>
               </div>
 
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -424,6 +684,63 @@ await loadSavedPlaces();
             </div>
           ) : null}
 
+          {naverMapDataSource === "allSearch" ? (
+            <div className="mt-4 rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900">
+              네이버 지도 통합검색(allSearch) 목록 순서를 반영했습니다.
+              token은 map.naver.com 검색 후 Network → allSearch → Query String
+              token을 복사해 sessionStorage 키{" "}
+              <code className="rounded bg-white/80 px-1">PLACE_ANALYSIS_NAVER_MAP_TOKEN</code>
+              에 저장하거나 서버 환경변수{" "}
+              <code className="rounded bg-white/80 px-1">NAVER_MAP_ALL_SEARCH_TOKEN</code>
+              로 넣을 수 있습니다.
+            </div>
+          ) : null}
+          {naverMapDataSource === "batch" ? (
+            <div className="mt-4 rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900">
+              네이버 지도 pcmap GraphQL 배치를 반영했습니다. 광고(
+              adBusinesses)를 위에 두고 오가닉(businesses)을 이어 붙인 순서입니다.
+              (브라우저 세션 또는 프록시)
+            </div>
+          ) : null}
+
+          {placeSearchHint ? (
+            <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
+              {placeSearchHint}
+            </div>
+          ) : null}
+
+          {analysisDiagnostics?.compactSummary ? (
+            <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
+              {analysisDiagnostics.compactSummary}
+            </div>
+          ) : analysisDiagnostics &&
+            (analysisDiagnostics.hints.length > 0 ||
+              analysisDiagnostics.dataSourceHint ||
+              analysisDiagnostics.failureCode) ? (
+            <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
+              {analysisDiagnostics.failureCode ? (
+                <div className="mb-2 text-[11px] font-medium text-amber-900/90">
+                  진단 코드: {analysisDiagnostics.failureCode}
+                  {analysisDiagnostics.resolvedSource
+                    ? ` · 소스: ${analysisDiagnostics.resolvedSource}`
+                    : ""}
+                </div>
+              ) : null}
+              {analysisDiagnostics.dataSourceHint ? (
+                <p className="mb-2 leading-relaxed">
+                  {analysisDiagnostics.dataSourceHint}
+                </p>
+              ) : null}
+              {analysisDiagnostics.hints.length > 0 ? (
+                <ul className="list-disc space-y-1.5 pl-4 leading-relaxed">
+                  {analysisDiagnostics.hints.map((h, i) => (
+                    <li key={`${i}-${h.slice(0, 24)}`}>{h}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-5 overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="overflow-x-auto">
               <table className="min-w-[1180px] w-full">
@@ -503,8 +820,15 @@ const isRankRegistered = savedRankPlaceIds.has(placeId);
                               )}
 
                               <div className="min-w-0">
-                                <div className="text-[15px] font-bold text-[#111827]">
-                                  {item.name}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-[15px] font-bold text-[#111827]">
+                                    {item.name}
+                                  </span>
+                                  {item.isPromotedAd ? (
+                                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                                      광고
+                                    </span>
+                                  ) : null}
                                 </div>
                                 {item.address ? (
                                   <div className="mt-1 text-[12px] text-[#9ca3af]">

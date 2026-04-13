@@ -35,3 +35,5 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 # Neworder
+
+place-analysis가 무토큰으로 막힐 때는 로컬에서 `npm run naver-map-token -- --write-env-local`로 `NAVER_MAP_ALL_SEARCH_TOKEN`을 갱신하거나(실패 시 `--headed`로 로그인 후 재시도), DevTools의 allSearch 요청 URL에서 token을 수동 복사합니다.
