@@ -416,6 +416,18 @@ export async function fetchSmartstoreMetaViaShoppingSearchApi(
     extractSmartstoreSlugFromUrl(input.productUrl);
 
   const labeled = buildQueryCandidates(input);
+  // smartstore 쪽은 Playwright가 490(차단)으로 메타가 비는 케이스가 있어,
+  // 쇼핑검색 매칭을 위해 "슬러그+상품ID" 조합 쿼리를 추가한다.
+  if (slug && pid) {
+    labeled.unshift(
+      { raw: `${slug} ${pid}`, source: "slug+productId" },
+      { raw: `${pid} ${slug}`, source: "productId+slug" }
+    );
+  }
+  const hint = input.ogTitle?.trim() || null;
+  if (slug && hint) {
+    labeled.unshift({ raw: `${slug} ${hint}`, source: "slug+ogTitle" });
+  }
   const tried: Array<{ source: string; finalQuery: string }> = [];
 
   for (const { raw, source } of labeled) {

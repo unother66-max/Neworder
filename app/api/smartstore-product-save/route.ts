@@ -11,6 +11,11 @@ import {
   isSmartstorePlaywrightServiceConfigured,
 } from "@/lib/fetch-smartstore-playwright-service";
 import {
+  fetchSmartstoreMetaViaShoppingSearchApi,
+  isSmartstoreShoppingSearchConfigured,
+} from "@/lib/fetch-smartstore-search-api";
+import { getSmartstoreProductSnapshot } from "@/lib/get-smartstore-product-snapshot";
+import {
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
 } from "@/lib/smartstore-url";
@@ -81,10 +86,25 @@ export async function POST(req: Request) {
 
     const fallbackName = `상품 #${naverProductId}`;
 
+    const existing = await prisma.smartstoreProduct.findUnique({
+      where: {
+        userId_productId: { userId, productId: naverProductId },
+      },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        imageUrl: true,
+        thumbnailLink: true,
+        mallName: true,
+      },
+    });
+
     let meta: {
       name: string | null;
       imageUrl: string | null;
       category: string | null;
+      mallName?: string | null;
     } = {
       name: null,
       imageUrl: null,
@@ -96,6 +116,29 @@ export async function POST(req: Request) {
     >["productPageFetch"] = null;
 
     const playwrightConfigured = isSmartstorePlaywrightServiceConfigured();
+    let playwrightServiceAttempted = false;
+    let playwrightServiceFailed = false;
+    let playwrightServiceError: string | null = null;
+
+    const urlQueryHint = (() => {
+      try {
+        const u = new URL(normalizedUrl);
+        const candidates = [
+          u.searchParams.get("nl-query"),
+          u.searchParams.get("nl_query"),
+          u.searchParams.get("n_query"),
+          u.searchParams.get("query"),
+          u.searchParams.get("q"),
+        ]
+          .map((v) => (typeof v === "string" ? v.trim() : ""))
+          .filter(Boolean);
+        if (candidates.length === 0) return null;
+        // 짧은 일반어(예: "침대")라도 매칭에는 도움이 될 수 있어 그대로 둠
+        return candidates[0] ?? null;
+      } catch {
+        return null;
+      }
+    })();
 
     console.log(`${SMARTSTORE_TRACE_LOG} [save] 시작`, {
       userId,
@@ -105,11 +148,13 @@ export async function POST(req: Request) {
       playwrightConfigured,
       SMARTSTORE_PLAYWRIGHT_URL:
         process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() || "(없음)",
+      urlQueryHint,
     });
 
     if (!skipMetaFetch) {
       if (playwrightConfigured) {
         try {
+          playwrightServiceAttempted = true;
           console.log(`${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 시작`, {
             productUrl: normalizedUrl,
             serviceUrl: process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() || "(없음)",
@@ -123,6 +168,9 @@ export async function POST(req: Request) {
             meta,
           });
         } catch (error) {
+          playwrightServiceFailed = true;
+          playwrightServiceError =
+            error instanceof Error ? error.message : String(error);
           console.error(
             `${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 실패`,
             error
@@ -169,6 +217,92 @@ export async function POST(req: Request) {
       }
     }
 
+    const gotServerMeta =
+      !skipMetaFetch &&
+      (Boolean(meta.name?.trim()) ||
+        Boolean(meta.imageUrl?.trim()) ||
+        Boolean(meta.category?.trim()));
+
+    // 네이버 API가 429/HTML로 막히는 경우가 잦아, 공식 쇼핑검색 API로 최소 메타를 보강한다.
+    // (place/kakao와 무관, smartstore 저장에만 적용)
+    if (!skipMetaFetch && !gotServerMeta) {
+      const shoppingConfigured = isSmartstoreShoppingSearchConfigured();
+      console.log(`${SMARTSTORE_TRACE_LOG} [save] meta 비어있음 → 쇼핑검색 보강 시도`, {
+        shoppingConfigured,
+        productId: naverProductId,
+      });
+      if (shoppingConfigured) {
+        try {
+          const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
+            productUrl: normalizedUrl,
+            productId: naverProductId,
+            existingNameHint: existing?.name ?? null,
+            ogTitle: urlQueryHint,
+            pageProductNameHint: meta.name ?? null,
+          });
+          if (searchMeta.searchApiMatched) {
+            meta = {
+              name: meta.name?.trim() ? meta.name : searchMeta.name,
+              imageUrl: meta.imageUrl?.trim() ? meta.imageUrl : searchMeta.thumbnailLink,
+              category: meta.category?.trim() ? meta.category : searchMeta.category,
+              mallName: searchMeta.mallName,
+            };
+            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 성공`, {
+              name: meta.name,
+              imageUrl: meta.imageUrl,
+              category: meta.category,
+              mallName: meta.mallName ?? null,
+            });
+          } else {
+            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 매칭 실패`, {
+              used: searchMeta.searchApiUsed,
+            });
+          }
+        } catch (e) {
+          console.error(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 실패`, e);
+        }
+      }
+    }
+
+    // 로컬 개발 환경에서는 원격 Playwright가 없더라도 자체 Playwright로 한번 더 복구 시도
+    // (Vercel 배포에서는 별도 Playwright 서비스 사용을 권장)
+    const isVercel = process.env.VERCEL === "1";
+    const gotMetaAfterSearch =
+      !skipMetaFetch &&
+      (Boolean(meta.name?.trim()) ||
+        Boolean(meta.imageUrl?.trim()) ||
+        Boolean(meta.category?.trim()));
+    const shouldTryLocalSnapshot =
+      !skipMetaFetch &&
+      !gotMetaAfterSearch &&
+      !isVercel &&
+      (!playwrightConfigured || playwrightServiceFailed);
+    if (shouldTryLocalSnapshot) {
+      console.log(`${SMARTSTORE_TRACE_LOG} [save] 로컬 Playwright 스냅샷 폴백 시도`, {
+        productUrl: normalizedUrl,
+        playwrightConfigured,
+        playwrightServiceAttempted,
+        playwrightServiceFailed,
+        playwrightServiceError,
+      });
+      try {
+        const snap = await getSmartstoreProductSnapshot(normalizedUrl);
+        meta = {
+          name: snap.name?.trim() ? snap.name : meta.name,
+          imageUrl: snap.imageUrl?.trim() ? snap.imageUrl : meta.imageUrl,
+          category: snap.category?.trim() ? snap.category : meta.category,
+          mallName: meta.mallName ?? null,
+        };
+        console.log(`${SMARTSTORE_TRACE_LOG} [save] 로컬 Playwright 스냅샷 결과`, {
+          name: meta.name,
+          imageUrl: meta.imageUrl,
+          category: meta.category,
+        });
+      } catch (e) {
+        console.error(`${SMARTSTORE_TRACE_LOG} [save] 로컬 Playwright 스냅샷 실패`, e);
+      }
+    }
+
     const nameFromFetcher = skipMetaFetch ? "" : (meta.name?.trim() || "").trim();
     const nameFromOverride = (nameOverride || "").trim();
 
@@ -193,19 +327,23 @@ export async function POST(req: Request) {
     const thumbnailLink = thumbRaw.length > 0 ? thumbRaw : null;
     const imageUrl = thumbnailLink;
 
-    const gotServerMeta =
+    const gotFinalMeta =
       !skipMetaFetch &&
       (Boolean(meta.name?.trim()) ||
         Boolean(meta.imageUrl?.trim()) ||
         Boolean(meta.category?.trim()));
 
-    const metaFetchIncomplete = !skipMetaFetch && !gotServerMeta;
+    const metaFetchIncomplete = !skipMetaFetch && !gotFinalMeta;
 
     const data = {
       name: nameFinal,
       category,
       thumbnailLink,
       imageUrl,
+      mallName:
+        !skipMetaFetch && typeof meta.mallName === "string" && meta.mallName.trim()
+          ? meta.mallName.trim()
+          : null,
       productId: naverProductId,
     };
 
@@ -249,12 +387,6 @@ export async function POST(req: Request) {
       },
     });
 
-    const existing = await prisma.smartstoreProduct.findUnique({
-      where: {
-        userId_productId: { userId, productId: naverProductId },
-      },
-    });
-
     if (existing) {
       const product = await prisma.smartstoreProduct.update({
         where: { id: existing.id },
@@ -263,6 +395,7 @@ export async function POST(req: Request) {
           category,
           thumbnailLink,
           imageUrl,
+          mallName: data.mallName,
           productUrl: normalizedUrl,
         },
         include: { keywords: true },
@@ -305,6 +438,7 @@ export async function POST(req: Request) {
         category,
         thumbnailLink,
         imageUrl,
+        mallName: data.mallName,
       },
       include: { keywords: true },
     });
