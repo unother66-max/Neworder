@@ -3,8 +3,6 @@
  * brand.naver.com 경로에서는 호출하지 않음(호출부에서 분기).
  */
 
-import { canonicalNaverStoreHost } from "@/lib/smartstore-url";
-
 const SHOP_API = "https://openapi.naver.com/v1/search/shop.json";
 const LOG_P = "[smartstore-search-api]";
 const MAX_DISPLAY = 100;
@@ -83,9 +81,6 @@ function extractSmartstoreSlugFromUrl(productUrl: string): string | null {
     const raw = productUrl.trim();
     const withProto = raw.startsWith("http") ? raw : `https://${raw}`;
     const u = new URL(withProto);
-    if (canonicalNaverStoreHost(u.hostname) !== "smartstore.naver.com") {
-      return null;
-    }
     const segs = u.pathname.split("/").filter(Boolean);
     const pi = segs.indexOf("products");
     if (pi > 0 && /^\d+$/.test(String(segs[pi + 1] ?? ""))) {
