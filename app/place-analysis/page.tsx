@@ -638,10 +638,7 @@ await loadSavedPlaces();
                   확인합니다.
                 </p>
 
-                <p className="mt-2 rounded-[12px] border border-sky-200 bg-[#f0f9ff] px-3 py-2 text-[12px] leading-relaxed text-[#0c4a6e] md:text-[13px]">
-                  같은 브라우저에서 map.naver.com에 로그인한 뒤, 같은 키워드로
-                  지도 검색을 한 번 한 다음 분석하면 목록이 지도와 더 잘 맞습니다.
-                </p>
+              
               </div>
 
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -746,14 +743,7 @@ await loadSavedPlaces();
               로 넣을 수 있습니다.
             </div>
           ) : null}
-          {naverMapDataSource === "batch" ? (
-            <div className="mt-4 rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900">
-              네이버 지도 pcmap GraphQL 배치를 반영했습니다. 광고(
-              adBusinesses)를 위에 두고 오가닉(businesses)을 이어 붙인 순서입니다.
-              (브라우저 세션 또는 프록시)
-            </div>
-          ) : null}
-
+         
           {placeSearchHint ? (
             <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
               {placeSearchHint}
