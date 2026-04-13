@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import TopNav from "@/components/top-nav";
 import {
   buildLocationFallbackSearchKeyword,
@@ -91,7 +91,8 @@ type BatchAttempt = {
  * pcmap Referer → map.naver Referer 순으로 여러 번 시도(폴백 쿼리·좌표는 서버와 동일 규칙).
  */
 async function tryFetchBusinessesBatchInBrowser(
-  keyword: string
+  keyword: string,
+  signal?: AbortSignal
 ): Promise<unknown[] | null> {
   const trimmed = keyword.trim();
   if (!trimmed) return null;
@@ -133,6 +134,7 @@ async function tryFetchBusinessesBatchInBrowser(
   }
 
   for (const a of attempts) {
+    if (signal?.aborted) return null;
     try {
       const res = await fetch(NAVER_PCMAP_GRAPHQL_URL, {
         method: "POST",
@@ -140,6 +142,7 @@ async function tryFetchBusinessesBatchInBrowser(
         credentials: "include",
         body: JSON.stringify(a.body),
         mode: "cors",
+        signal,
       });
       const text = await res.text();
       const parsed = JSON.parse(text) as unknown;
@@ -153,6 +156,9 @@ async function tryFetchBusinessesBatchInBrowser(
         return parsed;
       }
     } catch (e) {
+      if (signal?.aborted || (e instanceof Error && e.name === "AbortError")) {
+        return null;
+      }
       console.warn("[place-analysis] GraphQL 시도 실패", a.label, e);
     }
     await new Promise((r) => setTimeout(r, 120));
@@ -189,6 +195,10 @@ export default function PlaceAnalysisPage() {
   const [savedRankPlaceIds, setSavedRankPlaceIds] = useState<Set<string>>(new Set());
   const [savedReviewPlaceIds, setSavedReviewPlaceIds] = useState<Set<string>>(new Set());
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
+
+  /** 연속 클릭·이중 트리거 시 늦게 도착한 응답이 빈 목록으로 덮는 것 방지 */
+  const analyzeGenRef = useRef(0);
+  const analyzeAbortRef = useRef<AbortController | null>(null);
 
  const loadSavedPlaces = async () => {
   try {
@@ -255,6 +265,13 @@ export default function PlaceAnalysisPage() {
       setKeyword(trimmed);
     }
 
+    analyzeAbortRef.current?.abort();
+    const ac = new AbortController();
+    analyzeAbortRef.current = ac;
+    const signal = ac.signal;
+    const myGen = ++analyzeGenRef.current;
+    const alive = () => myGen === analyzeGenRef.current;
+
     try {
       setLoading(true);
       setError("");
@@ -275,6 +292,7 @@ export default function PlaceAnalysisPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ keyword: trimmed }),
+          signal,
         });
         if (proxyRes.ok) {
           const pj = (await proxyRes.json()) as {
@@ -300,11 +318,22 @@ export default function PlaceAnalysisPage() {
           }
         }
       } catch (e) {
+        if (
+          signal.aborted ||
+          (e instanceof Error && e.name === "AbortError")
+        ) {
+          return;
+        }
         console.warn("[place-analysis] pcmap-businesses-batch 실패", e);
       }
 
+      if (!alive()) return;
+
       if (!clientBatch || countBusinessesItemsInBatch(clientBatch) === 0) {
-        const fromBrowser = await tryFetchBusinessesBatchInBrowser(trimmed);
+        const fromBrowser = await tryFetchBusinessesBatchInBrowser(
+          trimmed,
+          signal
+        );
         if (
           fromBrowser?.length &&
           countBusinessesItemsInBatch(fromBrowser) > 0
@@ -312,6 +341,8 @@ export default function PlaceAnalysisPage() {
           clientBatch = fromBrowser;
         }
       }
+
+      if (!alive()) return;
 
       const hasClientItems =
         Boolean(clientBatch?.length) &&
@@ -333,6 +364,7 @@ export default function PlaceAnalysisPage() {
               keyword: trimmed,
               ...(mapToken ? { token: mapToken } : {}),
             }),
+            signal,
           });
           if (mapRes.ok) {
             const mj = (await mapRes.json()) as {
@@ -358,12 +390,20 @@ export default function PlaceAnalysisPage() {
             clientMapAllSearch.apiOk = false;
           }
         } catch (e) {
+          if (
+            signal.aborted ||
+            (e instanceof Error && e.name === "AbortError")
+          ) {
+            return;
+          }
           console.warn("[place-analysis] naver-map-all-search 실패", e);
           if (clientMapAllSearch) {
             clientMapAllSearch.apiOk = false;
           }
         }
       }
+
+      if (!alive()) return;
 
       const payload: {
         keyword: string;
@@ -400,9 +440,12 @@ export default function PlaceAnalysisPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
+        signal,
       });
 
       const data = await res.json();
+
+      if (!alive()) return;
 
       if (!res.ok || !data?.ok) {
         setError(data?.message || "분석 중 오류가 발생했습니다.");
@@ -464,6 +507,8 @@ export default function PlaceAnalysisPage() {
         setPlaceSearchHint("");
       }
     } catch (e) {
+      if (!alive()) return;
+      if (e instanceof Error && e.name === "AbortError") return;
       console.error(e);
       setError("분석 중 오류가 발생했습니다.");
       setRelatedKeywords([]);
@@ -471,7 +516,9 @@ export default function PlaceAnalysisPage() {
       setPlaceSearchHint("");
       setAnalysisDiagnostics(null);
     } finally {
-      setLoading(false);
+      if (myGen === analyzeGenRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -604,7 +651,10 @@ await loadSavedPlaces();
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAnalyze();
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAnalyze();
+                      }
                     }}
                     placeholder="예: 한남동 맛집"
                     className="h-[54px] w-full rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
@@ -622,6 +672,7 @@ await loadSavedPlaces();
                 </div>
 
                 <button
+                  type="button"
                   onClick={handleAnalyze}
                   disabled={loading}
                   className={`h-[54px] rounded-[16px] bg-[#b91c1c] px-7 text-[15px] font-bold text-white transition hover:bg-[#991b1b] ${

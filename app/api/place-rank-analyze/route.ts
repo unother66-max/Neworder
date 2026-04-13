@@ -512,6 +512,9 @@ type GraphqlItem = {
   category?: string;
   businessCategory?: string;
   imageUrl?: string;
+  /** 일부 pcmap 타입은 썸네일 필드명이 다름 */
+  thumbnail?: string;
+  thumUrl?: string;
   x?: string;
   y?: string;
   address?: string;
@@ -1052,6 +1055,21 @@ async function fetchRestaurantListWithLocationFallback(
   };
 }
 
+function pickGraphqlItemImageUrl(item: GraphqlItem): string {
+  const r = item as Record<string, unknown>;
+  const parts = [
+    item.imageUrl,
+    item.thumbnail,
+    item.thumUrl,
+    r["image"],
+  ];
+  for (const p of parts) {
+    const s = String(p ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
 function mapItemToListRow(item: GraphqlItem, index: number) {
   const visitor = parseNaverReviewCountField(item.visitorReviewCount);
   const blog = parseNaverReviewCountField(item.blogCafeReviewCount);
@@ -1066,7 +1084,7 @@ function mapItemToListRow(item: GraphqlItem, index: number) {
     address: String(
       item.roadAddress || item.address || item.fullAddress || ""
     ).trim(),
-    imageUrl: String(item.imageUrl || "").trim(),
+    imageUrl: pickGraphqlItemImageUrl(item),
     isPromotedAd: Boolean(item.isPromotedAd),
     review: {
       visitor,
@@ -1252,42 +1270,42 @@ export async function POST(req: Request) {
       const food = isRestaurantKeyword(keyword);
 
       if (food) {
-        const r = await fetchRestaurantList(keyword);
-        graphqlErrors.push(...r.graphqlErrors);
+        /** 맛집 축은 restaurant 우선이나, 동시에 businesses를 받아 두면 restaurant 공백·지연 시에도 목록 유지 */
+        const [r, b] = await Promise.all([
+          fetchRestaurantList(keyword),
+          fetchPlacesListBusinesses(keyword),
+        ]);
+        graphqlErrors.push(...r.graphqlErrors, ...b.graphqlErrors);
         if (r.items.length > 0) {
           items = r.items;
           apiTotal = r.total;
           source = "restaurant";
+        } else if (b.items.length > 0) {
+          items = b.items;
+          apiTotal = b.total;
+          source = "businesses";
         } else {
-          const b = await fetchPlacesListBusinesses(keyword);
-          graphqlErrors.push(...b.graphqlErrors);
-          if (b.items.length > 0) {
-            items = b.items;
-            apiTotal = b.total;
-            source = "businesses";
+          serverPcmapGraphqlEmpty = true;
+          const fromAll = await loadItemsFromCheckPlaceStyleAllSearch(keyword);
+          if (fromAll.ok) {
+            items = fromAll.items;
+            apiTotal = fromAll.total;
+            source = "mapAllSearch";
+            usedMapAllSearchPlaces = true;
           } else {
-            serverPcmapGraphqlEmpty = true;
-            const fromAll = await loadItemsFromCheckPlaceStyleAllSearch(keyword);
-            if (fromAll.ok) {
-              items = fromAll.items;
-              apiTotal = fromAll.total;
-              source = "mapAllSearch";
-              usedMapAllSearchPlaces = true;
-            } else {
-              serverTokenlessAllSearchFailed = true;
-              if (!diagnostics.hints.some((h) => h.includes("PC맵"))) {
-                diagnostics.hints.push(
-                  "서버·세션 없이는 PC맵 GraphQL 목록을 가져오지 못했을 수 있습니다. 같은 브라우저에서 map.naver.com에 로그인한 뒤 같은 키워드로 지도 검색을 한 다음 다시 분석해 주세요."
-                );
-              }
-              diagnostics.failureCode = mapAllSearchFailureToDiagnosticsCode(
-                fromAll.failureCode
+            serverTokenlessAllSearchFailed = true;
+            if (!diagnostics.hints.some((h) => h.includes("PC맵"))) {
+              diagnostics.hints.push(
+                "서버·세션 없이는 PC맵 GraphQL 목록을 가져오지 못했을 수 있습니다. 같은 브라우저에서 map.naver.com에 로그인한 뒤 같은 키워드로 지도 검색을 한 다음 다시 분석해 주세요."
               );
-              diagnostics.hints.push(fromAll.userMessage);
-              items = [];
-              apiTotal = 0;
-              source = "restaurant";
             }
+            diagnostics.failureCode = mapAllSearchFailureToDiagnosticsCode(
+              fromAll.failureCode
+            );
+            diagnostics.hints.push(fromAll.userMessage);
+            items = [];
+            apiTotal = 0;
+            source = "restaurant";
           }
         }
       } else {

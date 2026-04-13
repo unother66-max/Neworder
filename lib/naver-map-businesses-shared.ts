@@ -149,6 +149,7 @@ query getPlacesList(
       name
       category
       businessCategory
+      imageUrl
       x
       y
       address
@@ -180,6 +181,7 @@ query getAdBusinesses($adBusinessesInput: AdBusinessesInput) {
         name
         category
         businessCategory
+        imageUrl
         x
         y
         address
@@ -194,6 +196,7 @@ query getAdBusinesses($adBusinessesInput: AdBusinessesInput) {
         name
         category
         businessCategory
+        imageUrl
         x
         y
         address
@@ -208,6 +211,7 @@ query getAdBusinesses($adBusinessesInput: AdBusinessesInput) {
         name
         category
         businessCategory
+        imageUrl
         x
         y
         address
@@ -222,6 +226,7 @@ query getAdBusinesses($adBusinessesInput: AdBusinessesInput) {
         name
         category
         businessCategory
+        imageUrl
         x
         y
         address
@@ -236,6 +241,7 @@ query getAdBusinesses($adBusinessesInput: AdBusinessesInput) {
         name
         category
         businessCategory
+        imageUrl
         x
         y
         address
@@ -269,12 +275,11 @@ export type GetPlacesListBatchPayload = {
 export type AdBusinessesBatchPayload = {
   operationName: string;
   variables: {
+    /** pcmap 스키마: query·x·y만 허용(display/start는 AdBusinessesInput에 없음) */
     adBusinessesInput: {
       query: string;
       x: string;
       y: string;
-      display: number;
-      start: number;
     };
   };
   query: string;
@@ -286,11 +291,8 @@ export type PcmapGraphqlBatchPayload =
 
 export function buildAdBusinessesBatchPayload(
   keyword: string,
-  coords: { x: string; y: string },
-  opts?: { display?: number; start?: number }
+  coords: { x: string; y: string }
 ): AdBusinessesBatchPayload {
-  const display = opts?.display ?? BUSINESSES_DISPLAY;
-  const start = opts?.start ?? 1;
   return {
     operationName: "getAdBusinesses",
     variables: {
@@ -298,8 +300,6 @@ export function buildAdBusinessesBatchPayload(
         query: keyword,
         x: coords.x,
         y: coords.y,
-        display,
-        start,
       },
     },
     query: GET_AD_BUSINESSES_QUERY,
@@ -332,7 +332,7 @@ export function buildGetPlacesListBatch(
       },
       query: GET_PLACES_LIST_QUERY,
     },
-    buildAdBusinessesBatchPayload(keyword, coords, { display, start }),
+    buildAdBusinessesBatchPayload(keyword, coords),
   ];
 }
 
@@ -365,7 +365,7 @@ export function buildGetPlacesListPagedBatch(
       query: GET_PLACES_LIST_QUERY,
     });
   }
-  out.push(buildAdBusinessesBatchPayload(keyword, coords, { display, start: 1 }));
+  out.push(buildAdBusinessesBatchPayload(keyword, coords));
   return out;
 }
 
