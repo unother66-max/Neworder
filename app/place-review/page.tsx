@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const TopNav = dynamic(() => import("@/components/top-nav"), {
   ssr: false,
@@ -241,6 +242,7 @@ function DiffText({ value }: { value?: number | null }) {
 }
 
 export default function PlaceReviewPage() {
+  const router = useRouter();
   const [stores, setStores] = useState<StoreItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -754,6 +756,14 @@ export default function PlaceReviewPage() {
                         >
                           {updatingStoreId === store.id ? "업데이트 중..." : "업데이트"}
                         </button>
+
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/place-review/${store.id}`)}
+                        className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                      >
+                        리뷰변화보기
+                      </button>
 
                         <button
                           type="button"

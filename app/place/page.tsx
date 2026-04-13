@@ -491,6 +491,9 @@ export default function PlacePage() {
   const [placeResults, setPlaceResults] = useState<SearchPlaceItem[]>([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
   const [placeSearchError, setPlaceSearchError] = useState("");
+  const [registeringPlaceKey, setRegisteringPlaceKey] = useState<string | null>(
+    null
+  );
 
   const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
   const [selectedStoreIndex, setSelectedStoreIndex] = useState<number | null>(
@@ -506,6 +509,7 @@ export default function PlacePage() {
   const [checkingStoreIndex, setCheckingStoreIndex] = useState<number | null>(
     null
   );
+  const [savingKeywords, setSavingKeywords] = useState(false);
   const [trackingLoadingKeywordId, setTrackingLoadingKeywordId] = useState<
     string | null
   >(null);
@@ -630,6 +634,7 @@ if (!session) {
     setPlaceQuery("");
     setPlaceResults([]);
     setPlaceSearchError("");
+    setRegisteringPlaceKey(null);
   };
 
   const handlePlaceSearch = async () => {
@@ -677,7 +682,10 @@ if (!session) {
   };
 
   const handleRegisterPlace = async (item: SearchPlaceItem) => {
+    const key = `${item.title}__${item.address}__${item.link}`;
+    if (registeringPlaceKey === key) return;
     try {
+      setRegisteringPlaceKey(key);
       const response = await fetch("/api/resolve-place-link", {
   method: "POST",
   headers: {
@@ -747,6 +755,8 @@ if (!session) {
     } catch (error) {
       console.error(error);
       alert("매장 등록 중 오류가 났어요.");
+    } finally {
+      setRegisteringPlaceKey(null);
     }
   };
 
@@ -906,6 +916,7 @@ const addKeywordsToTemp = (keywords: string[]) => {
 
  const saveKeywords = async () => {
   if (selectedStoreIndex === null) return;
+  if (savingKeywords) return;
 
   const targetStore = stores[selectedStoreIndex];
   if (!targetStore?.dbId) {
@@ -926,6 +937,7 @@ const addKeywordsToTemp = (keywords: string[]) => {
   );
 
   try {
+    setSavingKeywords(true);
     const existingKeywordSet = new Set(
       targetStore.keywords.map((k) => k.keyword)
     );
@@ -977,6 +989,8 @@ const addKeywordsToTemp = (keywords: string[]) => {
         ? error.message
         : "키워드 저장 중 오류가 났어요."
     );
+  } finally {
+    setSavingKeywords(false);
   }
 };
 
@@ -1633,6 +1647,7 @@ return (
 
                 <button
                   onClick={closeRegisterModal}
+                  disabled={Boolean(registeringPlaceKey)}
                   className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]"
                 >
                   닫기
@@ -1715,9 +1730,21 @@ return (
 
                       <button
                         onClick={() => handleRegisterPlace(item)}
-                        className="inline-flex h-[42px] items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937]"
+                        disabled={
+                          registeringPlaceKey ===
+                          `${item.title}__${item.address}__${item.link}`
+                        }
+                        className={`inline-flex h-[42px] items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${
+                          registeringPlaceKey ===
+                          `${item.title}__${item.address}__${item.link}`
+                            ? "cursor-not-allowed opacity-60"
+                            : ""
+                        }`}
                       >
-                        이 매장 등록
+                        {registeringPlaceKey ===
+                        `${item.title}__${item.address}__${item.link}`
+                          ? "매장 등록중"
+                          : "이 매장 등록"}
                       </button>
                     </div>
                   ))
@@ -1852,6 +1879,7 @@ return (
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
                   onClick={closeKeywordModal}
+                  disabled={savingKeywords}
                   className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
                 >
                   취소
@@ -1859,9 +1887,12 @@ return (
 
                 <button
                   onClick={saveKeywords}
-                  className="h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937]"
+                  disabled={savingKeywords}
+                  className={`h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${
+                    savingKeywords ? "cursor-not-allowed opacity-60" : ""
+                  }`}
                 >
-                  키워드 저장
+                  {savingKeywords ? "키워드 저장중" : "키워드 저장"}
                 </button>
               </div>
             </div>
