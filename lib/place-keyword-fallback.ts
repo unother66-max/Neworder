@@ -143,7 +143,7 @@ export const LOCATION_QUERY_TOKEN_SET = new Set([
 ]);
 
 export function buildLocationFallbackSearchKeyword(keyword: string): string | null {
-  const trimmed = keyword.trim();
+  const trimmed = String(keyword ?? "").trim();
   if (!trimmed) return null;
 
   const parts = trimmed.split(/\s+/).filter(Boolean);

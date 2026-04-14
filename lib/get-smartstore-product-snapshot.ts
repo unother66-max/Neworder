@@ -1,8 +1,9 @@
-import type { Browser } from "playwright-core";
+import type { Browser, BrowserContext, Page } from "playwright-core";
 
 const LOG_PREFIX = "[getSmartstoreProductSnapshot]";
-const SNAPSHOT_GOTO_TIMEOUT_MS = 30_000;
-const POST_LOAD_WAIT_MS = 2_800;
+const SNAPSHOT_GOTO_TIMEOUT_MS = 55_000;
+const POST_LOAD_WAIT_MS = 1_100;
+const DOM_SIGNAL_TIMEOUT_MS = 10_000;
 
 export type SmartstoreSnapshotImageDiag = {
   missingFields: ("name" | "imageUrl" | "category")[];
@@ -38,6 +39,189 @@ function errMsg(e: unknown): string {
   return String(e);
 }
 
+function randInt(min: number, max: number) {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+async function humanLikeInteraction(page: Page, label: string) {
+  const vw = 1440;
+  const vh = 900;
+  const moves = randInt(3, 5);
+  for (let i = 0; i < moves; i++) {
+    await page.mouse.move(randInt(120, vw - 120), randInt(100, vh - 100), {
+      steps: randInt(10, 24),
+    });
+    await sleep(randInt(90, 280));
+  }
+  const wheels = randInt(2, 4);
+  for (let w = 0; w < wheels; w++) {
+    await page.mouse.wheel(0, randInt(150, 550));
+    await sleep(randInt(220, 480));
+  }
+  const dwell = randInt(1600, 3200);
+  console.log(`${LOG_PREFIX} human_interaction_done`, {
+    label,
+    moves,
+    wheels,
+    dwellMs: dwell,
+  });
+  await sleep(dwell);
+}
+
+async function waitForProductDomSignals(page: Page, label: string) {
+  await page.waitForFunction(
+    () => {
+      const el = document.getElementById("__NEXT_DATA__");
+      const t = el?.textContent?.trim() || "";
+      if (t.length >= 400) {
+        if (
+          /product|Product|dispName|representImage|productImages|smartstore/i.test(
+            t
+          )
+        ) {
+          return true;
+        }
+      }
+      const imgs = document.querySelectorAll("img[src]");
+      for (const img of imgs) {
+        const s = (img.getAttribute("src") || "").toLowerCase();
+        if (
+          s.includes("pstatic.net") ||
+          s.includes("shop-phinf") ||
+          s.includes("navercdn") ||
+          s.includes("shopping-phinf")
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    { timeout: DOM_SIGNAL_TIMEOUT_MS }
+  );
+  console.log(`${LOG_PREFIX} dom_signals_ok`, { label });
+}
+
+const SMARTSTORE_ANTI_DETECT_INIT = `
+(() => {
+  try {
+    Object.defineProperty(navigator, "webdriver", {
+      get: () => false,
+      configurable: true,
+    });
+  } catch (e) {}
+  try {
+    Object.defineProperty(navigator, "languages", {
+      get: () => Object.freeze(["ko-KR", "ko", "en-US", "en"]),
+      configurable: true,
+    });
+  } catch (e) {}
+  try {
+    const plugins = {
+      0: { name: "PDF Viewer", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+      1: { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "" },
+      2: { name: "Native Client", filename: "internal-nacl-plugin", description: "" },
+      length: 3,
+      item(i) { return this[i] ?? null; },
+      namedItem() { return null; },
+      refresh() {},
+    };
+    Object.defineProperty(navigator, "plugins", {
+      get: () => plugins,
+      configurable: true,
+    });
+  } catch (e) {}
+  try {
+    // @ts-ignore
+    if (!window.chrome) window.chrome = { runtime: {}, loadTimes: function () {}, csi: function () {}, app: {} };
+  } catch (e) {}
+})();
+`;
+
+function smartstoreDesktopContextOptions(): Parameters<Browser["newContext"]>[0] {
+  const cookie = process.env.NAVER_COOKIE?.trim() || process.env.SMARTSTORE_COOKIE?.trim();
+  return {
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    locale: "ko-KR",
+    timezoneId: "Asia/Seoul",
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    hasTouch: false,
+    isMobile: false,
+    colorScheme: "light",
+    extraHTTPHeaders: {
+      "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      Referer: "https://www.naver.com/",
+      "Upgrade-Insecure-Requests": "1",
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+  };
+}
+
+function smartstoreMobileContextOptions(): Parameters<Browser["newContext"]>[0] {
+  const cookie = process.env.NAVER_COOKIE?.trim() || process.env.SMARTSTORE_COOKIE?.trim();
+  return {
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile Safari/604.1",
+    locale: "ko-KR",
+    timezoneId: "Asia/Seoul",
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    hasTouch: true,
+    isMobile: true,
+    colorScheme: "light",
+    extraHTTPHeaders: {
+      "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      Referer: "https://www.naver.com/",
+      "Upgrade-Insecure-Requests": "1",
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+  };
+}
+
+async function installSmartstoreRoutes(page: Page) {
+  await page.route("**/*", (route) => {
+    const req = route.request();
+    const type = req.resourceType();
+    const url = req.url().toLowerCase();
+
+    if (type === "document") return route.continue();
+    if (type === "stylesheet") return route.continue();
+    if (type === "script") return route.continue();
+    if (type === "image") return route.continue();
+    if (type === "font") return route.continue();
+    if (type === "media") return route.continue();
+    if (type === "xhr" || type === "fetch") return route.continue();
+    if (type === "websocket") return route.continue();
+    if (type === "manifest") return route.continue();
+    if (type === "ping") return route.abort();
+
+    if (
+      type === "other" &&
+      (url.includes("googletagmanager.com") ||
+        url.includes("google-analytics.com") ||
+        url.includes("doubleclick.net") ||
+        url.includes("facebook.net/tr"))
+    ) {
+      return route.abort();
+    }
+    return route.continue();
+  });
+}
+
+async function createContext(
+  browser: Browser,
+  mode: "desktop" | "mobile"
+): Promise<BrowserContext> {
+  const options =
+    mode === "desktop"
+      ? smartstoreDesktopContextOptions()
+      : smartstoreMobileContextOptions();
+  const ctx = await browser.newContext(options);
+  await ctx.addInitScript(SMARTSTORE_ANTI_DETECT_INIT);
+  return ctx;
+}
+
 async function launchBrowser(): Promise<{ browser: Browser; launchLabel: string }> {
   const extraArgs = [
     "--no-sandbox",
@@ -45,6 +229,7 @@ async function launchBrowser(): Promise<{ browser: Browser; launchLabel: string 
     "--disable-dev-shm-usage",
     "--disable-gpu",
     "--disable-software-rasterizer",
+    "--disable-blink-features=AutomationControlled",
   ];
 
   if (isVercelRuntime()) {
@@ -168,40 +353,78 @@ export async function getSmartstoreProductSnapshot(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
       locale: "ko-KR",
     });
-    const page = await context.newPage();
+    void context;
 
+    const attempts: Array<{
+      label: string;
+      mode: "desktop" | "mobile";
+      chain: boolean;
+    }> = [
+      { label: "s1_desktop_chain", mode: "desktop", chain: true },
+      { label: "s2_desktop_direct", mode: "desktop", chain: false },
+      { label: "s3_mobile_direct", mode: "mobile", chain: false },
+    ];
+
+    let finalUrl = fallbackFinal();
     let gotoHttpStatus: number | null = null;
-    try {
-      const response = await page.goto(productUrl, {
-        waitUntil: "load",
-        timeout: SNAPSHOT_GOTO_TIMEOUT_MS,
-      });
-      gotoHttpStatus = response?.status() ?? null;
-      console.log(`${LOG_PREFIX} STAGE=page.goto OK`, {
-        httpStatus: gotoHttpStatus,
-        url: page.url().slice(0, 120),
-      });
-    } catch (e) {
-      const msg = errMsg(e);
-      console.error(`${LOG_PREFIX} STAGE=page.goto FAIL`, {
-        message: msg,
-        currentUrl: page.url(),
-      });
-      await browser.close().catch(() => {});
-      return fail(page.url() || fallbackFinal(), launchMode, `page.goto failed: ${msg}`);
-    }
-
-    await sleep(POST_LOAD_WAIT_MS);
-    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
-
-    const finalUrl = page.url();
     let pageTitleSample: string | null = null;
-    try {
-      const t = await page.title();
-      pageTitleSample = t?.slice(0, 200) ?? null;
-    } catch (e) {
-      console.warn(`${LOG_PREFIX} STAGE=page.title`, errMsg(e));
-    }
+    let extracted: {
+      name: string | null;
+      imageUrl: string | null;
+      category: string | null;
+      resolvedOgImage: string | null;
+      resolvedTwitterImage: string | null;
+      ldJsonImageCandidates: string[];
+      bodyImgCandidates: string[];
+    } | null = null;
+
+    for (const a of attempts) {
+      const ctx = await createContext(browser, a.mode);
+      const page = await ctx.newPage();
+      page.setDefaultNavigationTimeout(SNAPSHOT_GOTO_TIMEOUT_MS);
+      try {
+        await installSmartstoreRoutes(page);
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        if (a.chain) {
+          await page.goto("https://www.naver.com/", {
+            waitUntil: "domcontentloaded",
+            timeout: 18_000,
+          });
+          await sleep(randInt(400, 950));
+          await page.goto("https://smartstore.naver.com/", {
+            waitUntil: "domcontentloaded",
+            timeout: 18_000,
+          });
+          await sleep(randInt(400, 950));
+        }
+
+        const response = await page.goto(productUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: SNAPSHOT_GOTO_TIMEOUT_MS,
+        });
+        gotoHttpStatus = response?.status() ?? null;
+        finalUrl = page.url() || fallbackFinal();
+        console.log(`${LOG_PREFIX} STAGE=page.goto OK`, {
+          label: a.label,
+          httpStatus: gotoHttpStatus,
+          url: finalUrl.slice(0, 120),
+        });
+
+        await sleep(POST_LOAD_WAIT_MS);
+        await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+        await humanLikeInteraction(page, a.label).catch(() => {});
+        await waitForProductDomSignals(page, a.label).catch(() => {});
+
+        try {
+          const t = await page.title();
+          pageTitleSample = t?.slice(0, 200) ?? null;
+        } catch {
+          pageTitleSample = null;
+        }
 
     type EvalOut = {
       name: string | null;
@@ -213,9 +436,9 @@ export async function getSmartstoreProductSnapshot(
       bodyImgCandidates: string[];
     };
 
-    let extracted: EvalOut;
-    try {
-      extracted = await page.evaluate(() => {
+        let ex: EvalOut;
+        try {
+          ex = await page.evaluate(() => {
         const base = document.baseURI || location.href;
 
         const resolveHref = (href: string | null | undefined): string | null => {
@@ -561,13 +784,36 @@ export async function getSmartstoreProductSnapshot(
           ldJsonImageCandidates,
           bodyImgCandidates,
         };
-      });
-      console.log(`${LOG_PREFIX} STAGE=page.evaluate OK`);
-    } catch (e) {
-      const msg = errMsg(e);
-      console.error(`${LOG_PREFIX} STAGE=page.evaluate FAIL`, msg);
+          });
+          console.log(`${LOG_PREFIX} STAGE=page.evaluate OK`, { label: a.label });
+        } catch (e) {
+          const msg = errMsg(e);
+          console.error(`${LOG_PREFIX} STAGE=page.evaluate FAIL`, { label: a.label, msg });
+          await ctx.close().catch(() => {});
+          continue;
+        }
+
+        extracted = ex;
+        const hasName = Boolean(extracted.name?.trim());
+        const hasImage = Boolean(extracted.imageUrl?.trim());
+        const hasCategory = Boolean(extracted.category?.trim());
+
+        await ctx.close().catch(() => {});
+
+        if (hasName && (hasImage || hasCategory)) {
+          break;
+        }
+      } catch (e) {
+        const msg = errMsg(e);
+        console.error(`${LOG_PREFIX} attempt FAIL`, { label: a.label, msg });
+        await ctx.close().catch(() => {});
+        continue;
+      }
+    }
+
+    if (!extracted) {
       await browser.close().catch(() => {});
-      return fail(finalUrl, launchMode, `page.evaluate failed: ${msg}`);
+      return fail(finalUrl, launchMode, "all attempts failed (no extracted result)");
     }
 
     const nameOut = extracted.name || null;

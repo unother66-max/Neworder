@@ -83,7 +83,8 @@ export async function GET(request: NextRequest) {
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         Referer: "https://m.place.naver.com/",
       },
-      cache: "force-cache",
+      // Next/Vercel data cache는 2MB 제한 — 대용량 원본 JPEG 경고 방지(응답 헤더 Cache-Control은 그대로)
+      cache: "no-store",
     });
 
     if (!imageResponse.ok) {

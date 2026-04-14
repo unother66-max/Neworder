@@ -19,8 +19,12 @@ export const maxDuration = 120;
 const DISPLAY = 280;
 const SEARCH_CAP = 280;
 
-function normalizeText(value: string) {
-  return String(value || "")
+function normalizeText(value: unknown) {
+  if (value == null) return "";
+  if (typeof value === "object") return "";
+  const s = String(value).trim();
+  if (!s) return "";
+  return s
     .toLowerCase()
     .replace(/\s/g, "")
     .replace(/&/g, "and")
@@ -30,6 +34,7 @@ function normalizeText(value: string) {
 }
 
 function pickImageUrl(item: Record<string, unknown>): string {
+  if (!item || typeof item !== "object") return "";
   const candidates = [
     item["imageUrl"],
     item["thumbnail"],
@@ -37,8 +42,9 @@ function pickImageUrl(item: Record<string, unknown>): string {
     item["image"],
   ];
   for (const c of candidates) {
-    const s = String(c ?? "").trim();
-    if (s) return s;
+    if (c == null) continue;
+    const s = typeof c === "string" ? c.trim() : String(c).trim();
+    if (s && s !== "undefined" && s !== "null") return s;
   }
   return "";
 }
@@ -47,12 +53,19 @@ function mapPcmapItemsToCheckPlaceRankList(
   items: unknown[],
   display: number
 ): CheckPlaceRankListItem[] {
-  return items.slice(0, display).map((raw, index) => {
-    const it = (raw ?? {}) as Record<string, unknown>;
+  const list = Array.isArray(items) ? items : [];
+  return list.slice(0, display).map((raw, index) => {
+    const it =
+      raw != null && typeof raw === "object"
+        ? (raw as Record<string, unknown>)
+        : {};
     const visitor = parseNaverReviewCountField(it["visitorReviewCount"]);
     const blog = parseNaverReviewCountField(it["blogCafeReviewCount"]);
+    const totalRaw = parseNaverReviewCountField(it["totalReviewCount"]);
     const total =
-      parseNaverReviewCountField(it["totalReviewCount"]) || visitor + blog;
+      typeof totalRaw === "number" && totalRaw > 0
+        ? totalRaw
+        : visitor + blog;
 
     return {
       rank: index + 1,
@@ -126,14 +139,24 @@ export async function POST(req: Request) {
       targetName && fullList.length > 0
         ? (() => {
             const nTarget = normalizeText(targetName);
-            const idxExact = fullList.findIndex(
-              (row) => normalizeText(row.name) === nTarget
-            );
+            if (!nTarget) return "-";
+            const idxExact = fullList.findIndex((row) => {
+              const nm =
+                row && typeof row === "object" && "name" in row
+                  ? (row as { name?: unknown }).name
+                  : "";
+              return normalizeText(nm) === nTarget;
+            });
             const idx =
               idxExact >= 0
                 ? idxExact
                 : fullList.findIndex((row) => {
-                    const n = normalizeText(row.name);
+                    const nm =
+                      row && typeof row === "object" && "name" in row
+                        ? (row as { name?: unknown }).name
+                        : "";
+                    const n = normalizeText(nm);
+                    if (!n || !nTarget) return false;
                     return n.includes(nTarget) || nTarget.includes(n);
                   });
             return idx >= 0 ? String(idx + 1) : "-";

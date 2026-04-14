@@ -51,6 +51,16 @@ function normalizeKeywordKey(s: string) {
 const COMMON_SUFFIX =
   "피자|맛집|치킨|카페|데이트|회식|술집|브런치|파스타|떡볶이|순대|족발|한식|중식|일식|양식";
 
+/** SearchAD keywordstool: hintKeywords는 공백 구분이 아니라 콤마 구분 토큰이어야 함 */
+function hintKeywordsToApiParam(hint: string): string {
+  const s = String(hint ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(",");
+  return s;
+}
+
 /**
  * 네이버 키워드도구는 hint 형태에 따라 빈 keywordList를 줄 수 있어
  * 공백 유·무 등 여러 변형을 순서대로 시도한다.
@@ -101,8 +111,14 @@ async function fetchKeywordSearchVolumeUncached(
 ): Promise<KeywordVolumeResult> {
   const method = "GET";
   const uri = "/keywordstool";
-  const key = normalizeKeywordKey(keyword);
-  const hints = hintCandidates(keyword);
+  const kwRaw = String(keyword ?? "").trim();
+  if (!kwRaw || !kwRaw.replace(/\s/g, "")) {
+    console.warn(`[getKeywordSearchVolume] 비정상/빈 키워드: "${keyword}"`);
+    return { mobile: 0, pc: 0, total: 0 };
+  }
+
+  const key = normalizeKeywordKey(kwRaw);
+  const hints = hintCandidates(kwRaw);
 
   if (!hints.length) {
     console.warn(`[getKeywordSearchVolume] 빈 키워드: "${keyword}"`);
@@ -115,6 +131,9 @@ async function fetchKeywordSearchVolumeUncached(
       showDetail: "1",
     });
     const url = `https://api.searchad.naver.com${uri}?${qs.toString()}`;
+    console.log(
+      `[getKeywordSearchVolume] 요청 keyword="${kwRaw}" hintKeywords="${hintKeywords}" encHintKeywords="${encodeURIComponent(hintKeywords)}" url=${url}`
+    );
     const ts = Date.now().toString();
     const sig = makeSignature(ts, method, uri, secretKey);
     return fetch(url, {
@@ -135,11 +154,19 @@ async function fetchKeywordSearchVolumeUncached(
 
   try {
     for (const hint of hints) {
-      let res = await attemptFetch(hint);
+      const hintKeywords = hintKeywordsToApiParam(hint);
+      if (!hintKeywords) {
+        console.warn(
+          `[getKeywordSearchVolume] 힌트 변환 후 빈 값 스킵 keyword="${kwRaw}" rawHint="${hint}"`
+        );
+        continue;
+      }
+
+      let res = await attemptFetch(hintKeywords);
       lastStatus = res.status;
       if (!res.ok && (res.status === 429 || res.status === 503)) {
         await new Promise((r) => setTimeout(r, 400));
-        res = await attemptFetch(hint);
+        res = await attemptFetch(hintKeywords);
         lastStatus = res.status;
       }
 
@@ -147,7 +174,7 @@ async function fetchKeywordSearchVolumeUncached(
         const text = await res.text().catch(() => "");
         const lastBodySnippet = text.slice(0, 280);
         console.warn(
-          `[getKeywordSearchVolume] API 실패 keyword="${keyword}" hint="${hint}" status=${res.status} body=${JSON.stringify(lastBodySnippet)}`
+          `[getKeywordSearchVolume] API 실패 keyword="${kwRaw}" hint="${hint}" hintKeywords="${hintKeywords}" status=${res.status} body=${JSON.stringify(lastBodySnippet)}`
         );
         continue;
       }
@@ -159,21 +186,26 @@ async function fetchKeywordSearchVolumeUncached(
         break;
       }
       console.warn(
-        `[getKeywordSearchVolume] 빈 keywordList keyword="${keyword}" hint="${hint}"`
+        `[getKeywordSearchVolume] 빈 keywordList keyword="${kwRaw}" hint="${hint}" hintKeywords="${hintKeywords}"`
       );
     }
 
     if (!list.length) {
       console.warn(
-        `[getKeywordSearchVolume] 모든 힌트 실패 keyword="${keyword}" lastStatus=${lastStatus}`
+        `[getKeywordSearchVolume] 모든 힌트 실패 keyword="${kwRaw}" lastStatus=${lastStatus}`
       );
       return { mobile: 0, pc: 0, total: 0 };
     }
 
     const exact =
       list.find((item) => normalizeKeywordKey(item.relKeyword ?? "") === key) ||
-      list.find((item) => item.relKeyword?.trim() === keyword.trim()) ||
+      list.find((item) => item.relKeyword?.trim() === kwRaw.trim()) ||
       list[0];
+
+    if (!exact || typeof exact !== "object") {
+      console.warn(`[getKeywordSearchVolume] 매칭 행 없음 keyword="${kwRaw}"`);
+      return { mobile: 0, pc: 0, total: 0 };
+    }
 
     const pc = toNumber(exact.monthlyPcQcCnt);
     const mobile = toNumber(exact.monthlyMobileQcCnt);
@@ -185,7 +217,7 @@ async function fetchKeywordSearchVolumeUncached(
     };
   } catch (error) {
     console.error(
-      `[getKeywordSearchVolume] 예외 keyword="${keyword}"`,
+      `[getKeywordSearchVolume] 예외 keyword="${kwRaw}"`,
       error
     );
     return { mobile: 0, pc: 0, total: 0 };
@@ -206,9 +238,15 @@ export async function getKeywordSearchVolume(
     return { mobile: 0, pc: 0, total: 0 };
   }
 
-  const cacheKey = normalizeKeywordKey(keyword.trim());
-  if (!cacheKey) {
+  const kwInput = String(keyword ?? "").trim();
+  if (!kwInput || !kwInput.replace(/\s/g, "")) {
     console.warn(`[getKeywordSearchVolume] 빈 키워드: "${keyword}"`);
+    return { mobile: 0, pc: 0, total: 0 };
+  }
+
+  const cacheKey = normalizeKeywordKey(kwInput);
+  if (!cacheKey) {
+    console.warn(`[getKeywordSearchVolume] 빈 키워드(정규화 후): "${keyword}"`);
     return { mobile: 0, pc: 0, total: 0 };
   }
 
@@ -221,7 +259,7 @@ export async function getKeywordSearchVolume(
   }
 
   const value = await fetchKeywordSearchVolumeUncached(
-    keyword,
+    kwInput,
     accessKey,
     secretKey,
     customerId

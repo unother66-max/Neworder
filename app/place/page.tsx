@@ -60,6 +60,8 @@ type PlaceKeywordItem = {
   pcVolume: number | null;
   totalVolume: number | null;
   isTracking: boolean;
+  /** API(Prisma)에서 내려옴 — 순위만 갱신된 경우 rankHistory와 합쳐 최신 표시에 사용 */
+  updatedAt?: string;
   rankHistory: {
     id: string;
     rank: number;
@@ -113,6 +115,27 @@ function formatKST(date: Date) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+/** 키워드 수정 시각과 순위 이력 시각 중 가장 늦은 값(마지막 업데이트 표시용) */
+function computeLatestUpdatedAtText(place: PlaceItem): string | undefined {
+  let maxMs = 0;
+
+  for (const k of place.keywords || []) {
+    const u = k.updatedAt;
+    if (!u) continue;
+    const t = new Date(u).getTime();
+    if (!Number.isNaN(t)) maxMs = Math.max(maxMs, t);
+  }
+
+  for (const h of place.rankHistory || []) {
+    if (!h?.createdAt) continue;
+    const t = new Date(h.createdAt).getTime();
+    if (!Number.isNaN(t)) maxMs = Math.max(maxMs, t);
+  }
+
+  if (!maxMs) return undefined;
+  return formatKST(new Date(maxMs));
 }
 
 
@@ -439,7 +462,10 @@ function mapPlaceToStore(place: PlaceItem): Store {
     placeMobileVolume: (place as any).placeMobileVolume ?? 0,
     placePcVolume: (place as any).placePcVolume ?? 0,
 
-    latestUpdatedAtText: (place as any).latestUpdatedAtText ?? null,
+    latestUpdatedAtText:
+      computeLatestUpdatedAtText(place) ??
+      (place as { latestUpdatedAtText?: string | null }).latestUpdatedAtText ??
+      undefined,
     isPinned: !!place.rankPinned,
 
     keywords: (place.keywords || []).map((keyword) => {

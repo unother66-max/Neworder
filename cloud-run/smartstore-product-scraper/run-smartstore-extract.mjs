@@ -19,8 +19,10 @@ const NAVER_SECURITY_OR_ERROR_MARKERS = [
   "NAVER 보안 확인",
   "보안 확인을 완료해 주세요",
   "가게 전화번호",
-  "에러페이지 - 시스템오류",
 ];
+
+// "시스템오류/에러페이지"는 일시적 429일 수 있어서 Abort 하지 말고 재시도한다.
+const NAVER_RETRYABLE_ERROR_MARKERS = ["에러페이지 - 시스템오류", "[에러페이지] 에러페이지"];
 
 const CHROMIUM_ARGS = [
   "--no-sandbox",
@@ -59,12 +61,17 @@ function detectNaverSecurityOrErrorPage(pageTitle, bodyHead1000) {
   const title = String(pageTitle || "").trim();
   const body = String(bodyHead1000 || "").trim();
   const combined = `${title}\n${body}`;
-  for (const m of NAVER_SECURITY_OR_ERROR_MARKERS) {
+  for (const m of NAVER_RETRYABLE_ERROR_MARKERS) {
     if (combined.includes(m)) {
-      return { detected: true, matchedMarker: m };
+      return { detected: true, matchedMarker: m, retryable: true };
     }
   }
-  return { detected: false, matchedMarker: null };
+  for (const m of NAVER_SECURITY_OR_ERROR_MARKERS) {
+    if (combined.includes(m)) {
+      return { detected: true, matchedMarker: m, retryable: false };
+    }
+  }
+  return { detected: false, matchedMarker: null, retryable: false };
 }
 
 /**
@@ -222,6 +229,47 @@ function buildSecurityPageAbortRow(p) {
   return row;
 }
 
+function buildRetryableErrorRow(p) {
+  const {
+    label,
+    nav,
+    page,
+    navTrail,
+    navStatus,
+    contentType,
+    pageTitle,
+    bodyHead1000,
+    matchedMarker,
+  } = p;
+  const responseHeaders = pickNavHeaders(nav);
+  const row = {
+    label,
+    error: "SMARTSTORE_RETRYABLE_ERROR_PAGE",
+    securityOrErrorPage: true,
+    detectedSecurityPage: false,
+    matchedSecurityMarker: matchedMarker ?? null,
+    domSignalTimeout: false,
+    finalUrl: typeof page.url === "function" ? page.url() : "",
+    navStatus,
+    contentType: contentType ?? responseHeaders.contentType,
+    navTrail,
+    pageTitle,
+    bodyHead1000,
+    responseHeaders,
+    extracted: null,
+    rawSampleHead: String(bodyHead1000 || "").slice(0, 900),
+  };
+  logSmartstore("retryable_error_page", {
+    label,
+    navStatus,
+    pageTitle,
+    bodyHead1000,
+    matchedMarker,
+  });
+  logFailureDetail(label, row, { reason: "retryable_error_page" });
+  return row;
+}
+
 function isSecurityPageAbortRow(row) {
   return row?.error === "SMARTSTORE_SECURITY_PAGE";
 }
@@ -360,7 +408,8 @@ async function waitForProductDomSignals(page, label) {
  * www.naver.com → smartstore.naver.com → 상품 URL → 대기 → 추출
  */
 async function navigateChainAndExtract(browser, productUrl, label) {
-  const ctx = await browser.newContext(smartstoreBrowserContextOptions());
+  const cookie = String(process.env.NAVER_COOKIE || process.env.SMARTSTORE_COOKIE || "").trim();
+  const ctx = await browser.newContext(smartstoreBrowserContextOptions({ cookie }));
   await ctx.addInitScript(SMARTSTORE_ANTI_DETECT_INIT);
 
   const page = await ctx.newPage();
@@ -389,11 +438,12 @@ async function navigateChainAndExtract(browser, productUrl, label) {
     pushTrail("after_naver_com", page.url());
     await sleep(randInt(400, 950));
 
-    await page.goto("https://smartstore.naver.com/", {
+    // smartstore 루트는 sell로 새는 케이스가 있어 shopping 루트로 워밍업
+    await page.goto("https://shopping.naver.com/", {
       waitUntil: "domcontentloaded",
       timeout: 18_000,
     });
-    pushTrail("after_smartstore_root", page.url());
+    pushTrail("after_shopping_root", page.url());
     await sleep(randInt(400, 950));
 
     nav = await page.goto(productUrl, {
@@ -417,6 +467,19 @@ async function navigateChainAndExtract(browser, productUrl, label) {
       const quick = await collectTitleAndBodyHead(page);
       const sec = detectNaverSecurityOrErrorPage(quick.pageTitle, quick.bodyHead1000);
       if (sec.detected) {
+        if (sec.retryable) {
+          return buildRetryableErrorRow({
+            label,
+            nav,
+            page,
+            navTrail,
+            navStatus,
+            contentType,
+            pageTitle: quick.pageTitle,
+            bodyHead1000: quick.bodyHead1000,
+            matchedMarker: sec.matchedMarker,
+          });
+        }
         return buildSecurityPageAbortRow({
           label,
           nav,
@@ -441,6 +504,19 @@ async function navigateChainAndExtract(browser, productUrl, label) {
       const mid = await collectTitleAndBodyHead(page);
       const sec2 = detectNaverSecurityOrErrorPage(mid.pageTitle, mid.bodyHead1000);
       if (sec2.detected) {
+        if (sec2.retryable) {
+          return buildRetryableErrorRow({
+            label,
+            nav,
+            page,
+            navTrail,
+            navStatus,
+            contentType,
+            pageTitle: mid.pageTitle,
+            bodyHead1000: mid.bodyHead1000,
+            matchedMarker: sec2.matchedMarker,
+          });
+        }
         return buildSecurityPageAbortRow({
           label,
           nav,
@@ -461,6 +537,19 @@ async function navigateChainAndExtract(browser, productUrl, label) {
       const diag = await collectFailureDiagnostics(page, nav);
       const secFail = detectNaverSecurityOrErrorPage(diag.pageTitle, diag.bodyHead1000);
       if (secFail.detected) {
+        if (secFail.retryable) {
+          return buildRetryableErrorRow({
+            label,
+            nav,
+            page,
+            navTrail,
+            navStatus,
+            contentType,
+            pageTitle: diag.pageTitle,
+            bodyHead1000: diag.bodyHead1000,
+            matchedMarker: secFail.matchedMarker,
+          });
+        }
         return buildSecurityPageAbortRow({
           label,
           nav,
@@ -551,6 +640,19 @@ async function navigateChainAndExtract(browser, productUrl, label) {
 
     const secPost = detectNaverSecurityOrErrorPage(row.pageTitle, row.bodyHead1000);
     if (secPost.detected) {
+      if (secPost.retryable) {
+        return buildRetryableErrorRow({
+          label,
+          nav,
+          page,
+          navTrail,
+          navStatus,
+          contentType: ct,
+          pageTitle: row.pageTitle,
+          bodyHead1000: row.bodyHead1000,
+          matchedMarker: secPost.matchedMarker,
+        });
+      }
       return buildSecurityPageAbortRow({
         label,
         nav,
@@ -579,6 +681,19 @@ async function navigateChainAndExtract(browser, productUrl, label) {
     }
     const secThrow = detectNaverSecurityOrErrorPage(diag.pageTitle, diag.bodyHead1000);
     if (secThrow.detected) {
+      if (secThrow.retryable) {
+        return buildRetryableErrorRow({
+          label,
+          nav,
+          page,
+          navTrail,
+          navStatus,
+          contentType,
+          pageTitle: diag.pageTitle,
+          bodyHead1000: diag.bodyHead1000,
+          matchedMarker: secThrow.matchedMarker,
+        });
+      }
       return buildSecurityPageAbortRow({
         label,
         nav,

@@ -10,15 +10,12 @@
  * 충돌 주의: 맥에서 다른 프로세스가 같은 PORT 쓰면 EADDRINUSE → PORT 바꿔 실행.
  */
 import express from "express";
-import { chromium } from "playwright";
-import { extractProductMeta } from "./extractMeta.mjs";
+import { runSmartstoreExtract } from "./run-smartstore-extract.mjs";
 
 const PORT = Number(process.env.PORT || 8765);
 /** 로컬만: 127.0.0.1 (기본). LAN에서 직접 붙이려면 HOST=0.0.0.0 */
 const HOST = (process.env.HOST || "127.0.0.1").trim();
 const SECRET = process.env.SMARTSTORE_PLAYWRIGHT_SECRET?.trim();
-const GOTO_TIMEOUT_MS = 45_000;
-const POST_LOAD_WAIT_MS = 2_800;
 
 function logError(stage, err, extra = {}) {
   const e = err instanceof Error ? err : new Error(String(err));
@@ -51,6 +48,12 @@ app.post("/extract", async (req, res) => {
   }
 
   const productUrl = String(req.body?.productUrl ?? "").trim();
+  const cookie = String(req.body?.cookie ?? "").trim();
+  const maxRunsRaw = Number(req.body?.maxRuns ?? 4);
+  const maxRuns =
+    Number.isFinite(maxRunsRaw) && maxRunsRaw >= 1 && maxRunsRaw <= 12
+      ? Math.floor(maxRunsRaw)
+      : 4;
   console.log("[smartstore-scraper] 단계=요청수신", { productUrl, ip: req.ip });
 
   if (!productUrl.startsWith("http://") && !productUrl.startsWith("https://")) {
@@ -61,42 +64,51 @@ app.post("/extract", async (req, res) => {
     });
   }
 
-  let browser;
   try {
-    console.log("[smartstore-scraper] 단계=브라우저시작");
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    });
+    console.log("[smartstore-scraper] 단계=extract_runSmartstoreExtract");
+    const prevCookie = process.env.NAVER_COOKIE;
+    const prevSmartstoreCookie = process.env.SMARTSTORE_COOKIE;
+    if (cookie) {
+      // 쿠키는 로그에 남기지 않는다.
+      process.env.NAVER_COOKIE = cookie;
+      process.env.SMARTSTORE_COOKIE = cookie;
+      console.log("[smartstore-scraper] cookie provided", { cookieLength: cookie.length });
+    }
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile Safari/604.1",
-    });
+    let extracted = null;
+    let last = null;
+    for (let i = 1; i <= maxRuns; i += 1) {
+      console.log("[smartstore-scraper] run_start", { run: i, maxRuns });
+      last = await runSmartstoreExtract(productUrl);
+      extracted = last?.extracted ?? null;
+      const ok = Boolean(extracted?.name?.trim?.()) || Boolean(extracted?.imageUrl?.trim?.());
+      console.log("[smartstore-scraper] run_done", {
+        run: i,
+        ok,
+        hasName: Boolean(extracted?.name?.trim?.()),
+        hasImage: Boolean(extracted?.imageUrl?.trim?.()),
+        hasCategory: Boolean(extracted?.category?.trim?.()),
+      });
+      if (ok) break;
+      if (i < maxRuns) {
+        // 429/오류페이지는 시간 두고 재시도하면 풀리는 케이스가 있음
+        const waitMs = 2500 + Math.floor(Math.random() * 5500);
+        await sleep(waitMs);
+      }
+    }
 
-    const page = await context.newPage();
-    page.setDefaultNavigationTimeout(GOTO_TIMEOUT_MS);
-
-    console.log("[smartstore-scraper] 단계=goto", { productUrl, timeoutMs: GOTO_TIMEOUT_MS });
-    const nav = await page.goto(productUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: GOTO_TIMEOUT_MS,
-    });
-    console.log("[smartstore-scraper] 단계=goto완료", {
-      status: nav?.status?.() ?? null,
-      url: page.url(),
-    });
-
-    await new Promise((r) => setTimeout(r, POST_LOAD_WAIT_MS));
-
-    console.log("[smartstore-scraper] 단계=DOM추출");
-    const extracted = await extractProductMeta(page);
+    if (cookie) {
+      process.env.NAVER_COOKIE = prevCookie;
+      process.env.SMARTSTORE_COOKIE = prevSmartstoreCookie;
+    }
 
     const payload = {
       ok: true,
-      name: extracted.name?.trim?.() ? extracted.name.trim() : null,
-      imageUrl: extracted.imageUrl?.trim?.() ? extracted.imageUrl.trim() : null,
-      category: extracted.category?.trim?.() ? extracted.category.trim() : null,
+      name: extracted?.name?.trim?.() ? extracted.name.trim() : null,
+      imageUrl: extracted?.imageUrl?.trim?.() ? extracted.imageUrl.trim() : null,
+      category: extracted?.category?.trim?.() ? extracted.category.trim() : null,
+      runs: maxRuns,
     };
 
     console.log("[smartstore-scraper] 단계=추출완료", {
@@ -104,16 +116,9 @@ app.post("/extract", async (req, res) => {
       ...payload,
     });
 
-    await context.close().catch((e) => logError("context종료", e));
-    await browser.close().catch((e) => logError("browser종료", e));
-    browser = null;
-
     return res.json(payload);
   } catch (e) {
     logError("extract처리중", e, { productUrl, ms: Date.now() - started });
-    if (browser) {
-      await browser.close().catch((err) => logError("browser종료(finally)", err));
-    }
     const msg = e instanceof Error ? e.message : String(e);
     return res.status(500).json({ ok: false, error: msg });
   }

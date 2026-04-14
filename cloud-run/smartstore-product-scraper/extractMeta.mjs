@@ -3,8 +3,9 @@
  * name / imageUrl / category 만 추출 (로컬 Playwright 서버에서 호출).
  * 앱의 lib/get-smartstore-product-snapshot.ts 와 규칙을 맞추려면 양쪽 함께 유지보수.
  */
-export async function extractProductMeta(page) {
-  return page.evaluate(() => {
+export async function extractProductMeta(page, opts = {}) {
+  const isSmartstore = Boolean(opts?.isSmartstore);
+  return page.evaluate((input) => {
     const base = document.baseURI || location.href;
 
     const resolveHref = (href) => {
@@ -36,6 +37,24 @@ export async function extractProductMeta(page) {
     const resolvedTwitterImage = resolveHref(metaName("twitter:image"));
 
     let imageUrl = resolvedOgImage || resolvedTwitterImage || null;
+
+    const extractDebug = {
+      hasNextData: false,
+      blockHints: [],
+    };
+
+    if (input?.isSmartstore) {
+      const nd = document.getElementById("__NEXT_DATA__")?.textContent?.trim() || "";
+      extractDebug.hasNextData = nd.length >= 200;
+      const bodyText = (document.body?.innerText || "").slice(0, 1800);
+      const hay = `${titleRaw || ""}\n${bodyText}`.toLowerCase();
+      if (/captcha|캡차|ncaptcha|자동입력\\s*방지/.test(hay)) extractDebug.blockHints.push("captcha_like");
+      if (/보안\\s*확인|security|접근이\\s*제한|비정상\\s*접근/.test(hay)) extractDebug.blockHints.push("security_check");
+      if (/에러페이지|시스템오류|error\\s*page|429|490/.test(hay)) extractDebug.blockHints.push("error_page");
+      if (document.querySelector("iframe[src*='captcha'], iframe[src*='ncaptcha']")) {
+        extractDebug.blockHints.push("captcha_iframe");
+      }
+    }
 
     const ldJsonImageCandidates = [];
     const pushLdImg = (v) => {
@@ -338,10 +357,16 @@ export async function extractProductMeta(page) {
       imageUrl = pickFallbackImage();
     }
 
+    const errorPageLikely =
+      /\[에러페이지\]|에러\\s*페이지|시스템오류|error\\s*page/i.test(String(name || "")) ||
+      (input?.isSmartstore && extractDebug.blockHints.includes("error_page"));
+
     return {
       name,
       imageUrl,
       category,
+      errorPageLikely,
+      extractDebug,
     };
-  });
+  }, { isSmartstore });
 }

@@ -60,6 +60,7 @@ function buildNaverApiRequestHeaders(
   productPageUrl: string,
   requestUrl: string
 ): Record<string, string> {
+  const cookie = process.env.NAVER_COOKIE?.trim() || process.env.SMARTSTORE_COOKIE?.trim();
   return {
     "User-Agent": NAVER_CHROME_UA,
     Accept: "application/json, text/plain, */*",
@@ -73,6 +74,7 @@ function buildNaverApiRequestHeaders(
     "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
     "Sec-Ch-Ua-Mobile": "?0",
     "Sec-Ch-Ua-Platform": '"macOS"',
+    ...(cookie ? { Cookie: cookie } : {}),
   };
 }
 
@@ -745,6 +747,41 @@ export async function fetchSmartstoreProductMeta(
       ctrl.signal,
       "serverLike"
     );
+
+    // 일부 환경에서 "서버처럼" 보이는 Sec-* 헤더가 오히려 429를 유발하는 경우가 있어
+    // 최소 헤더 모드로 한 번 더 재시도한다.
+    const isEmpty =
+      !result.name.trim() && !result.imageUrl && !result.category && result.imageUrls.length === 0;
+    const api429 = productPageFetch?.apiStatus === 429;
+    if (isEmpty && api429) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [meta] ⑥ 429 감지 → 최소 헤더 재시도`);
+      const retry = await fetchSmartstoreProductCore(
+        productUrl,
+        naverProductId,
+        ctrl.signal,
+        "browserMinimal"
+      );
+      const rr = retry.result;
+      const merged = {
+        name: rr.name.trim() ? rr.name : result.name,
+        category: rr.category ?? result.category,
+        imageUrl: rr.imageUrl ?? result.imageUrl,
+        imageUrls: mergeImageUrlsUnique(result.imageUrls, rr.imageUrls),
+      };
+      console.log(`${SMARTSTORE_TRACE_LOG} [meta] ⑥-2 최소 헤더 재시도 결과`, {
+        name: merged.name.trim() ? merged.name.trim() : null,
+        category: merged.category,
+        imageUrl: merged.imageUrl,
+      });
+      console.log(`${SMARTSTORE_TRACE_LOG} [meta] ⑦ 최종 result`, {
+        name: merged.name.trim() ? merged.name.trim() : null,
+        category: merged.category,
+        thumbnailLink: merged.imageUrl,
+        imageUrl: merged.imageUrl,
+      });
+      return { meta: toMeta(merged), productPageFetch: retry.productPageFetch ?? productPageFetch };
+    }
+
     console.log(`${SMARTSTORE_TRACE_LOG} [meta] ⑦ 최종 result`, {
       name: result.name.trim() ? result.name.trim() : null,
       category: result.category,

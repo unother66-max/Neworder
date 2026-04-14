@@ -19,6 +19,7 @@ import {
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
 } from "@/lib/smartstore-url";
+import { isSuspiciousSmartstoreMetaName } from "@/lib/smartstore-meta-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -301,6 +302,14 @@ export async function POST(req: Request) {
       } catch (e) {
         console.error(`${SMARTSTORE_TRACE_LOG} [save] 로컬 Playwright 스냅샷 실패`, e);
       }
+    }
+
+    // 에러 페이지 제목이 name으로 들어오는 것을 차단
+    if (isSuspiciousSmartstoreMetaName(meta.name)) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [save] suspicious meta.name dropped`, {
+        name: meta.name,
+      });
+      meta.name = null;
     }
 
     const nameFromFetcher = skipMetaFetch ? "" : (meta.name?.trim() || "").trim();

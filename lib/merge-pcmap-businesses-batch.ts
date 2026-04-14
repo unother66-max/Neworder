@@ -13,13 +13,39 @@ export function parseNaverReviewCountField(v: unknown): number {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
+/** GraphQL errors[].message — string일 때만 trim 등 문자열 연산 (내부 charAt 등 안전) */
+function toTrimmedGraphqlErrorMessage(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
 function collectBatchErrors(batch: unknown[]): string[] {
   const out: string[] = [];
   for (const item of batch) {
-    if (!Array.isArray((item as { errors?: unknown })?.errors)) continue;
-    for (const err of (item as { errors: { message?: string }[] }).errors) {
-      const m = err?.message;
-      if (typeof m === "string" && m.trim()) out.push(m.trim());
+    if (item == null || typeof item !== "object") continue;
+
+    const rawErrors = (item as { errors?: unknown }).errors;
+    if (rawErrors === undefined || rawErrors === null) continue;
+
+    if (!Array.isArray(rawErrors)) {
+      console.log("[mergePcmapGraphqlBatch] invalid error item", item);
+      continue;
+    }
+
+    for (const err of rawErrors) {
+      if (err == null || typeof err !== "object") {
+        console.log("[mergePcmapGraphqlBatch] invalid error item", item);
+        continue;
+      }
+
+      const msgRaw = (err as { message?: unknown }).message;
+      if (typeof msgRaw !== "string") {
+        console.log("[mergePcmapGraphqlBatch] invalid error item", item);
+        continue;
+      }
+
+      const msg = toTrimmedGraphqlErrorMessage(msgRaw);
+      if (msg) out.push(msg);
     }
   }
   return out;
@@ -115,5 +141,9 @@ export function mergePcmapGraphqlBatch(batch: unknown): MergePcmapBatchResult {
   const items = [...adItems, ...organicFiltered];
   const total = Math.max(organicTotal, adTotal, items.length);
 
-  return { items, total, graphqlErrors: gqlErrors };
+  const graphqlErrors = gqlErrors.filter(
+    (m) => typeof m === "string" && toTrimmedGraphqlErrorMessage(m).length > 0
+  );
+
+  return { items, total, graphqlErrors };
 }

@@ -49,7 +49,8 @@ export const SMARTSTORE_ANTI_DETECT_INIT = `
 `;
 
 /** 데스크톱 macOS Chrome 프로필 + 한국 로케일 (스마트스토어 차단 완화용) */
-export function smartstoreBrowserContextOptions() {
+export function smartstoreBrowserContextOptions(opts = {}) {
+  const cookie = String(opts?.cookie || "").trim();
   return {
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -64,6 +65,7 @@ export function smartstoreBrowserContextOptions() {
       "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
       Referer: "https://www.naver.com/",
       "Upgrade-Insecure-Requests": "1",
+      ...(cookie ? { Cookie: cookie } : {}),
     },
   };
 }

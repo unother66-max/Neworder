@@ -59,11 +59,14 @@ export async function fetchSmartstoreMetaFromPlaywrightService(
   const timeoutMs = opts?.timeoutMs ?? 55_000;
   const base = readServiceBaseUrl();
   const endpoint = `${base}/extract`;
+  const cookie = process.env.NAVER_COOKIE?.trim() || process.env.SMARTSTORE_COOKIE?.trim() || "";
 
   console.log(`${LOG_PREFIX} 단계=요청준비`, {
     입력상품URL: productPageUrl,
     Playwright서비스URL: endpoint,
     timeoutMs,
+    cookieProvided: Boolean(cookie),
+    cookieLength: cookie ? cookie.length : 0,
   });
 
   const secret = process.env.SMARTSTORE_PLAYWRIGHT_SECRET?.trim();
@@ -78,7 +81,7 @@ export async function fetchSmartstoreMetaFromPlaywrightService(
         "Content-Type": "application/json",
         ...(secret ? { "x-smartstore-scrape-secret": secret } : {}),
       },
-      body: JSON.stringify({ productUrl: productPageUrl }),
+      body: JSON.stringify({ productUrl: productPageUrl, cookie: cookie || undefined }),
       cache: "no-store",
       signal: controller.signal,
     });
