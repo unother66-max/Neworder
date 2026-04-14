@@ -41,6 +41,12 @@ export async function POST(req: Request) {
       },
     });
 
+    // 순위만 저장돼도 PlaceKeyword.updatedAt이 갱신되게 해 목록의 "마지막 업데이트"가 맞게 나온다.
+    await prisma.placeKeyword.update({
+      where: { id: placeKeywordId },
+      data: { isTracking: placeKeyword.isTracking },
+    });
+
     return Response.json({
       ok: true,
       message: "순위 히스토리 저장 완료",

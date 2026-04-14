@@ -95,6 +95,35 @@ function hintCandidates(keyword: string): string[] {
   return out.slice(0, 5);
 }
 
+/**
+ * keywordstool 응답 keywordList에서 사용자 입력과 같은 키워드 행만 선택.
+ * 일치 행이 없을 때 list[0] 등 임의 행을 쓰면 '맛집' 단독(고검색량)처럼 엉뚱한 수치가 들어간다.
+ */
+function pickKeywordVolumeRow(
+  list: KeywordToolItem[],
+  kwRaw: string
+): KeywordToolItem | null {
+  const trimmed = kwRaw.trim();
+  const key = normalizeKeywordKey(trimmed);
+  const compact = trimmed.replace(/\s+/g, "");
+  if (!list.length || !key) return null;
+
+  const byNorm = list.find(
+    (item) => normalizeKeywordKey(item.relKeyword ?? "") === key
+  );
+  if (byNorm) return byNorm;
+
+  const byTrim = list.find((item) => (item.relKeyword ?? "").trim() === trimmed);
+  if (byTrim) return byTrim;
+
+  const byCompact = list.find(
+    (item) => (item.relKeyword ?? "").replace(/\s+/g, "") === compact
+  );
+  if (byCompact) return byCompact;
+
+  return null;
+}
+
 function pruneExpiredVolumeCache(now: number) {
   for (const [k, v] of volumeCache) {
     if (now - v.timestamp > CACHE_TTL_MS) {
@@ -117,7 +146,6 @@ async function fetchKeywordSearchVolumeUncached(
     return { mobile: 0, pc: 0, total: 0 };
   }
 
-  const key = normalizeKeywordKey(kwRaw);
   const hints = hintCandidates(kwRaw);
 
   if (!hints.length) {
@@ -151,6 +179,7 @@ async function fetchKeywordSearchVolumeUncached(
 
   let list: KeywordToolItem[] = [];
   let lastStatus: number | null = null;
+  let chosen: KeywordToolItem | null = null;
 
   try {
     for (const hint of hints) {
@@ -181,34 +210,38 @@ async function fetchKeywordSearchVolumeUncached(
 
       const data = (await res.json()) as { keywordList?: KeywordToolItem[] };
       const next = (data.keywordList || []) as KeywordToolItem[];
-      if (next.length) {
+      if (!next.length) {
+        console.warn(
+          `[getKeywordSearchVolume] 빈 keywordList keyword="${kwRaw}" hint="${hint}" hintKeywords="${hintKeywords}"`
+        );
+        continue;
+      }
+
+      const row = pickKeywordVolumeRow(next, kwRaw);
+      if (row) {
         list = next;
+        chosen = row;
         break;
       }
+
+      const relSample = next
+        .slice(0, 5)
+        .map((i) => i.relKeyword)
+        .join(" | ");
       console.warn(
-        `[getKeywordSearchVolume] 빈 keywordList keyword="${kwRaw}" hint="${hint}" hintKeywords="${hintKeywords}"`
+        `[getKeywordSearchVolume] 응답에 입력 키워드와 일치하는 행 없음 keyword="${kwRaw}" hintKeywords="${hintKeywords}" relKeywords(sample)=${relSample}`
       );
     }
 
-    if (!list.length) {
+    if (!chosen || typeof chosen !== "object") {
       console.warn(
-        `[getKeywordSearchVolume] 모든 힌트 실패 keyword="${kwRaw}" lastStatus=${lastStatus}`
+        `[getKeywordSearchVolume] 모든 힌트에서 매칭 실패 keyword="${kwRaw}" lastStatus=${lastStatus} lastListSize=${list.length}`
       );
       return { mobile: 0, pc: 0, total: 0 };
     }
 
-    const exact =
-      list.find((item) => normalizeKeywordKey(item.relKeyword ?? "") === key) ||
-      list.find((item) => item.relKeyword?.trim() === kwRaw.trim()) ||
-      list[0];
-
-    if (!exact || typeof exact !== "object") {
-      console.warn(`[getKeywordSearchVolume] 매칭 행 없음 keyword="${kwRaw}"`);
-      return { mobile: 0, pc: 0, total: 0 };
-    }
-
-    const pc = toNumber(exact.monthlyPcQcCnt);
-    const mobile = toNumber(exact.monthlyMobileQcCnt);
+    const pc = toNumber(chosen.monthlyPcQcCnt);
+    const mobile = toNumber(chosen.monthlyMobileQcCnt);
 
     return {
       mobile,

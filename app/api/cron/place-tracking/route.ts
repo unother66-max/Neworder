@@ -89,6 +89,11 @@ export async function GET(req: NextRequest) {
           },
         });
 
+        await prisma.placeKeyword.update({
+          where: { id: keyword.id },
+          data: { isTracking: keyword.isTracking },
+        });
+
         successCount++;
       } catch (error) {
         console.error("cron keyword update error", keyword.keyword, error);

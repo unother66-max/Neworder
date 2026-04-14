@@ -145,11 +145,31 @@ export async function GET() {
         }))
       );
 
-      const latestUpdatedAt =
+      const keywordLatestUpdatedAt =
         [...place.keywords].sort(
           (a, b) =>
             new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         )[0]?.updatedAt ?? null;
+
+      const rankHistoryLatestMs = (place.rankHistory || []).reduce(
+        (acc, r) => {
+          const t = new Date(r.createdAt).getTime();
+          return Number.isNaN(t) ? acc : Math.max(acc, t);
+        },
+        0
+      );
+
+      const keywordLatestMs = keywordLatestUpdatedAt
+        ? new Date(keywordLatestUpdatedAt).getTime()
+        : 0;
+
+      const bestMs = Math.max(
+        Number.isFinite(keywordLatestMs) ? keywordLatestMs : 0,
+        rankHistoryLatestMs
+      );
+
+      const latestUpdatedAt =
+        bestMs > 0 ? new Date(bestMs) : keywordLatestUpdatedAt ?? null;
 
       const placeMonthlyVolumeDb = toNumber(place.placeMonthlyVolume ?? 0);
       const placeMobileVolumeDb = toNumber(place.placeMobileVolume ?? 0);

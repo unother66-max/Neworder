@@ -463,8 +463,11 @@ function mapPlaceToStore(place: PlaceItem): Store {
     placePcVolume: (place as any).placePcVolume ?? 0,
 
     latestUpdatedAtText:
-      computeLatestUpdatedAtText(place) ??
-      (place as { latestUpdatedAtText?: string | null }).latestUpdatedAtText ??
+      computeLatestUpdatedAtText(place) ||
+      String(
+        (place as { latestUpdatedAtText?: string | null }).latestUpdatedAtText ??
+          ""
+      ).trim() ||
       undefined,
     isPinned: !!place.rankPinned,
 
