@@ -78,12 +78,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ 매장 이름 기준 검색량 가져오기
-const volume = await getKeywordSearchVolume(place.name);
-
-const placeMobileVolume = volume?.mobile ?? 0;
-const placePcVolume = volume?.pc ?? 0;
-const placeMonthlyVolume = placeMobileVolume + placePcVolume;
+    // ✅ 매장 이름 기준 검색량 — 도구에 정확 행이 없으면 0으로 덮어쓰지 않고 기존 DB 값 유지
+    const volume = await getKeywordSearchVolume(place.name);
+    const prevMobile = place.placeMobileVolume ?? 0;
+    const prevPc = place.placePcVolume ?? 0;
+    const prevTotal = place.placeMonthlyVolume ?? prevMobile + prevPc;
+    const volTotal = (volume?.mobile ?? 0) + (volume?.pc ?? 0);
+    const placeMobileVolume =
+      volTotal > 0 ? (volume?.mobile ?? 0) : prevMobile;
+    const placePcVolume = volTotal > 0 ? (volume?.pc ?? 0) : prevPc;
+    const placeMonthlyVolume =
+      volTotal > 0 ? volTotal : prevTotal;
 
     const visitorReviewCount = snapshot.visitorReviewCount ?? 0;
     const blogReviewCount = snapshot.blogReviewCount ?? 0;

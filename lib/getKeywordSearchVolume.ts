@@ -45,6 +45,7 @@ function normalizeKeywordKey(s: string) {
     .normalize("NFKC")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/\s+/g, "")
+    .replace(/앤/g, "and")
     .toLowerCase();
 }
 
@@ -82,6 +83,13 @@ function hintCandidates(keyword: string): string[] {
   };
 
   add(spaced);
+  // "○○ 추천" / "○○ 근처" 는 도구 응답에 정확 행이 없을 때가 많아 본문(접두) 힌트를 추가
+  if (/ 추천$/.test(spaced)) {
+    add(spaced.replace(/ 추천$/, "").trim());
+  }
+  if (/ 근처$/.test(spaced)) {
+    add(spaced.replace(/ 근처$/, "").trim());
+  }
   if (compact !== spaced) add(compact);
 
   if (!trimmed.includes(" ")) {
@@ -103,23 +111,48 @@ function pickKeywordVolumeRow(
   list: KeywordToolItem[],
   kwRaw: string
 ): KeywordToolItem | null {
-  const trimmed = kwRaw.trim();
-  const key = normalizeKeywordKey(trimmed);
-  const compact = trimmed.replace(/\s+/g, "");
-  if (!list.length || !key) return null;
+  const pickForTarget = (target: string): KeywordToolItem | null => {
+    const trimmed = target.trim();
+    const key = normalizeKeywordKey(trimmed);
+    const compact = trimmed.replace(/\s+/g, "");
+    if (!list.length || !key) return null;
 
-  const byNorm = list.find(
-    (item) => normalizeKeywordKey(item.relKeyword ?? "") === key
-  );
-  if (byNorm) return byNorm;
+    const byNorm = list.find(
+      (item) => normalizeKeywordKey(item.relKeyword ?? "") === key
+    );
+    if (byNorm) return byNorm;
 
-  const byTrim = list.find((item) => (item.relKeyword ?? "").trim() === trimmed);
-  if (byTrim) return byTrim;
+    const byTrim = list.find(
+      (item) => (item.relKeyword ?? "").trim() === trimmed
+    );
+    if (byTrim) return byTrim;
 
-  const byCompact = list.find(
-    (item) => (item.relKeyword ?? "").replace(/\s+/g, "") === compact
-  );
-  if (byCompact) return byCompact;
+    const byCompact = list.find(
+      (item) => (item.relKeyword ?? "").replace(/\s+/g, "") === compact
+    );
+    if (byCompact) return byCompact;
+
+    return null;
+  };
+
+  const direct = pickForTarget(kwRaw);
+  if (direct) return direct;
+
+  const t = kwRaw.trim();
+  if (/ 추천$/.test(t)) {
+    const base = t.replace(/ 추천$/, "").trim();
+    if (base) {
+      const row = pickForTarget(base);
+      if (row) return row;
+    }
+  }
+  if (/ 근처$/.test(t)) {
+    const base = t.replace(/ 근처$/, "").trim();
+    if (base) {
+      const row = pickForTarget(base);
+      if (row) return row;
+    }
+  }
 
   return null;
 }

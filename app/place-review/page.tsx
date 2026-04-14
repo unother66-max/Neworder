@@ -41,6 +41,8 @@ type ApiReviewHistory = {
   saveCount: string;
   keywords: string[];
   createdAt: string;
+  /** 같은 날 upsert 시 createdAt은 그대로이고 updatedAt만 바뀜 — 최근 업데이트 표시에 사용 */
+  updatedAt?: string;
 };
 
 type ApiPlace = {
@@ -147,9 +149,15 @@ function buildPlaceLinks(publicPlaceId: string, name: string) {
   };
 }
 
+function reviewRowTouchMs(row: ApiReviewHistory): number {
+  const c = new Date(row.createdAt).getTime();
+  const u = row.updatedAt ? new Date(row.updatedAt).getTime() : c;
+  return Math.max(c, Number.isNaN(u) ? c : u);
+}
+
 function mapApiPlaceToStore(place: ApiPlace): StoreItem {
   const sortedHistory = [...(place.reviewHistory || [])].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => reviewRowTouchMs(b) - reviewRowTouchMs(a)
   );
 
   const history: ReviewHistoryRow[] = sortedHistory.map((row, index) => {
@@ -195,7 +203,7 @@ const totalVolume = place.placeMonthlyVolume ?? fallbackTotalVolume;
 
   const latestCreatedAt =
     sortedHistory.length > 0
-      ? sortedHistory[0].createdAt
+      ? new Date(reviewRowTouchMs(sortedHistory[0])).toISOString()
       : new Date().toISOString();
 
   const publicPlaceId = extractPublicPlaceId(place.placeUrl);

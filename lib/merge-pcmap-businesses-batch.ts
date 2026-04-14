@@ -45,7 +45,15 @@ function collectBatchErrors(batch: unknown[]): string[] {
       }
 
       const msg = toTrimmedGraphqlErrorMessage(msgRaw);
-      if (msg) out.push(msg);
+      if (!msg) continue;
+      // 네이버 PC맵 GraphQL 일부 응답에 포함되는 서버측 메시지(우리 스택 아님) — Vercel 로그·gqlErrors 노이즈만 줄임
+      if (
+        msg.includes("Cannot read properties of undefined") &&
+        msg.includes("charAt")
+      ) {
+        continue;
+      }
+      out.push(msg);
     }
   }
   return out;
