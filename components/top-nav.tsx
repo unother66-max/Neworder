@@ -31,12 +31,6 @@ type SmartstoreMenuItem =
 
 const SMARTSTORE_MENU: SmartstoreMenuItem[] = [
   { variant: "rankNaverPrice", href: "/smartstore", subId: "rank-naver-price" },
-  { label: "순위 추적  플러스스토어", href: "/", subId: "plus-store" },
-  { label: "리뷰 추적", href: "/", subId: "review-track" },
-  { label: "순위 분석", href: "/", subId: "rank-analysis" },
-  { label: "스마트스토어 분석", href: "/", subId: "store-analysis" },
-  { label: "키워드 분석", href: "/", subId: "keyword-analysis" },
-  { label: "키워드 추출기", href: "/", subId: "keyword-extractor" },
 ];
 
 function smartstoreMenuKey(item: SmartstoreMenuItem) {
@@ -270,58 +264,6 @@ export default function TopNav({
     window.addEventListener("popstate", bump);
     return () => window.removeEventListener("popstate", bump);
   }, []);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "development") return;
-
-    const winPath =
-      typeof window !== "undefined" ? window.location.pathname : "(ssr)";
-    const hookStr = pathnameFromHook ?? "";
-    const hookTrim = trimPathnameSegments(hookStr);
-    const winTrim =
-      typeof window !== "undefined"
-        ? trimPathnameSegments(window.location.pathname)
-        : "";
-    const mismatch =
-      typeof window !== "undefined" &&
-      hookTrim === "/" &&
-      winTrim !== "" &&
-      winTrim !== "/";
-
-    const naverMap = pathMatchesNaverMapSection(pathname);
-    const naverBlog = pathMatchesNaverBlogSection(pathname);
-    const kakaoMap = pathMatchesKakaoMapSection(pathname);
-
-    console.log("[TopNav active debug]", {
-      usePathname_raw: pathnameFromHook,
-      pathname_resolved: pathname,
-      active_prop: active ?? null,
-      activeSmartstoreSub: activeSmartstoreSub ?? null,
-      window_pathname: winPath,
-      hook_vs_location_mismatch_fixed: mismatch,
-      isNaverMapActive: naverMap,
-      isNaverBlogActive: naverBlog,
-      isKakaoMapActive: kakaoMap,
-      isSmartstoreSection: pathMatchesSmartstoreSection(pathname),
-      submenuKeyActive_place: isSubmenuKeyActive("place", pathname, active),
-      submenuKeyActive_placeReview: isSubmenuKeyActive(
-        "place-review",
-        pathname,
-        active
-      ),
-      submenuKeyActive_placeAnalysis: isSubmenuKeyActive(
-        "place-analysis",
-        pathname,
-        active
-      ),
-    });
-  }, [
-    pathname,
-    pathnameFromHook,
-    active,
-    activeSmartstoreSub,
-    pathSyncTick,
-  ]);
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
