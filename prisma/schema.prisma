@@ -159,6 +159,7 @@ model SmartstoreKeyword {
   mobileVolume Int?
   pcVolume     Int?
   totalVolume  Int?
+  sortOrder    Int      @default(0)
   isTracking   Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

@@ -65,13 +65,14 @@ export async function GET() {
         createdAt: true,
         updatedAt: true,
         keywords: {
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           select: {
             id: true,
             keyword: true,
             mobileVolume: true,
             pcVolume: true,
             totalVolume: true,
+            sortOrder: true,
             isTracking: true,
             createdAt: true,
             updatedAt: true,

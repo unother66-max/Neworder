@@ -14,6 +14,7 @@ type ReviewRow = {
   saveCount: string;
   keywords: string[];
   createdAt: Date;
+  updatedAt: Date;
 };
 
 function parseSaveCount(value: string) {
@@ -47,6 +48,7 @@ export async function GET(req: Request) {
         },
         reviewHistory: {
           orderBy: { createdAt: "desc" },
+          take: 1,
         },
       },
     });
@@ -77,6 +79,7 @@ export async function GET(req: Request) {
         saveCountDiff: prev ? currentSaveCount - prevSaveCount : null,
         keywords: row.keywords,
         createdAt: row.createdAt,
+        updatedAt: (row as any).updatedAt ?? row.createdAt,
       };
     });
 

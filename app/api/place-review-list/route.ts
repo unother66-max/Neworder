@@ -52,6 +52,7 @@ export async function GET() {
         },
         reviewHistory: {
           orderBy: { createdAt: "desc" },
+          take: 1,
         },
       },
     });

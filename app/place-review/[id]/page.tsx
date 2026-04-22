@@ -25,6 +25,7 @@ type ReviewHistoryRow = {
   saveCountDiff?: number | null;
   keywords: string[];
   createdAt: string;
+  updatedAt?: string;
 };
 
 type PlaceDetail = {
@@ -430,7 +431,10 @@ export default function PlaceReviewDetailPage() {
                             className="border-t border-[#f3f4f6] bg-white"
                           >
                             <td className="whitespace-nowrap px-5 py-4 text-[12px] font-semibold text-[#6b7280]">
-                              {formatDateLabel(row.createdAt)}
+                              {formatDateLabel(row.updatedAt || row.createdAt)}
+                              <div className="mt-1 text-[10px] font-semibold text-[#9ca3af]">
+                                업데이트
+                              </div>
                             </td>
                             <td className="px-5 py-4 text-[14px] font-semibold text-[#111827]">
                               {formatNumber(row.totalReviewCount)}

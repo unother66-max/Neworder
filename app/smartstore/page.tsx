@@ -4,7 +4,24 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin, Trash2 } from "lucide-react";
+import { GripVertical, Pin, Trash2 } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  DragOverlay,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 const MAX_KEYWORDS = 10;
 const NAVER_PRICE_COMPARE_SVG_SRC = encodeURI("/naver_가격비교.svg");
 /** place 카드와 동일한 ‘이미지 없음’ 자리용 */
@@ -18,6 +35,7 @@ type KwItem = {
   mobileVolume: number | null;
   pcVolume: number | null;
   totalVolume: number | null;
+  sortOrder?: number | null;
   isTracking: boolean;
   latestRank: number | null;
   latestRankLabel: string;
@@ -36,6 +54,11 @@ type SmartstoreProductRow = {
   isAutoTracking: boolean;
   keywords: KwItem[];
   latestUpdatedAt: string | null;
+};
+
+type KeywordRecommendation = {
+  keyword: string;
+  monthlyVolume: number;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -93,6 +116,81 @@ export default function SmartstoreRankPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  const PendingKeywordSortableItem = ({
+    kw,
+    kwModalProduct,
+    recommendations,
+    removePendingKeyword,
+  }: {
+    kw: string;
+    kwModalProduct: SmartstoreProductRow;
+    recommendations: KeywordRecommendation[];
+    removePendingKeyword: (kw: string) => void;
+  }) => {
+    const saved = kwModalProduct.keywords.find((k) => k.keyword === kw);
+    const rec = recommendations.find((r) => r.keyword === kw);
+    const vol = saved?.totalVolume ?? rec?.monthlyVolume ?? null;
+
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      setActivatorNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: kw });
+
+    const style: React.CSSProperties = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      touchAction: "none",
+      ...(isDragging
+        ? {
+            boxShadow: "0 10px 24px rgba(15,23,42,0.14)",
+            opacity: 0.15,
+          }
+        : null),
+    };
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="flex items-center gap-3 rounded-[12px] border border-[#f3f4f6] bg-white p-3 shadow-sm mb-2 last:mb-0"
+      >
+        <div
+          ref={setActivatorNodeRef}
+          className="cursor-grab active:cursor-grabbing"
+          {...listeners}
+          {...attributes}
+          aria-label="드래그로 순서 변경"
+          role="button"
+          tabIndex={0}
+        >
+          <GripVertical size={16} className="text-[#d1d5db] transition hover:text-[#9ca3af]" />
+        </div>
+
+        <span className="flex-1 text-[14px] font-medium text-[#374151]">{kw}</span>
+
+        {vol == null ? null : (
+          <span className="shrink-0 text-[11px] font-semibold text-[#9ca3af]">
+            {fmtVolume(vol)}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={() => removePendingKeyword(kw)}
+          className="flex h-6 w-6 items-center justify-center rounded-full text-[#9ca3af] transition-colors hover:bg-[#fee2e2] hover:text-[#ef4444]"
+          aria-label="키워드 제거"
+        >
+          <span className="text-[14px]">✕</span>
+        </button>
+      </div>
+    );
+  };
+
   const [mounted, setMounted] = useState(false);
   const [products, setProducts] = useState<SmartstoreProductRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -114,6 +212,9 @@ export default function SmartstoreRankPage() {
   const [pendingKeywords, setPendingKeywords] = useState<string[]>([]);
   const [deletingKwId, setDeletingKwId] = useState<string | null>(null);
   const [kwSaving, setKwSaving] = useState(false);
+  const [recommendations, setRecommendations] = useState<KeywordRecommendation[]>([]);
+  const [isRecLoading, setIsRecLoading] = useState(false);
+  const [activeDragKeyword, setActiveDragKeyword] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -345,11 +446,34 @@ export default function SmartstoreRankPage() {
     }
   };
 
-  const openKwModal = (p: SmartstoreProductRow) => {
+  const openKwModal = async (p: SmartstoreProductRow) => {
     setKwModalProduct(p);
-    setPendingKeywords([]);
+    setPendingKeywords(p.keywords.map((k) => k.keyword));
     setKwInput("");
     setDeletingKwId(null);
+    setRecommendations([]);
+    setIsRecLoading(true);
+    try {
+      const res = await fetch(`/api/smartstore-keyword-recommend?productId=${p.id}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        console.warn("[smartstore] keyword recommend error:", data?.error || res.status);
+        setRecommendations([]);
+        return;
+      }
+      const list: KeywordRecommendation[] = Array.isArray(data.recommendations)
+        ? data.recommendations
+        : [];
+      setRecommendations(list);
+    } catch (e) {
+      console.warn("[smartstore] keyword recommend fetch error:", e);
+      setRecommendations([]);
+    } finally {
+      setIsRecLoading(false);
+    }
   };
 
   const closeKwModal = () => {
@@ -357,6 +481,8 @@ export default function SmartstoreRankPage() {
     setPendingKeywords([]);
     setKwInput("");
     setDeletingKwId(null);
+    setRecommendations([]);
+    setIsRecLoading(false);
   };
 
   const addDirectKeywords = () => {
@@ -367,7 +493,7 @@ export default function SmartstoreRankPage() {
       const next = [...prev];
       for (const kw of parts) {
         if (savedSet.has(kw) || next.includes(kw)) continue;
-        if (kwModalProduct.keywords.length + next.length >= MAX_KEYWORDS) {
+        if (next.length >= MAX_KEYWORDS) {
           alert(`키워드는 상품당 최대 ${MAX_KEYWORDS}개까지 등록할 수 있어요.`);
           break;
         }
@@ -382,55 +508,86 @@ export default function SmartstoreRankPage() {
     setPendingKeywords((prev) => prev.filter((k) => k !== kw));
   };
 
-  const removeSavedKeyword = async (row: KwItem) => {
-    if (!kwModalProduct || deletingKwId) return;
-    setDeletingKwId(row.id);
-    try {
-      const res = await fetch("/api/smartstore-keyword-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ keywordId: row.id }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        alert(data.error || "삭제 실패");
-        return;
-      }
-      const updated = {
-        ...kwModalProduct,
-        keywords: kwModalProduct.keywords.filter((k) => k.id !== row.id),
-      };
-      setKwModalProduct(updated);
-      setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-    } catch (e) {
-      console.warn(e);
-    } finally {
-      setDeletingKwId(null);
+  const toggleRecommendedKeyword = (kw: string, checked: boolean) => {
+    if (!kwModalProduct) return;
+    const savedSet = new Set(kwModalProduct.keywords.map((k) => k.keyword));
+    if (savedSet.has(kw)) return;
+
+    if (!checked) {
+      setPendingKeywords((prev) => prev.filter((k) => k !== kw));
+      return;
     }
+
+    setPendingKeywords((prev) => {
+      if (prev.includes(kw)) return prev;
+      if (prev.length >= MAX_KEYWORDS) {
+        alert(`키워드는 상품당 최대 ${MAX_KEYWORDS}개까지 등록할 수 있어요.`);
+        return prev;
+      }
+      return [...prev, kw];
+    });
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  );
+
+  const handlePendingDragStart = (event: DragStartEvent) => {
+    setActiveDragKeyword(String(event.active.id));
+  };
+
+  const handlePendingDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragKeyword(null);
+    if (!over) return;
+    if (active.id === over.id) return;
+    setPendingKeywords((items) => {
+      const oldIndex = items.indexOf(String(active.id));
+      const newIndex = items.indexOf(String(over.id));
+      if (oldIndex < 0 || newIndex < 0) return items;
+      return arrayMove(items, oldIndex, newIndex);
+    });
+  };
+
+  const handlePendingDragCancel = () => {
+    setActiveDragKeyword(null);
   };
 
   const saveKeywords = async () => {
     if (!kwModalProduct || kwSaving) return;
-    if (pendingKeywords.length === 0) return;
-    if (kwModalProduct.keywords.length + pendingKeywords.length > MAX_KEYWORDS) {
-      alert(`키워드는 상품당 최대 ${MAX_KEYWORDS}개까지 등록할 수 있어요.`);
-      return;
-    }
     setKwSaving(true);
     try {
-      await Promise.all(
-        pendingKeywords.map(async (keyword) => {
-          const res = await fetch("/api/smartstore-keyword-save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ productId: kwModalProduct.id, keyword }),
-          });
-          const data = await res.json();
-          if (!res.ok || data.error) throw new Error(data.error || `${keyword} 저장 실패`);
-        })
-      );
+      const keywordList = (() => {
+        const raw = (pendingKeywords as unknown[]).map((k) =>
+          typeof k === "string" ? k : String((k as any)?.keyword ?? "")
+        );
+        const trimmed = raw.map((s) => String(s ?? "").trim()).filter(Boolean);
+        // 중복 제거(첫 등장 기준)
+        const seen = new Set<string>();
+        const uniq: string[] = [];
+        for (const kw of trimmed) {
+          if (seen.has(kw)) continue;
+          seen.add(kw);
+          uniq.push(kw);
+        }
+        return uniq;
+      })();
+
+      const res = await fetch("/api/smartstore-keyword-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          productId: kwModalProduct.id,
+          keywords: keywordList,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "키워드 저장(동기화) 실패");
+      }
       await fetchProducts();
       setPendingKeywords([]);
       closeKwModal();
@@ -674,7 +831,7 @@ export default function SmartstoreRankPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => openKwModal(p)}
+                          onClick={() => void openKwModal(p)}
                           className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#b91c1c] px-4 text-[14px] font-bold text-white shadow-[0_8px_20px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
                         >
                           키워드 관리
@@ -831,99 +988,121 @@ export default function SmartstoreRankPage() {
 
       {kwModalProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
-          <div className="w-full max-w-[860px] overflow-hidden rounded-[24px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
-            <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-6 py-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
-                    KEYWORD MANAGER
-                  </p>
-                  <h2 className="mt-2 text-[15px] font-bold leading-snug tracking-[-0.02em] text-[#111827] md:text-[16px]">
-                    {kwModalProduct.name}
-                  </h2>
-                  {kwModalProduct.category?.trim() ? (
-                    <p className="mt-1 text-[13px] font-semibold leading-snug text-[#9ca3af] break-words">
-                      {kwModalProduct.category.trim()}
-                    </p>
-                  ) : null}
-                  <p className="mt-2 text-[14px] text-[#6b7280]">
-                    등록된 키워드는 아래 표에서 확인·삭제할 수 있고, 새 키워드는 추가 후 저장하면
-                    네이버 검색광고 키워드도구로 월 검색량을 불러옵니다.
-                  </p>
-                </div>
+          <div className="w-full max-w-[560px] rounded-[24px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
+            <div className="border-b border-[#f3f4f6] bg-white px-6 py-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[13px] font-extrabold tracking-[-0.01em] text-[#111827]">
+                  키워드 관리
+                </p>
                 <button
                   type="button"
                   onClick={closeKwModal}
-                  className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]"
+                  className="rounded-[12px] border border-[#e5e7eb] bg-white px-3 py-2 text-[12px] font-bold text-[#6b7280] transition hover:bg-[#f9fafb]"
                 >
                   닫기
                 </button>
               </div>
             </div>
 
-            <div className="max-h-[78vh] overflow-y-auto px-6 py-6">
-              <div className="rounded-[18px] border border-[#e5e7eb] bg-white p-5">
+            {/* Reorder 좌표 계산 안정화를 위해 모달 본문은 block + overflow visible로 유지하고,
+                내부 섹션(추천/키워드 리스트)만 자체 스크롤을 사용합니다. */}
+            <div className="px-6 py-6">
+              <div className="rounded-[16px] bg-[#f9fafb] p-4">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={kwModalProduct.imageUrl || PRODUCT_CARD_PLACEHOLDER_IMG}
+                    alt={cardProductTitle(kwModalProduct)}
+                    className="h-16 w-16 rounded-lg object-cover ring-1 ring-[#e5e7eb]"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-bold text-[#111827]">
+                      {cardProductTitle(kwModalProduct)}
+                    </p>
+                    {kwModalProduct.category?.trim() ? (
+                      <p className="mt-1 truncate text-[12px] font-semibold text-[#6b7280]">
+                        {kwModalProduct.category.trim()}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[12px] font-semibold text-[#9ca3af]">카테고리 없음</p>
+                    )}
+                    <p className="mt-2 text-[12px] text-[#6b7280]">
+                      새 키워드는 저장 시 네이버 키워드도구로 월 검색량을 불러옵니다.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[13px] font-bold text-[#4b5563]">등록된 키워드</p>
+                  <p className="text-[13px] font-bold text-[#4b5563]">키워드 선택 추가</p>
                   <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] font-bold text-[#4b5563]">
-                    {kwModalProduct.keywords.length}개
+                    {recommendations.length}개
                   </span>
                 </div>
-                <div className="mt-3 overflow-x-auto rounded-[14px] border border-[#e5e7eb]">
-                  <table className="min-w-full border-collapse text-[13px]">
-                    <thead className="bg-[#f9fafb]">
-                      <tr>
-                        {["키워드", "월 검색량", "모바일", "PC", ""].map((h, i) => (
-                          <th
-                            key={`kw-col-${i}`}
-                            className="border-b border-[#e5e7eb] px-3 py-2 text-center text-[11px] font-extrabold text-[#6b7280] first:text-left last:w-[72px]"
+
+                {isRecLoading ? (
+                  <div className="mt-3 rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-6 text-center text-[12px] text-[#6b7280]">
+                    추천 키워드를 추출 중입니다...
+                  </div>
+                ) : recommendations.length === 0 ? (
+                  <div className="mt-3 rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-6 text-center text-[12px] text-[#9ca3af]">
+                    추천 키워드가 없습니다.
+                  </div>
+                ) : (
+                  <div className="mt-3 max-h-[220px] overflow-y-auto">
+                    <div className="flex flex-wrap gap-2">
+                      {recommendations.map((rec, idx) => {
+                      const kw = String(rec.keyword ?? "").trim();
+                      if (!kw) return null;
+                      const savedSet = new Set(kwModalProduct.keywords.map((k) => k.keyword));
+                      const isSaved = savedSet.has(kw);
+                      const checked = pendingKeywords.includes(kw);
+                      const vol = Number(rec.monthlyVolume ?? 0) || 0;
+                      const volTone =
+                        vol >= 10000
+                          ? "text-[#2563eb] bg-[#eff6ff] border-[#bfdbfe]"
+                          : vol >= 1000
+                            ? "text-[#16a34a] bg-[#f0fdf4] border-[#bbf7d0]"
+                            : "text-[#6b7280] bg-[#f3f4f6] border-[#e5e7eb]";
+                      const baseCls =
+                        "inline-flex items-center gap-2 rounded-full border bg-white px-3 py-2 text-left transition active:scale-95";
+                      return (
+                        <button
+                          type="button"
+                          key={`${kw}-${idx}`}
+                          disabled={isSaved}
+                          onClick={() => toggleRecommendedKeyword(kw, !checked)}
+                          className={`${baseCls} ${
+                            isSaved
+                              ? "cursor-not-allowed border-[#e5e7eb] opacity-60"
+                              : checked
+                                ? "border-[#111827] ring-1 ring-[#111827]/10"
+                                : "border-[#e5e7eb] hover:border-[#d1d5db] hover:bg-[#fafafa]"
+                          }`}
+                        >
+                          <span className="text-[12px] font-semibold text-[#111827]">{kw}</span>
+                          <span
+                            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${volTone}`}
                           >
-                            {h || " "}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {kwModalProduct.keywords.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={5}
-                            className="px-3 py-8 text-center text-[13px] text-[#9ca3af]"
-                          >
-                            아래에서 키워드를 추가한 뒤 &quot;키워드 저장&quot;을 눌러주세요.
-                          </td>
-                        </tr>
-                      ) : (
-                        kwModalProduct.keywords.map((k) => (
-                          <tr key={k.id} className="border-t border-[#f3f4f6] bg-white">
-                            <td className="px-3 py-2.5 font-semibold text-[#111827]">
-                              {k.keyword}
-                            </td>
-                            <td className="px-3 py-2.5 text-center text-[#6b7280]">
-                              {fmtVolume(k.totalVolume)}
-                            </td>
-                            <td className="px-3 py-2.5 text-center text-[#6b7280]">
-                              {fmtVolume(k.mobileVolume)}
-                            </td>
-                            <td className="px-3 py-2.5 text-center text-[#6b7280]">
-                              {fmtVolume(k.pcVolume)}
-                            </td>
-                            <td className="px-3 py-2.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => removeSavedKeyword(k)}
-                                disabled={deletingKwId === k.id}
-                                className="text-[12px] font-bold text-[#dc2626] hover:underline disabled:opacity-50"
-                              >
-                                {deletingKwId === k.id ? "…" : "삭제"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                            월 검색량 {fmtVolume(vol)}
+                          </span>
+                          {isSaved ? (
+                            <span className="shrink-0 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#6b7280]">
+                              등록됨
+                            </span>
+                          ) : checked ? (
+                            <span className="shrink-0 rounded-full bg-[#111827] px-2 py-0.5 text-[10px] font-bold text-white">
+                              선택
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
@@ -935,12 +1114,12 @@ export default function SmartstoreRankPage() {
                     onChange={(e) => setKwInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addDirectKeywords()}
                     placeholder="쉼표(,)로 여러 개 입력 가능"
-                    className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                    className="h-[42px] flex-1 rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[13px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
                   />
                   <button
                     type="button"
                     onClick={addDirectKeywords}
-                    className="h-[48px] rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                    className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[13px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
                   >
                     추가
                   </button>
@@ -949,35 +1128,57 @@ export default function SmartstoreRankPage() {
 
               <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[13px] font-bold text-[#4b5563]">저장할 새 키워드</p>
+                  <p className="text-[13px] font-bold text-[#4b5563]">키워드 순서변경</p>
                   <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] font-bold text-[#4b5563]">
                     {pendingKeywords.length}개
                   </span>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2.5">
-                  {pendingKeywords.length === 0 ? (
-                    <div className="w-full rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-8 text-center text-[14px] text-[#9ca3af]">
-                      위 입력란에서 키워드를 추가하면 여기에 표시됩니다.
-                    </div>
-                  ) : (
-                    pendingKeywords.map((kw, idx) => (
-                      <div
-                        key={`${kw}-${idx}`}
-                        className="inline-flex items-center gap-2 rounded-full border border-[#d1d5db] bg-white px-4 py-2 text-[13px] font-bold text-[#111827]"
+                {pendingKeywords.length === 0 ? (
+                  <div className="mt-3 flex h-[80px] items-center justify-center rounded-[14px] border border-dashed border-[#e5e7eb] text-[13px] text-[#9ca3af]">
+                    추가된 키워드가 없습니다.
+                  </div>
+                ) : (
+                  <div
+                    id="keyword-scroll-container"
+                    className="mt-3 max-h-[300px] overflow-y-auto pr-1"
+                    style={{ position: "relative" }}
+                  >
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragStart={handlePendingDragStart}
+                      onDragEnd={handlePendingDragEnd}
+                      onDragCancel={handlePendingDragCancel}
+                    >
+                      <SortableContext
+                        items={pendingKeywords}
+                        strategy={verticalListSortingStrategy}
                       >
-                        <span>{kw}</span>
-                        <button
-                          type="button"
-                          onClick={() => removePendingKeyword(kw)}
-                          className="text-[#dc2626] transition hover:opacity-80"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
+                        {pendingKeywords.map((kw) => (
+                          <PendingKeywordSortableItem
+                            key={kw}
+                            kw={kw}
+                            kwModalProduct={kwModalProduct}
+                            recommendations={recommendations}
+                            removePendingKeyword={removePendingKeyword}
+                          />
+                        ))}
+                      </SortableContext>
+                      <DragOverlay dropAnimation={null}>
+                        {activeDragKeyword ? (
+                          <div className="flex items-center gap-3 rounded-[12px] border border-[#e5e7eb] bg-white p-3 shadow-md">
+                            <GripVertical size={16} className="text-[#9ca3af]" />
+                            <span className="text-[14px] font-medium text-[#374151]">
+                              {activeDragKeyword}
+                            </span>
+                          </div>
+                        ) : null}
+                      </DragOverlay>
+                    </DndContext>
+                  </div>
+                )}
               </div>
+
             </div>
 
             <div className="border-t border-[#f3f4f6] bg-[#fcfcfc] px-6 py-4">
