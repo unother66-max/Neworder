@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import {
   fetchSmartstoreProductMeta,
   SMARTSTORE_TRACE_LOG,
@@ -87,9 +88,14 @@ export async function POST(req: Request) {
 
     const fallbackName = `상품 #${naverProductId}`;
 
+    const space = (() => {
+      const raw = String(body?.space ?? "").trim().toUpperCase();
+      return raw === "PLUS_STORE" ? ("PLUS_STORE" as const) : ("NAVER_PRICE" as const);
+    })();
+
     const existing = await prisma.smartstoreProduct.findUnique({
       where: {
-        userId_productId: { userId, productId: naverProductId },
+        userId_productId_space: { userId, productId: naverProductId, space },
       },
       select: {
         id: true,
@@ -145,6 +151,7 @@ export async function POST(req: Request) {
       userId,
       productUrl: normalizedUrl,
       productId: naverProductId,
+      space,
       skipMetaFetch,
       playwrightConfigured,
       SMARTSTORE_PLAYWRIGHT_URL:
@@ -396,61 +403,49 @@ export async function POST(req: Request) {
       },
     });
 
-    if (existing) {
-      const product = await prisma.smartstoreProduct.update({
-        where: { id: existing.id },
-        data: {
+    // space별로 완전히 독립 저장: (userId, productId, space) 기준 upsert
+    // (기존 row가 있으면 갱신, 없으면 생성)
+    let product: Awaited<ReturnType<typeof prisma.smartstoreProduct.upsert>>;
+    try {
+      product = await prisma.smartstoreProduct.upsert({
+        where: {
+          userId_productId_space: { userId, productId: naverProductId, space },
+        },
+        update: {
+          productUrl: normalizedUrl,
           name: nameFinal,
           category,
           thumbnailLink,
           imageUrl,
           mallName: data.mallName,
+        },
+        create: {
+          userId,
+          productId: naverProductId,
+          space,
           productUrl: normalizedUrl,
+          name: nameFinal,
+          category,
+          thumbnailLink,
+          imageUrl,
+          mallName: data.mallName,
         },
         include: { keywords: true },
       });
-
-      const listShape = await prisma.smartstoreProduct.findUnique({
-        where: { id: product.id },
-        select: {
-          name: true,
-          thumbnailLink: true,
-          imageUrl: true,
-          category: true,
-        },
-      });
-
-      console.log(
-        `${SMARTSTORE_TRACE_LOG} ⑧ list API와 동일 필드 확인(DB 재조회)`,
-        {
-          name: listShape?.name,
-          thumbnailLink: listShape?.thumbnailLink ?? null,
-          imageUrl: listShape?.imageUrl ?? null,
-          category: listShape?.category ?? null,
-        }
-      );
-
-      return NextResponse.json({
-        ok: true,
-        product,
-        updated: true,
-        metaFetchIncomplete,
-      });
+    } catch (e) {
+      // DB에 옛 유니크(userId, productId)가 남아있으면 space 분리가 불가능하므로 명확히 안내한다.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "DB 유니크 제약이 (userId, productId)로 남아 있어 페이지별 분리가 불가능합니다. prisma migrate/reset 후 다시 시도해주세요.",
+          },
+          { status: 409 }
+        );
+      }
+      throw e;
     }
-
-    const product = await prisma.smartstoreProduct.create({
-      data: {
-        userId,
-        productId: naverProductId,
-        productUrl: normalizedUrl,
-        name: nameFinal,
-        category,
-        thumbnailLink,
-        imageUrl,
-        mallName: data.mallName,
-      },
-      include: { keywords: true },
-    });
 
     const listShape = await prisma.smartstoreProduct.findUnique({
       where: { id: product.id },
@@ -475,7 +470,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       product,
-      updated: false,
+      updated: Boolean(existing),
       metaFetchIncomplete,
     });
   } catch (e) {

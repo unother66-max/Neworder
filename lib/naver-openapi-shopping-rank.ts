@@ -25,6 +25,8 @@ export type NaverOpenApiShopRankResult = {
 type ShopItem = {
   productId?: string | number;
   link?: string;
+  mallName?: string;
+  mallProductId?: string | number;
 };
 
 function getClientCreds(): { clientId: string; clientSecret: string } {
@@ -36,14 +38,61 @@ function getClientCreds(): { clientId: string; clientSecret: string } {
   return { clientId, clientSecret };
 }
 
-function itemMatchesTarget(item: ShopItem, targetProductId: string): boolean {
+function normalizeComparableUrl(input: string): string {
+  try {
+    const u = new URL(input);
+    u.hash = "";
+    u.search = "";
+    u.hostname = u.hostname.toLowerCase();
+    u.pathname = u.pathname.replace(/\/+$/, "");
+    return u.toString();
+  } catch {
+    return input.trim();
+  }
+}
+
+function itemMatchesTarget(
+  item: ShopItem,
+  targetProductId: string,
+  ctx: { space: "NAVER_PRICE" | "PLUS_STORE"; targetProductUrl: string | null }
+): boolean {
   const tid = String(targetProductId).trim();
   if (!tid) return false;
-  if (item.productId != null && String(item.productId) === tid) return true;
-  const link = typeof item.link === "string" ? item.link : "";
+
+  if (ctx.space === "NAVER_PRICE") {
+    if (item.productId != null && String(item.productId) === tid) return true;
+    if (item.mallProductId != null && String(item.mallProductId) === tid) return true;
+  }
+
+  const link = typeof item.link === "string" ? item.link.trim() : "";
   if (!link) return false;
   if (link.includes(`/products/${tid}`) || link.includes(`products/${tid}?`)) return true;
   if (link.includes(`productId=${tid}`) || link.includes(`&productId=${tid}`)) return true;
+
+  if (ctx.space === "PLUS_STORE" && ctx.targetProductUrl) {
+    const a = normalizeComparableUrl(ctx.targetProductUrl);
+    const b = normalizeComparableUrl(link);
+    if (a && b && a === b) return true;
+
+    try {
+      const tu = new URL(ctx.targetProductUrl);
+      const lu = new URL(link);
+      const tHost = tu.hostname.toLowerCase();
+      const lHost = lu.hostname.toLowerCase();
+      const tPath = tu.pathname.replace(/\/+$/, "");
+      const lPath = lu.pathname.replace(/\/+$/, "");
+      if (
+        (tHost.includes("brand.naver.com") || tHost.includes("smartstore.naver.com")) &&
+        tHost === lHost &&
+        tPath === lPath
+      ) {
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   return false;
 }
 
@@ -53,7 +102,12 @@ function itemMatchesTarget(item: ShopItem, targetProductId: string): boolean {
 export async function findProductRankViaNaverShopOpenApi(
   keyword: string,
   targetProductId: string,
-  options?: { maxResults?: number; sort?: "sim" | "date" | "asc" | "dsc" }
+  options?: {
+    maxResults?: number;
+    sort?: "sim" | "date" | "asc" | "dsc";
+    space?: "NAVER_PRICE" | "PLUS_STORE";
+    targetProductUrl?: string | null;
+  }
 ): Promise<NaverOpenApiShopRankResult> {
   const kw = String(keyword ?? "").trim();
   const tid = String(targetProductId ?? "").trim();
@@ -62,6 +116,10 @@ export async function findProductRankViaNaverShopOpenApi(
 
   const maxResults = Math.min(Math.max(Number(options?.maxResults) || 1000, 1), MAX_START);
   const sort = options?.sort ?? "sim";
+  const space = options?.space ?? "NAVER_PRICE";
+  const targetProductUrl = options?.targetProductUrl?.trim()
+    ? options?.targetProductUrl!.trim()
+    : null;
   const { clientId, clientSecret } = getClientCreds();
 
   let totalHint: number | null = null;
@@ -121,7 +179,7 @@ export async function findProductRankViaNaverShopOpenApi(
     for (let i = 0; i < items.length; i++) {
       const globalRank = start + i;
       scannedCount += 1;
-      if (itemMatchesTarget(items[i], tid)) {
+      if (itemMatchesTarget(items[i], tid, { space, targetProductUrl })) {
         const pageNum = Math.floor((start - 1) / MAX_DISPLAY) + 1;
         const position = i + 1;
         return {

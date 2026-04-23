@@ -27,10 +27,16 @@ const SUBMENU_INACTIVE = "font-bold !text-[#111827]";
 
 type SmartstoreMenuItem =
   | { variant: "rankNaverPrice"; href: string; subId: string; badge?: "NEW" }
+  | { variant: "rankPlusStore"; href: string; subId: string; badge?: "NEW" }
   | { label: string; href: string; subId: string; badge?: "NEW" };
 
 const SMARTSTORE_MENU: SmartstoreMenuItem[] = [
   { variant: "rankNaverPrice", href: "/smartstore", subId: "rank-naver-price" },
+  {
+    variant: "rankPlusStore",
+    href: "/smartstore/plus-store-ranking-track",
+    subId: "rank-plus-store",
+  },
 ];
 
 function smartstoreMenuKey(item: SmartstoreMenuItem) {
@@ -46,6 +52,20 @@ function SmartstoreMenuLabel({ item }: { item: SmartstoreMenuItem }) {
           src={NAVER_PRICE_COMPARE_SVG_SRC}
           alt=""
           width={78}
+          height={16}
+          className="h-4 w-auto shrink-0"
+        />
+      </span>
+    );
+  }
+  if ("variant" in item && item.variant === "rankPlusStore") {
+    return (
+      <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-inherit">
+        <span className="shrink-0 font-inherit text-inherit">순위 추적</span>
+        <img
+          src={PLUS_STORE_SVG_SRC}
+          alt=""
+          width={79}
           height={16}
           className="h-4 w-auto shrink-0"
         />
@@ -164,6 +184,7 @@ function resolveTopNavPathname(fromHook: string | null | undefined): string {
 
 /** 한글 파일명은 내부 fetch/프리페치 시 ByteString 제약에 걸릴 수 있어 경로만 퍼센트 인코딩 */
 const NAVER_PRICE_COMPARE_SVG_SRC = encodeURI("/naver_가격비교.svg");
+const PLUS_STORE_SVG_SRC = "/download.svg";
 
 const NAVER_BLOG_MENU: Array<{ label: string; href: string; key: NavKey }> = [
   { label: "상위 블로그 찾기", href: "/top-blog", key: "blog" },
@@ -303,13 +324,16 @@ export default function TopNav({
 
   const isSmartstoreSubActive = (item: SmartstoreMenuItem) => {
     if (activeSmartstoreSub && item.subId === activeSmartstoreSub) return true;
-    if (
-      item.subId === "rank-naver-price" &&
-      pathMatchesSmartstoreSection(pathname)
-    ) {
-      return true;
+    const p = trimPathnameSegments(pathname);
+    if (item.subId === "rank-naver-price") {
+      // 가격비교 페이지는 /smartstore "정확히" 일치할 때만 활성화
+      return p === "/smartstore";
     }
-    return false;
+    if (item.subId === "rank-plus-store") {
+      // 플러스스토어는 해당 경로 prefix 매칭
+      return p === item.href || p.startsWith(`${item.href}/`);
+    }
+    return p === item.href || p.startsWith(`${item.href}/`);
   };
 
   const getBreadcrumbCategoryLabel = () => {

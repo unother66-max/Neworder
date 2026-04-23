@@ -10,7 +10,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { chromium } from "playwright";
+import { chromium } from "playwright-core";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");

@@ -60,12 +60,10 @@ async function launchBrowserUncapped(): Promise<{
     return { browser, launchLabel: "@sparticuz/chromium" };
   }
 
-  const { chromium: pwChromium } = await import("playwright");
-  const browser = (await pwChromium.launch({
-    headless: true,
-    args: extraArgs,
-  })) as unknown as Browser;
-  return { browser, launchLabel: "playwright-bundled" };
+  // playwright 패키지를 제거한 환경에서는 로컬 런치 경로가 없다.
+  throw new Error(
+    "playwright 패키지가 설치되어 있지 않아 로컬 Playwright 토큰 수집을 실행할 수 없습니다."
+  );
 }
 
 async function launchBrowser(): Promise<{

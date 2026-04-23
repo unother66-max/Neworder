@@ -4,7 +4,7 @@
  *
  * 반차단(빈 NEXT_DATA) 완화: initScript·라우트·마우스/스크롤·시그널 대기 후에만 extract 호출.
  */
-import { chromium } from "playwright";
+import { chromium } from "playwright-core";
 import { extractProductMeta } from "./extractMeta.mjs";
 import {
   SMARTSTORE_ANTI_DETECT_INIT,

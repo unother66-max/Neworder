@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SmartstoreSpace {
+  NAVER_PRICE
+  PLUS_STORE
+}
+
 model User {
   id                 String              @id @default(cuid())
   email              String              @unique
@@ -130,6 +135,7 @@ model SmartstoreProduct {
   id             String    @id @default(cuid())
   userId         String
   productId      String
+  space          SmartstoreSpace @default(NAVER_PRICE)
   productUrl     String
   name           String
   category       String?
@@ -148,8 +154,9 @@ model SmartstoreProduct {
   keywords  SmartstoreKeyword[]
   histories SmartstoreRankHistory[]
 
-  @@unique([userId, productId], name: "userId_productId")
+  @@unique([userId, productId, space], name: "userId_productId_space")
   @@index([userId])
+  @@index([userId, space])
 }
 
 model SmartstoreKeyword {

@@ -278,20 +278,11 @@ async function launchBrowser(): Promise<{ browser: Browser; launchLabel: string 
     }
   }
 
-  console.log(`${LOG_PREFIX} launch path: playwright package (local bundled Chromium)`);
-  const { chromium: pwChromium } = await import("playwright");
-  try {
-    const browser = (await pwChromium.launch({
-      headless: true,
-      args: extraArgs,
-    })) as unknown as Browser;
-    console.log(`${LOG_PREFIX} playwright.launch OK`);
-    return { browser, launchLabel: "playwright-bundled" };
-  } catch (e) {
-    const msg = errMsg(e);
-    console.error(`${LOG_PREFIX} STAGE=playwright.launch`, msg);
-    throw new Error(`playwright.launch failed: ${msg}`);
-  }
+  // 로컬 환경에서 playwright 패키지를 사용하던 경로는 제거됨.
+  // (현재 프로젝트는 playwright를 dependency에서 제거했으므로, 이 분기는 실행될 수 없다.)
+  throw new Error(
+    "playwright 패키지가 설치되어 있지 않아 로컬 스냅샷 수집을 실행할 수 없습니다. SMARTSTORE_PLAYWRIGHT_URL(원격 Playwright 서비스)을 설정하거나 메타 수집을 건너뛰세요."
+  );
 }
 
 export async function getSmartstoreProductSnapshot(

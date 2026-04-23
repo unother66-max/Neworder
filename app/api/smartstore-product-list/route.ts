@@ -41,7 +41,7 @@ function formatKoDateTime(d: Date): string {
   });
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
@@ -49,8 +49,19 @@ export async function GET() {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
+    const space = (() => {
+      try {
+        const url = new URL(req.url);
+        const s = String(url.searchParams.get("space") ?? "").trim().toUpperCase();
+        if (s === "PLUS_STORE") return "PLUS_STORE" as const;
+        return "NAVER_PRICE" as const;
+      } catch {
+        return "NAVER_PRICE" as const;
+      }
+    })();
+
     const products = await prisma.smartstoreProduct.findMany({
-      where: { userId },
+      where: { userId, space },
       select: {
         id: true,
         name: true,

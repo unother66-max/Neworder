@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
+import TopNav from "@/components/top-nav";
 import { GripVertical, Pin, Trash2 } from "lucide-react";
 import {
   DndContext,
@@ -22,8 +22,10 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+
+const PLUS_STORE_SVG_SRC = "/download.svg";
+
 const MAX_KEYWORDS = 10;
-const NAVER_PRICE_COMPARE_SVG_SRC = encodeURI("/naver_가격비교.svg");
 /** place 카드와 동일한 ‘이미지 없음’ 자리용 */
 const PRODUCT_CARD_PLACEHOLDER_IMG = "/file.svg";
 
@@ -110,11 +112,52 @@ function ProductCardThumb({
   );
 }
 
-// ─── Page ───────────────────────────────────────────────────────────────────
-
-export default function SmartstoreRankPage() {
+export default function SmartstorePlusStoreRankingTrackPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  const [mounted, setMounted] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [regUrl, setRegUrl] = useState("");
+  const [regError, setRegError] = useState("");
+  const [regSaving, setRegSaving] = useState(false);
+  const [regMetaNotice, setRegMetaNotice] = useState("");
+
+  const [products, setProducts] = useState<SmartstoreProductRow[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [trackingLoadingId, setTrackingLoadingId] = useState<string | null>(null);
+  const [pinningId, setPinningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [fallbackNoticeByProductId, setFallbackNoticeByProductId] = useState<
+    Record<string, boolean>
+  >({});
+
+  const [kwModalProduct, setKwModalProduct] =
+    useState<SmartstoreProductRow | null>(null);
+  const [pendingKeywords, setPendingKeywords] = useState<string[]>([]);
+  const [kwInput, setKwInput] = useState("");
+  const [deletingKwId, setDeletingKwId] = useState<string | null>(null);
+  const [kwSaving, setKwSaving] = useState(false);
+  const [recommendations, setRecommendations] = useState<KeywordRecommendation[]>(
+    []
+  );
+  const [isRecLoading, setIsRecLoading] = useState(false);
+
+  const [searchText, setSearchText] = useState("");
+  const filteredProducts = products.filter((p) => {
+    const st = searchText.trim().toLowerCase();
+    if (!st) return true;
+    if (p.name.toLowerCase().includes(st)) return true;
+    if (p.naverProductId?.includes(st)) return true;
+    if (p.keywords.some((k) => k.keyword.toLowerCase().includes(st)))
+      return true;
+    return false;
+  });
+
+  const [activeDragKeyword, setActiveDragKeyword] = useState<string | null>(
+    null
+  );
 
   const PendingKeywordSortableItem = ({
     kw,
@@ -191,76 +234,118 @@ export default function SmartstoreRankPage() {
     );
   };
 
-  const [mounted, setMounted] = useState(false);
-  const [products, setProducts] = useState<SmartstoreProductRow[]>([]);
-  const [listLoading, setListLoading] = useState(false);
-  const [searchText, setSearchText] = useState("");
-
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [pinningId, setPinningId] = useState<string | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [trackingLoadingId, setTrackingLoadingId] = useState<string | null>(null);
-
-  const [registerOpen, setRegisterOpen] = useState(false);
-  const [regUrl, setRegUrl] = useState("");
-  const [regSaving, setRegSaving] = useState(false);
-  const [regError, setRegError] = useState("");
-  const [regMetaNotice, setRegMetaNotice] = useState("");
-
-  const [kwModalProduct, setKwModalProduct] = useState<SmartstoreProductRow | null>(null);
-  const [kwInput, setKwInput] = useState("");
-  const [pendingKeywords, setPendingKeywords] = useState<string[]>([]);
-  const [deletingKwId, setDeletingKwId] = useState<string | null>(null);
-  const [kwSaving, setKwSaving] = useState(false);
-  const [recommendations, setRecommendations] = useState<KeywordRecommendation[]>([]);
-  const [isRecLoading, setIsRecLoading] = useState(false);
-  const [activeDragKeyword, setActiveDragKeyword] = useState<string | null>(null);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
+    if (!mounted) return;
     if (status === "loading") return;
-    if (!session) router.replace("/login");
-  }, [session, status, router]);
+    if (!session) {
+      router.push("/login");
+    }
+
+    if (session?.user) {
+      fetchProducts({ silent: true });
+    }
+  }, [mounted, session, status, router]);
+
+  const closeRegister = () => {
+    setRegisterOpen(false);
+    setRegUrl("");
+    setRegError("");
+  };
 
   const fetchProducts = useCallback(
-    async (opts?: { silent?: boolean }): Promise<SmartstoreProductRow[]> => {
-      if (!opts?.silent) setListLoading(true);
+    async ({ silent }: { silent?: boolean } = {}) => {
+      if (!silent) setListLoading(true);
       try {
-        const res = await fetch("/api/smartstore-product-list", {
+        const res = await fetch("/api/smartstore-product-list?space=PLUS_STORE", {
           cache: "no-store",
           credentials: "include",
         });
         const data = await res.json();
-        const list: SmartstoreProductRow[] = data.ok ? (data.products ?? []) : [];
-        if (data.ok) setProducts(list);
-        return list;
+        if (!res.ok || !data.ok) {
+          alert(data.error || "상품 목록 불러오기 실패");
+          return;
+        }
+        const list: SmartstoreProductRow[] = Array.isArray(data.products)
+          ? data.products
+          : [];
+        setProducts(list);
       } catch (e) {
-        console.warn("[smartstore] fetchProducts error:", e);
-        return [];
+        console.warn(e);
+        alert("상품 목록 불러오기 중 오류가 발생했습니다.");
       } finally {
-        if (!opts?.silent) setListLoading(false);
+        setListLoading(false);
       }
     },
     []
   );
 
-  useEffect(() => {
-    if (!mounted || !session) return;
-    fetchProducts();
-  }, [mounted, session, fetchProducts]);
+  const handleUpdate = async (p: SmartstoreProductRow) => {
+    if (updatingId) return;
+    const url = p.productUrl?.trim();
+    if (!url) {
+      alert("상품 URL이 없어 업데이트할 수 없어요.");
+      return;
+    }
+    setUpdatingId(p.id);
+    try {
+      const res = await fetch("/api/smartstore-product-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ productUrl: url, space: "PLUS_STORE" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        alert(data.error || "업데이트 실패");
+        return;
+      }
 
-  const q = searchText.trim();
-  const filteredProducts = products.filter((p) => {
-    if (!q) return true;
-    if (p.name.includes(q)) return true;
-    if (p.naverProductId?.includes(q)) return true;
-    if (p.productUrl.includes(q)) return true;
-    if (p.category?.includes(q)) return true;
-    return p.keywords.some((k) => k.keyword.includes(q));
-  });
+      const rankErrors: string[] = [];
+      let rankConfigError: string | null = null;
+      let usedFallback = false;
+      if (p.keywords.length > 0) {
+        for (const kw of p.keywords) {
+          const rr = await fetch("/api/smartstore-keyword-check-rank", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ keywordId: kw.id, maxResults: 1000 }),
+          });
+          const rd = await rr.json().catch(() => ({}));
+          if (!rr.ok) {
+            if (rr.status === 503 && typeof rd.error === "string") {
+              rankConfigError = rd.error;
+              break;
+            }
+            rankErrors.push(`${kw.keyword}: ${rd.error || `HTTP ${rr.status}`}`);
+          } else if (rd?.fallbackUsed === true) {
+            usedFallback = true;
+          }
+        }
+      }
+
+      if (usedFallback) {
+        setFallbackNoticeByProductId((prev) => ({ ...prev, [p.id]: true }));
+      }
+
+      await fetchProducts({ silent: true });
+
+      if (rankConfigError) {
+        alert(`상품 정보는 갱신됐어요.\n\n키워드 순위: ${rankConfigError}`);
+      } else if (rankErrors.length > 0) {
+        const head = rankErrors.slice(0, 4).join("\n");
+        const more = rankErrors.length > 4 ? `\n… 외 ${rankErrors.length - 4}건` : "";
+        alert(`상품 정보는 갱신됐어요.\n\n일부 키워드 순위 조회 실패:\n${head}${more}`);
+      }
+    } catch (e) {
+      console.warn(e);
+      alert("업데이트 중 오류가 발생했습니다.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const handleToggleTracking = async (p: SmartstoreProductRow) => {
     if (trackingLoadingId) return;
@@ -293,65 +378,6 @@ export default function SmartstoreRankPage() {
       console.warn(e);
     } finally {
       setTrackingLoadingId(null);
-    }
-  };
-
-  const handleUpdateProduct = async (p: SmartstoreProductRow) => {
-    if (updatingId) return;
-    const url = p.productUrl?.trim();
-    if (!url) {
-      alert("상품 URL이 없어 업데이트할 수 없어요.");
-      return;
-    }
-    setUpdatingId(p.id);
-    try {
-      const res = await fetch("/api/smartstore-product-save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ productUrl: url }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        alert(data.error || "업데이트 실패");
-        return;
-      }
-
-      const rankErrors: string[] = [];
-      let rankConfigError: string | null = null;
-      if (p.keywords.length > 0) {
-        for (const kw of p.keywords) {
-          const rr = await fetch("/api/smartstore-keyword-check-rank", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ keywordId: kw.id, maxResults: 1000 }),
-          });
-          const rd = await rr.json().catch(() => ({}));
-          if (!rr.ok) {
-            if (rr.status === 503 && typeof rd.error === "string") {
-              rankConfigError = rd.error;
-              break;
-            }
-            rankErrors.push(`${kw.keyword}: ${rd.error || `HTTP ${rr.status}`}`);
-          }
-        }
-      }
-
-      await fetchProducts({ silent: true });
-
-      if (rankConfigError) {
-        alert(`상품 정보는 갱신됐어요.\n\n키워드 순위: ${rankConfigError}`);
-      } else if (rankErrors.length > 0) {
-        const head = rankErrors.slice(0, 4).join("\n");
-        const more = rankErrors.length > 4 ? `\n… 외 ${rankErrors.length - 4}건` : "";
-        alert(`상품 정보는 갱신됐어요.\n\n일부 키워드 순위 조회 실패:\n${head}${more}`);
-      }
-    } catch (e) {
-      console.warn(e);
-      alert("업데이트 중 오류가 발생했습니다.");
-    } finally {
-      setUpdatingId(null);
     }
   };
 
@@ -401,51 +427,6 @@ export default function SmartstoreRankPage() {
     }
   };
 
-  const closeRegister = () => {
-    setRegisterOpen(false);
-    setRegUrl("");
-    setRegError("");
-  };
-
-  const handleRegisterSave = async () => {
-    if (regSaving) return;
-
-    const url = regUrl.trim();
-    if (!url) {
-      setRegError("상품 URL을 입력해주세요.");
-      return;
-    }
-
-    setRegSaving(true);
-    setRegError("");
-
-    try {
-      const saveRes = await fetch("/api/smartstore-product-save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          productUrl: url,
-        }),
-      });
-
-      const data = await saveRes.json();
-
-      if (!data.ok) {
-        setRegError(data.error || "등록 실패");
-        return;
-      }
-
-      closeRegister();
-      await fetchProducts();
-    } catch (e) {
-      console.warn(e);
-      setRegError("등록 중 오류가 발생했습니다.");
-    } finally {
-      setRegSaving(false);
-    }
-  };
-
   const openKwModal = async (p: SmartstoreProductRow) => {
     setKwModalProduct(p);
     setPendingKeywords(p.keywords.map((k) => k.keyword));
@@ -454,10 +435,13 @@ export default function SmartstoreRankPage() {
     setRecommendations([]);
     setIsRecLoading(true);
     try {
-      const res = await fetch(`/api/smartstore-keyword-recommend?productId=${p.id}`, {
-        cache: "no-store",
-        credentials: "include",
-      });
+      const res = await fetch(
+        `/api/smartstore-keyword-recommend?productId=${p.id}`,
+        {
+          cache: "no-store",
+          credentials: "include",
+        }
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
         console.warn("[smartstore] keyword recommend error:", data?.error || res.status);
@@ -517,45 +501,14 @@ export default function SmartstoreRankPage() {
       setPendingKeywords((prev) => prev.filter((k) => k !== kw));
       return;
     }
-
-    setPendingKeywords((prev) => {
-      if (prev.includes(kw)) return prev;
-      if (prev.length >= MAX_KEYWORDS) {
-        alert(`키워드는 상품당 최대 ${MAX_KEYWORDS}개까지 등록할 수 있어요.`);
-        return prev;
-      }
-      return [...prev, kw];
-    });
+    if (pendingKeywords.length >= MAX_KEYWORDS) {
+      alert(`키워드는 상품당 최대 ${MAX_KEYWORDS}개까지 등록할 수 있어요.`);
+      return;
+    }
+    setPendingKeywords((prev) => [...prev, kw]);
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    })
-  );
-
-  const handlePendingDragStart = (event: DragStartEvent) => {
-    setActiveDragKeyword(String(event.active.id));
-  };
-
-  const handlePendingDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveDragKeyword(null);
-    if (!over) return;
-    if (active.id === over.id) return;
-    setPendingKeywords((items) => {
-      const oldIndex = items.indexOf(String(active.id));
-      const newIndex = items.indexOf(String(over.id));
-      if (oldIndex < 0 || newIndex < 0) return items;
-      return arrayMove(items, oldIndex, newIndex);
-    });
-  };
-
-  const handlePendingDragCancel = () => {
-    setActiveDragKeyword(null);
-  };
-
-  const saveKeywords = async () => {
+  const handleSaveKeywords = async () => {
     if (!kwModalProduct || kwSaving) return;
     setKwSaving(true);
     try {
@@ -599,10 +552,72 @@ export default function SmartstoreRankPage() {
     }
   };
 
+  const dndSensors = useSensors(useSensor(PointerSensor));
+
+  const handlePendingDragStart = (event: DragStartEvent) => {
+    setActiveDragKeyword(String(event.active.id));
+  };
+
+  const handlePendingDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragKeyword(null);
+    if (!over) return;
+    if (active.id === over.id) return;
+    setPendingKeywords((items) => {
+      const oldIndex = items.indexOf(String(active.id));
+      const newIndex = items.indexOf(String(over.id));
+      if (oldIndex < 0 || newIndex < 0) return items;
+      return arrayMove(items, oldIndex, newIndex);
+    });
+  };
+
+  const handlePendingDragCancel = () => {
+    setActiveDragKeyword(null);
+  };
+
+  const handleRegisterSave = async () => {
+    if (regSaving) return;
+
+    const url = regUrl.trim();
+    if (!url) {
+      setRegError("상품 URL을 입력해주세요.");
+      return;
+    }
+
+    setRegSaving(true);
+    setRegError("");
+
+    try {
+      const saveRes = await fetch("/api/smartstore-product-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ productUrl: url, space: "PLUS_STORE" }),
+      });
+
+      const data = await saveRes.json();
+
+      if (!saveRes.ok || !data?.ok) {
+        setRegError(data?.error || "등록 실패");
+        return;
+      }
+
+      closeRegister();
+      setRegMetaNotice(
+        "상품이 등록됐어요. 목록/키워드 관리는 ‘플러스토어’ 페이지에서 이어서 할 수 있어요."
+      );
+    } catch (e) {
+      console.warn(e);
+      setRegError("등록 중 오류가 발생했습니다.");
+    } finally {
+      setRegSaving(false);
+    }
+  };
+
   if (!mounted || status === "loading") {
     return (
       <>
-        <TopNav activeSmartstoreSub="rank-naver-price" />
+        <TopNav activeSmartstoreSub="rank-plus-store" />
         <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9]">
           <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
         </main>
@@ -613,7 +628,7 @@ export default function SmartstoreRankPage() {
   if (!session) {
     return (
       <>
-        <TopNav activeSmartstoreSub="rank-naver-price" />
+        <TopNav activeSmartstoreSub="rank-plus-store" />
         <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9]">
           <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
         </main>
@@ -623,7 +638,7 @@ export default function SmartstoreRankPage() {
 
   return (
     <>
-      <TopNav activeSmartstoreSub="rank-naver-price" />
+      <TopNav activeSmartstoreSub="rank-plus-store" />
       <main className="min-h-screen bg-[#f4f4f5] text-[#111111]">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
@@ -634,35 +649,23 @@ export default function SmartstoreRankPage() {
                     상품 순위 추적
                   </h1>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f3f4f6] px-2 py-1">
-                    <span className="text-[11px] font-black text-[#03c75a]">N</span>
+                    <span className="text-[11px] font-black text-[#b91c1c]">+</span>
                     <img
-                      src={NAVER_PRICE_COMPARE_SVG_SRC}
-                      alt="가격비교"
-                      width={78}
+                      src={PLUS_STORE_SVG_SRC}
+                      alt="플러스토어"
+                      width={79}
                       height={16}
                       className="h-4 w-auto"
                     />
                   </span>
                 </div>
                 <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
-                  스마트스토어 상품의 가격비교 키워드 순위를 추적합니다. 키워드 등록 시 월 검색량을
-                  조회하고, 검색 순위 수집은 추후 연동됩니다.
+                  플러스토어 상품의 노출 순위를 추적하기 위한 페이지입니다. 상품을 등록해 두면 이후 순위 수집 기능과
+                  연동됩니다.
                 </p>
               </div>
 
               <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-center">
-             <div className="relative w-full sm:w-[320px]">
-  <input
-    type="text"
-    value={searchText}
-    onChange={(e) => setSearchText(e.target.value)}
-    placeholder="상품명, 상품 ID, 키워드 검색"
-    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
-  />
-  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280]">
-    🔍
-  </div>
-</div>
                 <button
                   type="button"
                   onClick={() => {
@@ -683,32 +686,25 @@ export default function SmartstoreRankPage() {
                     등록된 상품
                   </h2>
                   <span className="rounded-full border border-[#e5e7eb] bg-[#fafafa] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
-                    상품 관리
-                  </span>
-                  <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
-                    {filteredProducts.length}개
+                    플러스토어
                   </span>
                 </div>
-                <p className="mt-2 text-[12px] text-[#6b7280]">
-                  {listLoading ? "상품 목록 불러오는 중..." : "가격비교 키워드 순위 추적"}
-                </p>
+                <p className="mt-2 text-[12px] text-[#6b7280]">현재는 레이아웃만 먼저 적용되어 있어요. (기능 연동 예정)</p>
               </div>
-              <div className="text-[11px] text-[#9ca3af]">
-                * 검색 순위는 각 상품 「업데이트」로 갱신됩니다. 월 검색량은 키워드 저장 시 조회됩니다.
-              </div>
+              <div className="text-[11px] text-[#9ca3af]">* 상품 등록은 기존 스마트스토어 저장 API를 사용합니다.</div>
             </div>
           </div>
 
           {regMetaNotice ? (
             <div
               role="status"
-              className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950"
+              className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#ddd6fe] bg-[#f5f3ff] px-4 py-3 text-[13px] text-[#2e1065]"
             >
               <span className="min-w-0">{regMetaNotice}</span>
               <button
                 type="button"
                 onClick={() => setRegMetaNotice("")}
-                className="shrink-0 rounded-[10px] px-3 py-1.5 text-[12px] font-bold text-amber-900 hover:bg-amber-100"
+                className="shrink-0 rounded-[10px] px-3 py-1.5 text-[12px] font-bold text-[#5b21b6] hover:bg-[#ede9fe]"
               >
                 닫기
               </button>
@@ -724,7 +720,7 @@ export default function SmartstoreRankPage() {
               <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
                 <p className="text-[18px] font-bold text-[#111827]">아직 등록된 상품이 없어요</p>
                 <p className="mt-2 text-[14px] text-[#9ca3af]">
-                  상단의 상품 등록 버튼으로 스마트스토어 상품 URL을 추가해보세요.
+                  상단의 상품 등록 버튼으로 플러스토어 상품 URL을 추가해보세요.
                 </p>
               </div>
             ) : (
@@ -794,7 +790,7 @@ export default function SmartstoreRankPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleUpdateProduct(p)}
+                          onClick={() => handleUpdate(p)}
                           disabled={updatingId === p.id}
                           className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60`}
                         >
@@ -824,6 +820,12 @@ export default function SmartstoreRankPage() {
                               ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
                               : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
                           } ${trackingLoadingId === p.id ? "opacity-60" : ""}`}
+                          aria-label={
+                            trackingLoadingId === p.id
+                              ? "자동추적 변경 중"
+                              : `자동추적 ${p.isAutoTracking ? "ON" : "OFF"}`
+                          }
+                          title="자동추적 ON이면 키워드도 함께 추적됩니다."
                         >
                           {trackingLoadingId === p.id
                             ? "처리 중..."
@@ -912,9 +914,19 @@ export default function SmartstoreRankPage() {
                                   >
                                     {kw.latestRankLabel}
                                   </span>
+                                  {fallbackNoticeByProductId[p.id] ? (
+                                    <span
+                                      className="ml-1 text-[10px] font-semibold text-[#9ca3af]"
+                                      title="플러스스토어 전용 조회가 차단되어 일반 쇼핑 검색 순위로 대체되었습니다."
+                                    >
+                                      (일반 검색 기준)
+                                    </span>
+                                  ) : null}
                                   {kw.latestRankAt && (
                                     <p className="text-[10px] text-[#9ca3af]">
-                                      {new Date(kw.latestRankAt).toLocaleString("ko-KR")}
+                                      {new Date(kw.latestRankAt).toLocaleString(
+                                        "ko-KR"
+                                      )}
                                     </p>
                                   )}
                                 </td>
@@ -926,7 +938,9 @@ export default function SmartstoreRankPage() {
                     </div>
                     <p className="mt-2 text-right text-[11px] text-[#9ca3af]">
                       최근 업데이트:{" "}
-                      <span className="font-semibold text-[#6b7280]">{p.latestUpdatedAt || "-"}</span>
+                      <span className="font-semibold text-[#6b7280]">
+                        {p.latestUpdatedAt || "-"}
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -951,58 +965,10 @@ export default function SmartstoreRankPage() {
             </div>
             <div className="px-6 py-5">
               <p className="text-[13px] leading-relaxed text-[#6b7280]">
-                추적할 스마트스토어·브랜드스토어 상품 페이지 주소를 입력하세요. 브라우저 주소창의{" "}
-                <span className="font-bold text-[#374151]">상품 상세 URL</span>을 붙여넣으면 됩니다.
+                상품 URL을 입력 후, 등록 버튼을 눌러주세요.
               </p>
 
-              <div className="mt-4 rounded-[16px] border border-[#eef2f7] bg-[#f9fafb] px-4 py-3">
-                <p className="text-[12px] font-extrabold text-[#4b5563]">
-                  상품 URL 형식{" "}
-                  <span className="font-bold text-[#6b7280]">
-                    (상점ID와 상품ID를 꼭 포함하여 추가해주세요.)
-                  </span>
-                </p>
-                <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-[#6b7280]">
-                  <li className="flex gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                    <span>
-                      일반 상품:{" "}
-                      <span className="font-semibold text-[#374151]">
-                        http://smartstore.naver.com/
-                        <span className="text-[#7c3aed]">상점ID</span>/products/
-                        <span className="text-[#7c3aed]">상품ID</span>?..
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                    <span>
-                      브랜드 상품:{" "}
-                      <span className="font-semibold text-[#374151]">
-                        http://brand.naver.com/
-                        <span className="text-[#7c3aed]">상점ID</span>/products/
-                        <span className="text-[#7c3aed]">상품ID</span>?..
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                    <span>
-                      윈도우 상품:{" "}
-                      <span className="font-semibold text-[#374151]">
-                        http://shopping.naver.com/window-products/
-                        <span className="text-[#7c3aed]">카테고리</span>/
-                        <span className="text-[#7c3aed]">상품ID</span>?..
-                      </span>
-                    </span>
-                  </li>
-                </ul>
-                <p className="mt-2 text-[11px] font-semibold text-[#6b7280]">
-                  * 성인상품 중 ‘윈도우 상품’은 등록할 수 없으며, 일반·브랜드 성인상품만 등록 가능합니다.
-                </p>
-              </div>
-
-              <label className="mt-4 block text-[12px] font-bold text-[#4b5563]">상품 URL</label>
+              <label className="mt-4 block text-[12px] font-bold text-[#4b5563]">상품 URL *</label>
               <input
                 type="url"
                 value={regUrl}
@@ -1011,6 +977,46 @@ export default function SmartstoreRankPage() {
                 placeholder="https://smartstore.naver.com/…/products/1234567890"
                 className="mt-2 w-full rounded-[12px] border border-[#e5e7eb] px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
               />
+
+              <p className="mt-3 text-[12px] font-bold text-[#6b7280]">
+                상품 URL 형식 (상점ID와 상품ID를 꼭 포함하여 추가해주세요.)
+              </p>
+              <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-[#6b7280]">
+                <li className="flex gap-2">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                  <span>
+                    일반 상품:{" "}
+                    <span className="font-semibold text-[#374151]">
+                      http://smartstore.naver.com/<span className="text-[#b91c1c]">상점ID</span>
+                      /products/<span className="text-[#b91c1c]">상품ID</span>?..
+                    </span>
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                  <span>
+                    브랜드 상품:{" "}
+                    <span className="font-semibold text-[#374151]">
+                      http://brand.naver.com/<span className="text-[#b91c1c]">상점ID</span>
+                      /products/<span className="text-[#b91c1c]">상품ID</span>?..
+                    </span>
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                  <span>
+                    윈도우 상품:{" "}
+                    <span className="font-semibold text-[#374151]">
+                      http://shopping.naver.com/window-products/<span className="text-[#b91c1c]">카테고리</span>
+                      /<span className="text-[#b91c1c]">상품ID</span>?..
+                    </span>
+                  </span>
+                </li>
+              </ul>
+              <p className="mt-2 text-[11px] font-semibold text-[#6b7280]">
+                * 성인상품 중 ‘윈도우 상품’은 등록할 수 없으며, 일반·브랜드 성인상품만 등록 가능합니다.
+              </p>
+
               {regError && <p className="mt-2 text-[13px] text-[#dc2626]">{regError}</p>}
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
@@ -1101,151 +1107,137 @@ export default function SmartstoreRankPage() {
                 ) : (
                   <div className="mt-3 max-h-[220px] overflow-y-auto">
                     <div className="flex flex-wrap gap-2">
-                      {recommendations.map((rec, idx) => {
-                      const kw = String(rec.keyword ?? "").trim();
-                      if (!kw) return null;
-                      const savedSet = new Set(kwModalProduct.keywords.map((k) => k.keyword));
-                      const isSaved = savedSet.has(kw);
-                      const checked = pendingKeywords.includes(kw);
-                      const vol = Number(rec.monthlyVolume ?? 0) || 0;
-                      const volTone =
-                        vol >= 10000
-                          ? "text-[#2563eb] bg-[#eff6ff] border-[#bfdbfe]"
-                          : vol >= 1000
-                            ? "text-[#16a34a] bg-[#f0fdf4] border-[#bbf7d0]"
-                            : "text-[#6b7280] bg-[#f3f4f6] border-[#e5e7eb]";
-                      const baseCls =
-                        "inline-flex items-center gap-2 rounded-full border bg-white px-3 py-2 text-left transition active:scale-95";
-                      return (
-                        <button
-                          type="button"
-                          key={`${kw}-${idx}`}
-                          disabled={isSaved}
-                          onClick={() => toggleRecommendedKeyword(kw, !checked)}
-                          className={`${baseCls} ${
-                            isSaved
-                              ? "cursor-not-allowed border-[#e5e7eb] opacity-60"
-                              : checked
-                                ? "border-[#111827] ring-1 ring-[#111827]/10"
-                                : "border-[#e5e7eb] hover:border-[#d1d5db] hover:bg-[#fafafa]"
-                          }`}
-                        >
-                          <span className="text-[12px] font-semibold text-[#111827]">{kw}</span>
-                          <span
-                            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${volTone}`}
+                      {recommendations.map((rec) => {
+                        const kw = String(rec.keyword ?? "").trim();
+                        if (!kw) return null;
+                        const savedSet = new Set(
+                          kwModalProduct.keywords.map((k) => k.keyword)
+                        );
+                        const isSaved = savedSet.has(kw);
+                        const checked = pendingKeywords.includes(kw);
+                        const vol = Number(rec.monthlyVolume ?? 0) || 0;
+                        const volTone =
+                          vol >= 10000
+                            ? "text-[#b91c1c] bg-[#fff1f2] border-[#fecdd3]"
+                            : vol >= 3000
+                              ? "text-[#2563eb] bg-[#eff6ff] border-[#bfdbfe]"
+                              : "text-[#6b7280] bg-[#f3f4f6] border-[#e5e7eb]";
+                        const baseCls =
+                          "inline-flex cursor-pointer select-none items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-extrabold transition shadow-[0_1px_0_rgba(15,23,42,0.06)] hover:-translate-y-[0.5px] hover:shadow-[0_6px_18px_rgba(15,23,42,0.08)]";
+                        const savedCls =
+                          "border-[#e5e7eb] bg-white text-[#9ca3af] hover:bg-white hover:shadow-none hover:translate-y-0";
+
+                        if (isSaved) {
+                          return (
+                            <span
+                              key={kw}
+                              className={`${baseCls} ${savedCls}`}
+                            >
+                              {kw} (<span className="text-[10px]">추적 중</span>)
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <label
+                            key={kw}
+                            className={`${baseCls} ${checked ? volTone : savedCls}`}
                           >
-                            월 검색량 {fmtVolume(vol)}
-                          </span>
-                          {isSaved ? (
-                            <span className="shrink-0 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#6b7280]">
-                              등록됨
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) =>
+                                toggleRecommendedKeyword(kw, e.target.checked)
+                              }
+                              className="sr-only"
+                            />
+                            <span>
+                              {kw} ({fmtVolume(vol)})
                             </span>
-                          ) : checked ? (
-                            <span className="shrink-0 rounded-full bg-[#111827] px-2 py-0.5 text-[10px] font-bold text-white">
-                              선택
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </div>
 
               <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
-                <p className="text-[13px] font-bold text-[#4b5563]">직접 키워드 추가</p>
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[13px] font-bold text-[#4b5563]">내 키워드 목록</p>
+                  <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] font-bold text-[#4b5563]">
+                    {pendingKeywords.length}개
+                  </span>
+                </div>
+
+                <div className="mt-3 rounded-[14px] border border-[#e5e7eb] bg-white p-4">
                   <input
                     type="text"
                     value={kwInput}
                     onChange={(e) => setKwInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addDirectKeywords()}
-                    placeholder="쉼표(,)로 여러 개 입력 가능"
-                    className="h-[42px] flex-1 rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[13px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                    placeholder="키워드 직접 추가 (쉼표로 구분)"
+                    className="h-[38px] w-full rounded-[10px] border border-[#e5e7eb] px-4 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-[#fafafa]"
                   />
+                  {pendingKeywords.length === 0 ? (
+                    <div className="mt-3 rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-6 text-center text-[12px] text-[#9ca3af]">
+                      등록할 키워드가 없습니다.
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      <DndContext
+                        sensors={dndSensors}
+                        collisionDetection={closestCenter}
+                        onDragStart={handlePendingDragStart}
+                        onDragEnd={handlePendingDragEnd}
+                        onDragCancel={handlePendingDragCancel}
+                      >
+                        <SortableContext
+                          items={pendingKeywords}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {pendingKeywords.map((kw) => (
+                            <PendingKeywordSortableItem
+                              key={kw}
+                              kw={kw}
+                              kwModalProduct={kwModalProduct}
+                              recommendations={recommendations}
+                              removePendingKeyword={removePendingKeyword}
+                            />
+                          ))}
+                        </SortableContext>
+                        <DragOverlay>
+                          {activeDragKeyword ? (
+                            <PendingKeywordSortableItem
+                              kw={activeDragKeyword}
+                              kwModalProduct={kwModalProduct}
+                              recommendations={recommendations}
+                              removePendingKeyword={removePendingKeyword}
+                            />
+                          ) : null}
+                        </DragOverlay>
+                      </DndContext>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
                     type="button"
-                    onClick={addDirectKeywords}
-                    className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[13px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                    onClick={closeKwModal}
+                    className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
                   >
-                    추가
+                    닫기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveKeywords}
+                    disabled={kwSaving}
+                    className="h-[46px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] disabled:opacity-60"
+                  >
+                    {kwSaving ? "저장 중..." : "저장"}
                   </button>
                 </div>
-              </div>
-
-              <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[13px] font-bold text-[#4b5563]">키워드 순서변경</p>
-                  <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] font-bold text-[#4b5563]">
-                    {pendingKeywords.length}개
-                  </span>
-                </div>
-                {pendingKeywords.length === 0 ? (
-                  <div className="mt-3 flex h-[80px] items-center justify-center rounded-[14px] border border-dashed border-[#e5e7eb] text-[13px] text-[#9ca3af]">
-                    추가된 키워드가 없습니다.
-                  </div>
-                ) : (
-                  <div
-                    id="keyword-scroll-container"
-                    className="mt-3 max-h-[300px] overflow-y-auto pr-1"
-                    style={{ position: "relative" }}
-                  >
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragStart={handlePendingDragStart}
-                      onDragEnd={handlePendingDragEnd}
-                      onDragCancel={handlePendingDragCancel}
-                    >
-                      <SortableContext
-                        items={pendingKeywords}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {pendingKeywords.map((kw) => (
-                          <PendingKeywordSortableItem
-                            key={kw}
-                            kw={kw}
-                            kwModalProduct={kwModalProduct}
-                            recommendations={recommendations}
-                            removePendingKeyword={removePendingKeyword}
-                          />
-                        ))}
-                      </SortableContext>
-                      <DragOverlay dropAnimation={null}>
-                        {activeDragKeyword ? (
-                          <div className="flex items-center gap-3 rounded-[12px] border border-[#e5e7eb] bg-white p-3 shadow-md">
-                            <GripVertical size={16} className="text-[#9ca3af]" />
-                            <span className="text-[14px] font-medium text-[#374151]">
-                              {activeDragKeyword}
-                            </span>
-                          </div>
-                        ) : null}
-                      </DragOverlay>
-                    </DndContext>
-                  </div>
-                )}
-              </div>
-
-            </div>
-
-            <div className="border-t border-[#f3f4f6] bg-[#fcfcfc] px-6 py-4">
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeKwModal}
-                  className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={saveKeywords}
-                  disabled={kwSaving || pendingKeywords.length === 0}
-                  className="h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60"
-                >
-                  {kwSaving ? "저장 중..." : "키워드 저장"}
-                </button>
               </div>
             </div>
           </div>
@@ -1254,3 +1246,4 @@ export default function SmartstoreRankPage() {
     </>
   );
 }
+
