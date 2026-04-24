@@ -121,7 +121,6 @@ export default function SmartstorePlusStoreRankingTrackPage() {
   const [regUrl, setRegUrl] = useState("");
   const [regError, setRegError] = useState("");
   const [regSaving, setRegSaving] = useState(false);
-  const [regMetaNotice, setRegMetaNotice] = useState("");
 
   const [products, setProducts] = useState<SmartstoreProductRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
@@ -603,9 +602,8 @@ export default function SmartstorePlusStoreRankingTrackPage() {
       }
 
       closeRegister();
-      setRegMetaNotice(
-        "상품이 등록됐어요. 목록/키워드 관리는 ‘플러스토어’ 페이지에서 이어서 할 수 있어요."
-      );
+      await fetchProducts({ silent: true });
+      router.refresh();
     } catch (e) {
       console.warn(e);
       setRegError("등록 중 오류가 발생했습니다.");
@@ -669,7 +667,6 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setRegMetaNotice("");
                     setRegisterOpen(true);
                   }}
                   className="h-[44px] min-w-[108px] rounded-[14px] bg-[#b91c1c] px-4 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
@@ -694,22 +691,6 @@ export default function SmartstorePlusStoreRankingTrackPage() {
               <div className="text-[11px] text-[#9ca3af]">* 상품 등록은 기존 스마트스토어 저장 API를 사용합니다.</div>
             </div>
           </div>
-
-          {regMetaNotice ? (
-            <div
-              role="status"
-              className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#ddd6fe] bg-[#f5f3ff] px-4 py-3 text-[13px] text-[#2e1065]"
-            >
-              <span className="min-w-0">{regMetaNotice}</span>
-              <button
-                type="button"
-                onClick={() => setRegMetaNotice("")}
-                className="shrink-0 rounded-[10px] px-3 py-1.5 text-[12px] font-bold text-[#5b21b6] hover:bg-[#ede9fe]"
-              >
-                닫기
-              </button>
-            </div>
-          ) : null}
 
           <div className="mt-5 space-y-4">
             {listLoading ? (
