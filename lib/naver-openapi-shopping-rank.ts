@@ -1,3 +1,9 @@
+import {
+  cooldownOn429,
+  randomSmartstoreDelay,
+  SmartstoreNaverRateLimitedError,
+} from "@/lib/smartstore-bot-shield";
+
 /**
  * 네이버 검색 오픈 API — 쇼핑(shop.json) 기준 순위.
  * - 내부 search.shopping.naver.com JSON 은 비브라우저·데이터센터 IP에서 자주 차단됨 → 공식 API 사용.
@@ -136,6 +142,10 @@ export async function findProductRankViaNaverShopOpenApi(
 
     console.log("[naver-openapi-shopping-rank] 요청", { start, display, keyword: kw });
 
+    if (space === "PLUS_STORE") {
+      await randomSmartstoreDelay("ranking");
+    }
+
     const res = await fetch(url, {
       headers: {
         "X-Naver-Client-Id": clientId,
@@ -144,6 +154,11 @@ export async function findProductRankViaNaverShopOpenApi(
       },
       cache: "no-store",
     });
+
+    if (space === "PLUS_STORE" && res.status === 429) {
+      await cooldownOn429();
+      throw new SmartstoreNaverRateLimitedError(`네이버 쇼핑 API 오류 (HTTP 429)`);
+    }
 
     const rawText = await res.text();
     let data: { total?: number; items?: ShopItem[] };

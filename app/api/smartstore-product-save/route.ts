@@ -21,6 +21,7 @@ import {
   isLikelySmartstoreProductUrl,
 } from "@/lib/smartstore-url";
 import { isSuspiciousSmartstoreMetaName } from "@/lib/smartstore-meta-guard";
+import { isSmartstoreNaverRateLimitedError } from "@/lib/smartstore-bot-shield";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -267,6 +268,9 @@ export async function POST(req: Request) {
             });
           }
         } catch (e) {
+          if (isSmartstoreNaverRateLimitedError(e)) {
+            throw e;
+          }
           console.error(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 실패`, e);
         }
       }
@@ -475,6 +479,12 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[smartstore-product-save]", e);
+    if (isSmartstoreNaverRateLimitedError(e)) {
+      return NextResponse.json(
+        { ok: false, error: e.message },
+        { status: 429 }
+      );
+    }
     return NextResponse.json(
       { error: "상품 등록 중 오류가 발생했습니다." },
       { status: 500 }

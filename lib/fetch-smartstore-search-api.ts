@@ -1,3 +1,9 @@
+import {
+  cooldownOn429,
+  randomSmartstoreDelay,
+  SmartstoreNaverRateLimitedError,
+} from "@/lib/smartstore-bot-shield";
+
 /**
  * 스마트스토어 일반 상품 전용: 공식 네이버 쇼핑 검색 API(shop.json)로 최소 메타 보강.
  * brand.naver.com 경로에서는 호출하지 않음(호출부에서 분기).
@@ -314,6 +320,7 @@ async function fetchShopPage(
   if (!q) return [];
   const url =
     `${SHOP_API}?query=${encodeURIComponent(q)}&display=${MAX_DISPLAY}&start=1&sort=sim`;
+  await randomSmartstoreDelay("save");
   const res = await fetch(url, {
     signal,
     headers: {
@@ -323,6 +330,12 @@ async function fetchShopPage(
     },
     cache: "no-store",
   });
+  if (res.status === 429) {
+    await cooldownOn429();
+    throw new SmartstoreNaverRateLimitedError(
+      `네이버 쇼핑 검색 API가 일시적으로 제한(HTTP 429)되었습니다.`
+    );
+  }
   const rawText = await res.text();
   let data: { items?: ShopJsonItem[] };
   try {

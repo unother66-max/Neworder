@@ -1,3 +1,9 @@
+import {
+  cooldownOn429,
+  randomSmartstoreDelay,
+  SmartstoreNaverRateLimitedError,
+} from "@/lib/smartstore-bot-shield";
+
 /**
  * 스마트스토어 상품 메타(name / imageUrl / category)를 **별도 Playwright HTTP 서버**에서 가져올 때 사용.
  * 맥에서 서버 실행 + Cloudflare Tunnel 공개 URL을 Vercel의 SMARTSTORE_PLAYWRIGHT_URL 로 두고 호출하는 전제.
@@ -75,6 +81,7 @@ export async function fetchSmartstoreMetaFromPlaywrightService(
 
   let res: Response;
   try {
+    await randomSmartstoreDelay("save");
     res = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -102,6 +109,13 @@ export async function fetchSmartstoreMetaFromPlaywrightService(
     throw new Error(`Playwright 서버 연결 실패: ${msg}`);
   } finally {
     clearTimeout(t);
+  }
+
+  if (res.status === 429) {
+    await cooldownOn429();
+    throw new SmartstoreNaverRateLimitedError(
+      `Playwright 서버가 네이버 측 제한(HTTP 429)을 보고했습니다.`
+    );
   }
 
   let json: ExtractResponseJson;

@@ -1,4 +1,9 @@
 import * as cheerio from "cheerio";
+import {
+  cooldownOn429,
+  randomSmartstoreDelay,
+  SmartstoreNaverRateLimitedError,
+} from "@/lib/smartstore-bot-shield";
 
 export type NaverShoppingNextDataRankResult = {
   source: "naver_shopping_next_data";
@@ -145,6 +150,8 @@ export async function findProductRankViaNaverShoppingNextData(opts: {
 
   const url = `https://search.shopping.naver.com/ns/search?query=${encodeURIComponent(keyword)}`;
 
+  await randomSmartstoreDelay("ranking");
+
   const res = await fetch(url, {
     headers: {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -153,6 +160,13 @@ export async function findProductRankViaNaverShoppingNextData(opts: {
     },
     cache: "no-store",
   });
+
+  if (res.status === 429) {
+    await cooldownOn429();
+    throw new SmartstoreNaverRateLimitedError(
+      `네이버 쇼핑 HTML 응답 오류 (HTTP 429)`
+    );
+  }
 
   const html = await res.text();
   if (!res.ok) {

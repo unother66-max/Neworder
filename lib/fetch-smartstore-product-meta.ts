@@ -1,3 +1,9 @@
+import {
+  cooldownOn429,
+  randomSmartstoreDelay,
+  SmartstoreNaverRateLimitedError,
+} from "@/lib/smartstore-bot-shield";
+
 /**
  * 네이버 스마트스토어·브랜드스토어 상품 상세 JSON API (HTML 없음).
  * 브라우저와 동일하게 `channelUid` 경로를 쓰기 위해 슬러그로 채널 메타를 조회한 뒤
@@ -218,12 +224,19 @@ async function tryResolveBrandChannelUidBySlug(
   for (const metaUrl of candidates) {
     try {
       const headers = buildNaverMetaFetchHeaders(productPageUrl, metaUrl, headerMode);
+      await randomSmartstoreDelay("save");
       const res = await fetch(metaUrl, {
         signal,
         redirect: "follow",
         headers,
         cache: "no-store",
       });
+      if (res.status === 429) {
+        await cooldownOn429();
+        throw new SmartstoreNaverRateLimitedError(
+          `네이버 채널 메타 조회가 일시적으로 제한(HTTP 429)되었습니다.`
+        );
+      }
       if (!res.ok) continue;
       const text = await res.text();
       if (!text.trim().startsWith("{")) continue;
@@ -539,6 +552,7 @@ async function fetchSmartstoreProductCore(
 
         const requestHeaders = buildNaverMetaFetchHeaders(normalized, apiUrl, headerMode);
 
+        await randomSmartstoreDelay("save");
         const apiRes = await fetch(apiUrl, {
           signal,
           redirect: "follow",
@@ -577,6 +591,10 @@ async function fetchSmartstoreProductCore(
               apiHeadSample.length > 0 ? apiHeadSample : "(빈 본문)",
             responseHeaders,
           });
+          await cooldownOn429();
+          throw new SmartstoreNaverRateLimitedError(
+            `네이버 상품 API가 일시적으로 제한(HTTP 429)되었습니다.`
+          );
         }
 
         if (apiRes.status !== 200) {
