@@ -13,11 +13,12 @@ enum SmartstoreSpace {
 }
 
 model User {
-  id                 String              @id @default(cuid())
-  email              String              @unique
-  name               String?
-  places             Place[]
-  smartstoreProducts SmartstoreProduct[]
+  id                      String                   @id @default(cuid())
+  email                   String                   @unique
+  name                    String?
+  places                  Place[]
+  smartstoreProducts      SmartstoreProduct[]
+  smartstoreReviewTargets SmartstoreReviewTarget[]
 }
 
 model Track {
@@ -132,31 +133,100 @@ model PlaceReviewHistory {
 
 //// 스마트스토어 가격비교 순위 추적 (Place / Kakao와 분리)
 model SmartstoreProduct {
-  id             String    @id @default(cuid())
-  userId         String
-  productId      String
-  space          SmartstoreSpace @default(NAVER_PRICE)
-  productUrl     String
-  name           String
-  category       String?
+  id            String          @id @default(cuid())
+  userId        String
+  productId     String
+  space         SmartstoreSpace @default(NAVER_PRICE)
+  productUrl    String
+  name          String
+  category      String?
   // 네이버 상품 API: representImage.url · productImages 등에서 추출한 대표 썸네일
-  thumbnailLink  String?
+  thumbnailLink String?
   // 목록·카드 UI 호환 (thumbnailLink와 동일 값으로 유지)
-  imageUrl       String?
-  mallName       String?
-  rankPinned     Boolean   @default(false)
-  rankPinnedAt   DateTime?
-  autoTracking   Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  imageUrl      String?
+  mallName      String?
+  sellerTags    String[]        @default([])
+  rankPinned    Boolean         @default(false)
+  rankPinnedAt  DateTime?
+  autoTracking  Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   keywords  SmartstoreKeyword[]
   histories SmartstoreRankHistory[]
 
-  @@unique([userId, productId, space], name: "userId_productId_space")
+  @@unique([userId, productId, space])
   @@index([userId])
   @@index([userId, space])
+}
+
+model SmartstoreReviewTarget {
+  id                    String   @id @default(cuid())
+  userId                String
+  /**
+   * 네이버 상품 번호 (URL에서 추출)
+   */
+  productId             String
+  productUrl            String
+  name                  String
+  imageUrl              String?
+  storeName             String?
+  reviewCount           Int?     @default(0)
+  reviewRating          Float?
+  reviewPhotoVideoCount Int?     @default(0)
+  reviewMonthlyUseCount Int?     @default(0)
+  reviewRepurchaseCount Int?     @default(0)
+  reviewStorePickCount  Int?     @default(0)
+  reviewStarSummary     Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  histories     SmartstoreReviewHistory[]
+  recentReviews SmartstoreRecentReview[]
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+model SmartstoreReviewHistory {
+  id                    String   @id @default(cuid())
+  targetId              String
+  trackedDate           String
+  reviewCount           Int
+  reviewRating          Float?
+  reviewPhotoVideoCount Int?
+  reviewMonthlyUseCount Int?
+  reviewRepurchaseCount Int?
+  reviewStorePickCount  Int?
+  reviewStarSummary     Json?
+  createdAt             DateTime @default(now())
+
+  target SmartstoreReviewTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, trackedDate])
+  @@index([targetId])
+  @@index([trackedDate])
+}
+
+model SmartstoreRecentReview {
+  id        String    @id @default(cuid())
+  targetId  String
+  reviewKey String
+  postedAt  DateTime?
+  rating    Int?
+  author    String?
+  content   String
+  createdAt DateTime  @default(now())
+
+  target SmartstoreReviewTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, reviewKey])
+  @@index([targetId])
+  @@index([createdAt])
 }
 
 model SmartstoreKeyword {

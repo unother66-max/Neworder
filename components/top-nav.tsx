@@ -37,6 +37,7 @@ const SMARTSTORE_MENU: SmartstoreMenuItem[] = [
     href: "/smartstore/plus-store-ranking-track",
     subId: "rank-plus-store",
   },
+  { label: "리뷰 관리", href: "/smartstore/review-track", subId: "review-track", badge: "NEW" },
 ];
 
 function smartstoreMenuKey(item: SmartstoreMenuItem) {

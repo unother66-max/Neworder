@@ -206,6 +206,9 @@ export default function SmartstoreRankPage() {
   const [regSaving, setRegSaving] = useState(false);
   const [regError, setRegError] = useState("");
   const [regMetaNotice, setRegMetaNotice] = useState("");
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualImageUrl, setManualImageUrl] = useState("");
 
   const [kwModalProduct, setKwModalProduct] = useState<SmartstoreProductRow | null>(null);
   const [kwInput, setKwInput] = useState("");
@@ -405,6 +408,9 @@ export default function SmartstoreRankPage() {
     setRegisterOpen(false);
     setRegUrl("");
     setRegError("");
+    setShowManualInput(false);
+    setManualName("");
+    setManualImageUrl("");
   };
 
   const handleRegisterSave = async () => {
@@ -418,6 +424,7 @@ export default function SmartstoreRankPage() {
 
     setRegSaving(true);
     setRegError("");
+    setShowManualInput(false);
 
     try {
       const saveRes = await fetch("/api/smartstore-product-save", {
@@ -431,8 +438,10 @@ export default function SmartstoreRankPage() {
 
       const data = await saveRes.json();
 
-      if (!data.ok) {
-        setRegError(data.error || "등록 실패");
+      if (!saveRes.ok || !data.ok) {
+        setRegError(data.error || `등록 실패 (HTTP ${saveRes.status})`);
+        // Always allow manual registration on any failure (400/429/500 포함)
+        setShowManualInput(true);
         return;
       }
 
@@ -441,6 +450,58 @@ export default function SmartstoreRankPage() {
     } catch (e) {
       console.warn(e);
       setRegError("등록 중 오류가 발생했습니다.");
+      // Even if it's a network/db/unknown server error, force manual input UI.
+      setShowManualInput(true);
+    } finally {
+      setRegSaving(false);
+    }
+  };
+
+  const handleManualRegisterSave = async () => {
+    if (regSaving) return;
+    const url = regUrl.trim();
+    if (!url) {
+      setRegError("상품 URL을 입력해주세요.");
+      return;
+    }
+    const n = manualName.trim();
+    const img = manualImageUrl.trim();
+    if (!n) {
+      setRegError("수동 등록: 상품명을 입력해주세요.");
+      return;
+    }
+    if (!img) {
+      setRegError("수동 등록: 이미지 URL을 입력해주세요.");
+      return;
+    }
+
+    setRegSaving(true);
+    setRegError("");
+    try {
+      const saveRes = await fetch("/api/smartstore-product-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          productUrl: url,
+          skipMetaFetch: true,
+          name: n,
+          imageUrl: img,
+          thumbnailLink: img,
+        }),
+      });
+      const data = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok || !data.ok) {
+        setRegError(data.error || `수동 등록 실패 (HTTP ${saveRes.status})`);
+        setShowManualInput(true);
+        return;
+      }
+      closeRegister();
+      await fetchProducts();
+    } catch (e) {
+      console.warn(e);
+      setRegError("수동 등록 중 오류가 발생했습니다.");
+      setShowManualInput(true);
     } finally {
       setRegSaving(false);
     }
@@ -1012,6 +1073,34 @@ export default function SmartstoreRankPage() {
                 className="mt-2 w-full rounded-[12px] border border-[#e5e7eb] px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
               />
               {regError && <p className="mt-2 text-[13px] text-[#dc2626]">{regError}</p>}
+
+              {showManualInput && (
+                <div className="mt-4 rounded-[16px] border border-[#fee2e2] bg-[#fff1f2] px-4 py-4">
+                  <p className="text-[12px] font-extrabold text-[#b91c1c]">
+                    자동 등록에 실패했어요. 수동으로 상품 정보를 입력해 등록할 수 있습니다.
+                  </p>
+                  <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
+                    상품명
+                  </label>
+                  <input
+                    type="text"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    placeholder="예: 아이폰 케이스"
+                    className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
+                  />
+                  <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
+                    이미지 URL
+                  </label>
+                  <input
+                    type="url"
+                    value={manualImageUrl}
+                    onChange={(e) => setManualImageUrl(e.target.value)}
+                    placeholder="https://...jpg"
+                    className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
+                  />
+                </div>
+              )}
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
@@ -1022,11 +1111,17 @@ export default function SmartstoreRankPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleRegisterSave}
+                  onClick={showManualInput ? handleManualRegisterSave : handleRegisterSave}
                   disabled={regSaving}
                   className="h-[46px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] disabled:opacity-60"
                 >
-                  {regSaving ? "상품 정보 수집 중..." : "등록"}
+                  {regSaving
+                    ? showManualInput
+                      ? "수동 등록 중..."
+                      : "상품 정보 수집 중..."
+                    : showManualInput
+                      ? "수동 등록"
+                      : "등록"}
                 </button>
               </div>
             </div>

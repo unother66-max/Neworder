@@ -34,8 +34,15 @@ export const authOptions = {
       return token;
     },
     async session({ session, token }) {
+      // Ensure session.user.id is always populated (fallback to token.sub)
+      const id =
+        typeof (token as any).id === "string" && String((token as any).id).trim()
+          ? String((token as any).id).trim()
+          : typeof token.sub === "string" && token.sub.trim()
+            ? token.sub.trim()
+            : "";
       session.user = {
-        id: typeof token.id === "string" ? token.id : "",
+        id,
         name: typeof token.name === "string" ? token.name : null,
         email: typeof token.email === "string" ? token.email : null,
         image: typeof token.picture === "string" ? token.picture : null,

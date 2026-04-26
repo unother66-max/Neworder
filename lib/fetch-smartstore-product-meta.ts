@@ -3,6 +3,7 @@ import {
   randomSmartstoreDelay,
   SmartstoreNaverRateLimitedError,
 } from "@/lib/smartstore-bot-shield";
+import * as cheerio from "cheerio";
 
 /**
  * 네이버 스마트스토어·브랜드스토어 상품 상세 JSON API (HTML 없음).
@@ -31,6 +32,9 @@ const FETCH_TIMEOUT_MS = 12_000;
 
 const NAVER_CHROME_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+const NAVER_MOBILE_CHROME_UA =
+  "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36";
 
 /** 상품 페이지 URL 기준 Origin (스마트스토어는 smartstore, 브랜드는 brand) */
 function naverProductPageOrigin(productPageUrl: string): string {
@@ -152,6 +156,115 @@ function trimName(s: string): string {
 function extractProductId(rawUrl: string): string | null {
   const m = rawUrl.match(/\/products\/(\d+)/i);
   return m?.[1] ?? null;
+}
+
+function toMobileProductUrl(productUrl: string, productId: string | null): string {
+  try {
+    const u = new URL(productUrl);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    const segs = u.pathname.split("/").filter(Boolean);
+    const pi = segs.indexOf("products");
+    const slug = pi > 0 ? segs[pi - 1] : null;
+    const pid = productId?.trim() || (pi >= 0 ? segs[pi + 1] : null);
+    if (!slug || !pid) return productUrl;
+    if (host === "brand.naver.com" || host === "m.brand.naver.com") {
+      return `https://m.brand.naver.com/${encodeURIComponent(slug)}/products/${encodeURIComponent(pid)}`;
+    }
+    if (host === "smartstore.naver.com" || host === "m.smartstore.naver.com") {
+      return `https://m.smartstore.naver.com/${encodeURIComponent(slug)}/products/${encodeURIComponent(pid)}`;
+    }
+  } catch {
+    // ignore
+  }
+  return productUrl;
+}
+
+function firstStringCandidate(values: unknown[]): string | null {
+  for (const v of values) {
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (t) return t;
+    }
+  }
+  return null;
+}
+
+async function fetchSmartstoreProductMetaViaMobileHtml(
+  productUrl: string,
+  naverProductId: string | null
+): Promise<FetchSmartstoreProductMetaResult> {
+  const normalized = normalizeProductUrl(productUrl);
+  const productIdResolved = (naverProductId?.trim() || extractProductId(normalized)) ?? null;
+  const mobileUrl = toMobileProductUrl(normalized, productIdResolved);
+
+  await randomSmartstoreDelay("save");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  let res: Response;
+  try {
+    res = await fetch(mobileUrl, {
+      method: "GET",
+      headers: {
+        "User-Agent": NAVER_MOBILE_CHROME_UA,
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        Referer: "https://m.smartstore.naver.com/",
+        Connection: "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-User": "?1",
+      },
+      redirect: "follow",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res.status === 429) {
+    await cooldownOn429();
+    throw new SmartstoreNaverRateLimitedError("네이버가 요청을 일시적으로 제한(HTTP 429)했습니다.");
+  }
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  // Fail-fast: og tags are most stable. If missing, do not do slow/fragile fallbacks.
+  const ogTitle = firstStringCandidate([$('meta[property="og:title"]').attr("content")]);
+  const ogImage = firstStringCandidate([$('meta[property="og:image"]').attr("content")]);
+  const name = ogTitle ? trimName(ogTitle) : null;
+  const imageUrl = ogImage ?? null;
+
+  const productPageFetch: SmartstoreProductPageFetchDiag = {
+    requestUrl: mobileUrl,
+    responseUrl: res.url || mobileUrl,
+    status: res.status,
+    responseOk: res.ok,
+    contentType: res.headers.get("content-type"),
+    bodyHeadSample: html.slice(0, 500) || "(빈 본문)",
+    htmlStatus: res.status,
+    htmlResponseUrl: res.url || mobileUrl,
+    htmlHeadSample: html.slice(0, 500) || "(빈 본문)",
+    apiUrl: null,
+    apiStatus: null,
+    apiHeadSample: null,
+  };
+
+  return {
+    meta: {
+      name: name && name.trim() ? name : null,
+      imageUrl: imageUrl?.trim() ? imageUrl.trim() : null,
+      category: null,
+    },
+    productPageFetch,
+  };
 }
 
 function mergeImageUrlsUnique(...lists: string[][]): string[] {
@@ -740,80 +853,21 @@ export async function fetchSmartstoreProductMeta(
   productUrl: string,
   naverProductId: string | null = null
 ): Promise<FetchSmartstoreProductMetaResult> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const normalized = normalizeProductUrl(productUrl);
     try {
       new URL(normalized);
     } catch {
-      return {
-        meta: { name: null, imageUrl: null, category: null },
-        productPageFetch: null,
-      };
+      return { meta: { name: null, imageUrl: null, category: null }, productPageFetch: null };
     }
 
-    const productIdResolved =
-      (naverProductId?.trim() || extractProductId(normalized)) ?? null;
-    console.log(`${SMARTSTORE_TRACE_LOG} [meta] ① 입력 URL`, normalized);
-    console.log(`${SMARTSTORE_TRACE_LOG} [meta] ② productId`, productIdResolved ?? "(없음)");
-
-    const ctrl = new AbortController();
-    timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-    const { result, productPageFetch } = await fetchSmartstoreProductCore(
-      productUrl,
-      naverProductId,
-      ctrl.signal,
-      "serverLike"
-    );
-
-    // 일부 환경에서 "서버처럼" 보이는 Sec-* 헤더가 오히려 429를 유발하는 경우가 있어
-    // 최소 헤더 모드로 한 번 더 재시도한다.
-    const isEmpty =
-      !result.name.trim() && !result.imageUrl && !result.category && result.imageUrls.length === 0;
-    const api429 = productPageFetch?.apiStatus === 429;
-    if (isEmpty && api429) {
-      console.warn(`${SMARTSTORE_TRACE_LOG} [meta] ⑥ 429 감지 → 최소 헤더 재시도`);
-      const retry = await fetchSmartstoreProductCore(
-        productUrl,
-        naverProductId,
-        ctrl.signal,
-        "browserMinimal"
-      );
-      const rr = retry.result;
-      const merged = {
-        name: rr.name.trim() ? rr.name : result.name,
-        category: rr.category ?? result.category,
-        imageUrl: rr.imageUrl ?? result.imageUrl,
-        imageUrls: mergeImageUrlsUnique(result.imageUrls, rr.imageUrls),
-      };
-      console.log(`${SMARTSTORE_TRACE_LOG} [meta] ⑥-2 최소 헤더 재시도 결과`, {
-        name: merged.name.trim() ? merged.name.trim() : null,
-        category: merged.category,
-        imageUrl: merged.imageUrl,
-      });
-      console.log(`${SMARTSTORE_TRACE_LOG} [meta] ⑦ 최종 result`, {
-        name: merged.name.trim() ? merged.name.trim() : null,
-        category: merged.category,
-        thumbnailLink: merged.imageUrl,
-        imageUrl: merged.imageUrl,
-      });
-      return { meta: toMeta(merged), productPageFetch: retry.productPageFetch ?? productPageFetch };
-    }
-
-    console.log(`${SMARTSTORE_TRACE_LOG} [meta] ⑦ 최종 result`, {
-      name: result.name.trim() ? result.name.trim() : null,
-      category: result.category,
-      thumbnailLink: result.imageUrl,
-      imageUrl: result.imageUrl,
-    });
-    return { meta: toMeta(result), productPageFetch };
+    console.log(`${SMARTSTORE_TRACE_LOG} [meta] (mobile) 입력 URL`, normalized);
+    return await fetchSmartstoreProductMetaViaMobileHtml(normalized, naverProductId);
   } catch (e) {
     console.error("[fetchSmartstoreProductMeta]", e);
     return {
       meta: { name: null, imageUrl: null, category: null },
       productPageFetch: null,
     };
-  } finally {
-    if (timer) clearTimeout(timer);
   }
 }

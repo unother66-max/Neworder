@@ -7,15 +7,7 @@ import {
   fetchSmartstoreProductMeta,
   SMARTSTORE_TRACE_LOG,
 } from "@/lib/fetch-smartstore-product-meta";
-import {
-  fetchSmartstoreMetaFromPlaywrightService,
-  isSmartstorePlaywrightServiceConfigured,
-} from "@/lib/fetch-smartstore-playwright-service";
-import {
-  fetchSmartstoreMetaViaShoppingSearchApi,
-  isSmartstoreShoppingSearchConfigured,
-} from "@/lib/fetch-smartstore-search-api";
-import { getSmartstoreProductSnapshot } from "@/lib/get-smartstore-product-snapshot";
+// NOTE: product save is now fail-fast on mobile HTML parsing (no shop.json fallback)
 import {
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
@@ -29,18 +21,58 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/smartstore-product-save
  * - productUrl 수신 → productId 추출
- * - SMARTSTORE_PLAYWRIGHT_URL 있으면 Playwright 서비스 우선 호출
- * - 없으면 기존 fetchSmartstoreProductMeta fallback
+ * - 모바일 우회 기반 fetch로 meta 수집
  * - 최종 name/category/imageUrl 저장
  */
 export async function POST(req: Request) {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
+    console.log("현재 세션 정보:", session);
     const userId = session?.user?.id as string | undefined;
 
     if (!userId) {
       return NextResponse.json(
-        { error: "로그인이 필요합니다." },
+        { error: session ? "세션은 있으나 userId가 누락되었습니다" : "로그인이 필요합니다." },
+        { status: 401 }
+      );
+    }
+
+    // Ensure the session userId exists in DB (avoid P2003 FK crash)
+    let user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      try {
+        user = await prisma.user.create({
+          data: {
+            id: userId,
+            email:
+              typeof session?.user?.email === "string" && session.user.email.trim()
+                ? session.user.email.trim()
+                : `${userId}@kakao.local`,
+            name:
+              typeof session?.user?.name === "string" && session.user.name.trim()
+                ? session.user.name.trim()
+                : null,
+          },
+          select: { id: true },
+        });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+          // race: created by another request
+          user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true },
+          });
+        } else {
+          throw e;
+        }
+      }
+    }
+    if (!user) {
+      return NextResponse.json(
+        { error: "세션은 있으나 userId가 DB에 동기화되지 않았습니다" },
         { status: 401 }
       );
     }
@@ -123,11 +155,6 @@ export async function POST(req: Request) {
       ReturnType<typeof fetchSmartstoreProductMeta>
     >["productPageFetch"] = null;
 
-    const playwrightConfigured = isSmartstorePlaywrightServiceConfigured();
-    let playwrightServiceAttempted = false;
-    let playwrightServiceFailed = false;
-    let playwrightServiceError: string | null = null;
-
     const urlQueryHint = (() => {
       try {
         const u = new URL(normalizedUrl);
@@ -154,76 +181,13 @@ export async function POST(req: Request) {
       productId: naverProductId,
       space,
       skipMetaFetch,
-      playwrightConfigured,
-      SMARTSTORE_PLAYWRIGHT_URL:
-        process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() || "(없음)",
       urlQueryHint,
     });
 
     if (!skipMetaFetch) {
-      if (playwrightConfigured) {
-        try {
-          playwrightServiceAttempted = true;
-          console.log(`${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 시작`, {
-            productUrl: normalizedUrl,
-            serviceUrl: process.env.SMARTSTORE_PLAYWRIGHT_URL?.trim() || "(없음)",
-          });
-
-          meta = await fetchSmartstoreMetaFromPlaywrightService(normalizedUrl, {
-            timeoutMs: 55_000,
-          });
-
-          console.log(`${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 성공`, {
-            meta,
-          });
-        } catch (error) {
-          playwrightServiceFailed = true;
-          playwrightServiceError =
-            error instanceof Error ? error.message : String(error);
-          console.error(
-            `${SMARTSTORE_TRACE_LOG} [save] Playwright 서비스 호출 실패`,
-            error
-          );
-
-          console.log(
-            `${SMARTSTORE_TRACE_LOG} [save] 기존 fetchSmartstoreProductMeta fallback 시작`,
-            {
-              productUrl: normalizedUrl,
-              productId: naverProductId,
-            }
-          );
-
-          const fetched = await fetchSmartstoreProductMeta(
-            normalizedUrl,
-            naverProductId
-          );
-          meta = fetched.meta;
-          productPageFetch = fetched.productPageFetch;
-
-          console.log(
-            `${SMARTSTORE_TRACE_LOG} [save] 기존 fetchSmartstoreProductMeta fallback 완료`,
-            {
-              meta,
-              productPageFetch,
-            }
-          );
-        }
-      } else {
-        console.log(
-          `${SMARTSTORE_TRACE_LOG} [save] Playwright 미설정 → 기존 fetchSmartstoreProductMeta 사용`,
-          {
-            productUrl: normalizedUrl,
-            productId: naverProductId,
-          }
-        );
-
-        const fetched = await fetchSmartstoreProductMeta(
-          normalizedUrl,
-          naverProductId
-        );
-        meta = fetched.meta;
-        productPageFetch = fetched.productPageFetch;
-      }
+      const fetched = await fetchSmartstoreProductMeta(normalizedUrl, naverProductId);
+      meta = fetched.meta;
+      productPageFetch = fetched.productPageFetch;
     }
 
     const gotServerMeta =
@@ -232,88 +196,8 @@ export async function POST(req: Request) {
         Boolean(meta.imageUrl?.trim()) ||
         Boolean(meta.category?.trim()));
 
-    // 네이버 API가 429/HTML로 막히는 경우가 잦아, 공식 쇼핑검색 API로 최소 메타를 보강한다.
-    // (place/kakao와 무관, smartstore 저장에만 적용)
-    if (!skipMetaFetch && !gotServerMeta) {
-      const shoppingConfigured = isSmartstoreShoppingSearchConfigured();
-      console.log(`${SMARTSTORE_TRACE_LOG} [save] meta 비어있음 → 쇼핑검색 보강 시도`, {
-        shoppingConfigured,
-        productId: naverProductId,
-      });
-      if (shoppingConfigured) {
-        try {
-          const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
-            productUrl: normalizedUrl,
-            productId: naverProductId,
-            existingNameHint: existing?.name ?? null,
-            ogTitle: urlQueryHint,
-            pageProductNameHint: meta.name ?? null,
-          });
-          if (searchMeta.searchApiMatched) {
-            meta = {
-              name: meta.name?.trim() ? meta.name : searchMeta.name,
-              imageUrl: meta.imageUrl?.trim() ? meta.imageUrl : searchMeta.thumbnailLink,
-              category: meta.category?.trim() ? meta.category : searchMeta.category,
-              mallName: searchMeta.mallName,
-            };
-            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 성공`, {
-              name: meta.name,
-              imageUrl: meta.imageUrl,
-              category: meta.category,
-              mallName: meta.mallName ?? null,
-            });
-          } else {
-            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 매칭 실패`, {
-              used: searchMeta.searchApiUsed,
-            });
-          }
-        } catch (e) {
-          if (isSmartstoreNaverRateLimitedError(e)) {
-            throw e;
-          }
-          console.error(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 실패`, e);
-        }
-      }
-    }
-
-    // 로컬 개발 환경에서는 원격 Playwright가 없더라도 자체 Playwright로 한번 더 복구 시도
-    // (Vercel 배포에서는 별도 Playwright 서비스 사용을 권장)
-    const isVercel = process.env.VERCEL === "1";
-    const gotMetaAfterSearch =
-      !skipMetaFetch &&
-      (Boolean(meta.name?.trim()) ||
-        Boolean(meta.imageUrl?.trim()) ||
-        Boolean(meta.category?.trim()));
-    const shouldTryLocalSnapshot =
-      !skipMetaFetch &&
-      !gotMetaAfterSearch &&
-      !isVercel &&
-      (!playwrightConfigured || playwrightServiceFailed);
-    if (shouldTryLocalSnapshot) {
-      console.log(`${SMARTSTORE_TRACE_LOG} [save] 로컬 Playwright 스냅샷 폴백 시도`, {
-        productUrl: normalizedUrl,
-        playwrightConfigured,
-        playwrightServiceAttempted,
-        playwrightServiceFailed,
-        playwrightServiceError,
-      });
-      try {
-        const snap = await getSmartstoreProductSnapshot(normalizedUrl);
-        meta = {
-          name: snap.name?.trim() ? snap.name : meta.name,
-          imageUrl: snap.imageUrl?.trim() ? snap.imageUrl : meta.imageUrl,
-          category: snap.category?.trim() ? snap.category : meta.category,
-          mallName: meta.mallName ?? null,
-        };
-        console.log(`${SMARTSTORE_TRACE_LOG} [save] 로컬 Playwright 스냅샷 결과`, {
-          name: meta.name,
-          imageUrl: meta.imageUrl,
-          category: meta.category,
-        });
-      } catch (e) {
-        console.error(`${SMARTSTORE_TRACE_LOG} [save] 로컬 Playwright 스냅샷 실패`, e);
-      }
-    }
+    // Fail-fast: do not fallback to shopping search API (shop.json).
+    // If meta is blocked/unavailable, return 400 quickly (handled later).
 
     // 에러 페이지 제목이 name으로 들어오는 것을 차단
     if (isSuspiciousSmartstoreMetaName(meta.name)) {
@@ -347,6 +231,19 @@ export async function POST(req: Request) {
     const thumbnailLink = thumbRaw.length > 0 ? thumbRaw : null;
     const imageUrl = thumbnailLink;
 
+    // If Naver scraping failed (likely blocked), do not force-save empty meta.
+    // Only allow saving without fetched meta when user explicitly provided overrides or skipMetaFetch=true.
+    if (!skipMetaFetch) {
+      const overrideProvided = Boolean(nameFromOverride) || Boolean(thumbFromOverride);
+      const fetchedOk = Boolean(nameFromFetcher) && Boolean(thumbFromMeta);
+      if (!overrideProvided && !fetchedOk) {
+        return NextResponse.json(
+          { error: "네이버에서 정보를 가져오지 못했습니다" },
+          { status: 400 }
+        );
+      }
+    }
+
     const gotFinalMeta =
       !skipMetaFetch &&
       (Boolean(meta.name?.trim()) ||
@@ -369,7 +266,6 @@ export async function POST(req: Request) {
 
     console.log(`${SMARTSTORE_TRACE_LOG} ⑦ DB 저장 직전`, {
       skipMetaFetch,
-      playwrightConfigured,
       name: data.name,
       thumbnailLink: data.thumbnailLink,
       imageUrl: data.imageUrl,
@@ -397,7 +293,6 @@ export async function POST(req: Request) {
       contentType: productPageFetch?.contentType ?? "(없음)",
       bodyHeadSample: productPageFetch?.bodyHeadSample ?? "(없음)",
       skipMetaFetch,
-      playwrightConfigured,
       metaFetchIncomplete,
       최종저장: {
         name: data.name,
@@ -446,6 +341,12 @@ export async function POST(req: Request) {
               "DB 유니크 제약이 (userId, productId)로 남아 있어 페이지별 분리가 불가능합니다. prisma migrate/reset 후 다시 시도해주세요.",
           },
           { status: 409 }
+        );
+      }
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+        return NextResponse.json(
+          { error: "로그인이 필요합니다." },
+          { status: 401 }
         );
       }
       throw e;
