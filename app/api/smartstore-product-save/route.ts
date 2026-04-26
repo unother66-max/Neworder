@@ -7,7 +7,10 @@ import {
   fetchSmartstoreProductMeta,
   SMARTSTORE_TRACE_LOG,
 } from "@/lib/fetch-smartstore-product-meta";
-// NOTE: product save is now fail-fast on mobile HTML parsing (no shop.json fallback)
+import {
+  fetchSmartstoreMetaViaShoppingSearchApi,
+  isSmartstoreShoppingSearchConfigured,
+} from "@/lib/fetch-smartstore-search-api";
 import {
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
@@ -196,8 +199,51 @@ export async function POST(req: Request) {
         Boolean(meta.imageUrl?.trim()) ||
         Boolean(meta.category?.trim()));
 
-    // Fail-fast: do not fallback to shopping search API (shop.json).
-    // If meta is blocked/unavailable, return 400 quickly (handled later).
+    // 2nd attempt: shopping search API (shop.json) meta boost (0425 fallback)
+    if (!skipMetaFetch && !gotServerMeta) {
+      const shoppingConfigured = isSmartstoreShoppingSearchConfigured();
+      console.log(`${SMARTSTORE_TRACE_LOG} [save] meta 비어있음 → 쇼핑검색 보강 시도`, {
+        shoppingConfigured,
+        productId: naverProductId,
+      });
+      if (shoppingConfigured) {
+        try {
+          const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
+            productUrl: normalizedUrl,
+            productId: naverProductId,
+            existingNameHint: existing?.name ?? null,
+            ogTitle: urlQueryHint,
+            pageProductNameHint: meta.name ?? null,
+          });
+          if (searchMeta.searchApiMatched) {
+            meta = {
+              name: meta.name?.trim() ? meta.name : searchMeta.name,
+              imageUrl: meta.imageUrl?.trim()
+                ? meta.imageUrl
+                : (searchMeta.thumbnailLink ?? null),
+              category: meta.category?.trim() ? meta.category : searchMeta.category,
+              mallName: searchMeta.mallName,
+            };
+            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 성공`, {
+              name: meta.name,
+              imageUrl: meta.imageUrl,
+              category: meta.category,
+              mallName: meta.mallName ?? null,
+            });
+          } else {
+            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 매칭 실패`, {
+              used: searchMeta.searchApiUsed,
+            });
+          }
+        } catch (e) {
+          // shop.json 429는 bot-shield에서 SmartstoreNaverRateLimitedError로 올라옴
+          if (isSmartstoreNaverRateLimitedError(e)) {
+            throw e;
+          }
+          console.error(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 실패`, e);
+        }
+      }
+    }
 
     // 에러 페이지 제목이 name으로 들어오는 것을 차단
     if (isSuspiciousSmartstoreMetaName(meta.name)) {
@@ -231,24 +277,22 @@ export async function POST(req: Request) {
     const thumbnailLink = thumbRaw.length > 0 ? thumbRaw : null;
     const imageUrl = thumbnailLink;
 
-    // If Naver scraping failed (likely blocked), do not force-save empty meta.
-    // Only allow saving without fetched meta when user explicitly provided overrides or skipMetaFetch=true.
-    if (!skipMetaFetch) {
+    const gotFinalMeta =
+      !skipMetaFetch &&
+      (Boolean(meta.name?.trim()) ||
+        Boolean(meta.imageUrl?.trim()) ||
+        Boolean(meta.category?.trim()));
+
+    // Final fail-fast: after HTML + shopping search boost, still no meta.
+    if (!skipMetaFetch && !gotFinalMeta) {
       const overrideProvided = Boolean(nameFromOverride) || Boolean(thumbFromOverride);
-      const fetchedOk = Boolean(nameFromFetcher) && Boolean(thumbFromMeta);
-      if (!overrideProvided && !fetchedOk) {
+      if (!overrideProvided) {
         return NextResponse.json(
           { error: "네이버에서 정보를 가져오지 못했습니다" },
           { status: 400 }
         );
       }
     }
-
-    const gotFinalMeta =
-      !skipMetaFetch &&
-      (Boolean(meta.name?.trim()) ||
-        Boolean(meta.imageUrl?.trim()) ||
-        Boolean(meta.category?.trim()));
 
     const metaFetchIncomplete = !skipMetaFetch && !gotFinalMeta;
 
