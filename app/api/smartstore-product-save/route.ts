@@ -103,11 +103,25 @@ export async function POST(req: Request) {
       ? productUrl
       : `https://${productUrl}`;
 
-    // Scraping-only URL: if user pasted mobile host, try PC host for more stable HTML parsing.
+    // Scraping-only URL:
+    // - If user pasted mobile host, convert to PC host
+    // - Drop ALL query params / fragments to avoid WAF/captcha triggers (NaPm, nl-*, etc.)
     // IMPORTANT: we still save the original normalizedUrl into DB (productUrl field).
-    const pcUrl = normalizedUrl
-      .replace("://m.smartstore.naver.com", "://smartstore.naver.com")
-      .replace("://m.brand.naver.com", "://brand.naver.com");
+    const pcUrl = (() => {
+      try {
+        const u = new URL(normalizedUrl);
+        if (u.hostname === "m.smartstore.naver.com") u.hostname = "smartstore.naver.com";
+        if (u.hostname === "m.brand.naver.com") u.hostname = "brand.naver.com";
+        return `${u.protocol}//${u.hostname}${u.pathname}`;
+      } catch {
+        // fallback: best-effort strip query/hash + m. host
+        return normalizedUrl
+          .split("#")[0]!
+          .split("?")[0]!
+          .replace("://m.smartstore.naver.com", "://smartstore.naver.com")
+          .replace("://m.brand.naver.com", "://brand.naver.com");
+      }
+    })();
 
     if (!isLikelySmartstoreProductUrl(normalizedUrl)) {
       return NextResponse.json(

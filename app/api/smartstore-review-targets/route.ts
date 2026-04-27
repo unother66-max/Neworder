@@ -230,11 +230,24 @@ export async function POST(req: Request) {
       ? productUrlRaw
       : `https://${productUrlRaw}`;
 
-    // Scraping-only URL: prefer PC host for stable meta parsing.
+    // Scraping-only URL:
+    // - Convert mobile host → PC host
+    // - Drop ALL query params / fragments (NaPm, nl-*, etc.)
     // IMPORTANT: keep saving normalizedUrl to DB (the user input host).
-    const pcUrl = normalizedUrl
-      .replace("://m.smartstore.naver.com", "://smartstore.naver.com")
-      .replace("://m.brand.naver.com", "://brand.naver.com");
+    const pcUrl = (() => {
+      try {
+        const u = new URL(normalizedUrl);
+        if (u.hostname === "m.smartstore.naver.com") u.hostname = "smartstore.naver.com";
+        if (u.hostname === "m.brand.naver.com") u.hostname = "brand.naver.com";
+        return `${u.protocol}//${u.hostname}${u.pathname}`;
+      } catch {
+        return normalizedUrl
+          .split("#")[0]!
+          .split("?")[0]!
+          .replace("://m.smartstore.naver.com", "://smartstore.naver.com")
+          .replace("://m.brand.naver.com", "://brand.naver.com");
+      }
+    })();
     if (!isLikelySmartstoreProductUrl(normalizedUrl)) {
       return NextResponse.json({ error: "스마트스토어/브랜드스토어 상품 URL이 아닙니다." }, { status: 400 });
     }
