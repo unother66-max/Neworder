@@ -210,12 +210,43 @@ export async function POST(req: Request) {
     }
 
     // Ensure the session userId is a real User row (avoid P2003 FK failure)
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
     });
     if (!user) {
-      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+      try {
+        user = await prisma.user.create({
+          data: {
+            id: userId,
+            email:
+              typeof session?.user?.email === "string" && session.user.email.trim()
+                ? session.user.email.trim()
+                : `${userId}@kakao.local`,
+            name:
+              typeof session?.user?.name === "string" && session.user.name.trim()
+                ? session.user.name.trim()
+                : null,
+          },
+          select: { id: true },
+        });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+          // race: created by another request
+          user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true },
+          });
+        } else {
+          throw e;
+        }
+      }
+    }
+    if (!user) {
+      return NextResponse.json(
+        { error: "세션은 있으나 userId가 DB에 동기화되지 않았습니다" },
+        { status: 401 }
+      );
     }
 
     const body = await req.json().catch(() => ({}));
@@ -229,6 +260,25 @@ export async function POST(req: Request) {
     const normalizedUrl = productUrlRaw.startsWith("http")
       ? productUrlRaw
       : `https://${productUrlRaw}`;
+
+    const urlQueryHint = (() => {
+      try {
+        const u = new URL(normalizedUrl);
+        const candidates = [
+          u.searchParams.get("nl-query"),
+          u.searchParams.get("nl_query"),
+          u.searchParams.get("n_query"),
+          u.searchParams.get("query"),
+          u.searchParams.get("q"),
+        ]
+          .map((v) => (typeof v === "string" ? v.trim() : ""))
+          .filter(Boolean);
+        if (candidates.length === 0) return null;
+        return candidates[0] ?? null;
+      } catch {
+        return null;
+      }
+    })();
 
     // Scraping-only URL:
     // - Convert mobile host → PC host
@@ -295,7 +345,7 @@ export async function POST(req: Request) {
             productUrl: pcUrl,
             productId: naverProductId,
             existingNameHint: null,
-            ogTitle: null,
+            ogTitle: urlQueryHint || null,
             pageProductNameHint: null,
           });
           if (searchMeta.searchApiMatched) {

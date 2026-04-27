@@ -196,6 +196,7 @@ export default function SmartstoreReviewTrackPage() {
     try {
       const res = await fetch("/api/smartstore-review-targets", {
         cache: "no-store",
+        credentials: "include",
       });
       const data = (await res.json()) as any;
       if (!res.ok) {
@@ -240,6 +241,7 @@ export default function SmartstoreReviewTrackPage() {
       const res = await fetch("/api/smartstore-review-targets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           productUrl,
           manualName: showManualInput ? manualName.trim() : undefined,
@@ -347,12 +349,16 @@ export default function SmartstoreReviewTrackPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setAddOpen(true)}
-              className="rounded-[12px] bg-white px-4 py-2 text-[13px] font-extrabold text-[#111827] ring-1 ring-[#e5e7eb] hover:bg-[#f9fafb]"
+              onClick={() => {
+                setError("");
+                setShowManualInput(false);
+                setManualName("");
+                setManualImageUrl("");
+                setAddOpen(true);
+              }}
+              className="h-[44px] min-w-[108px] rounded-[14px] bg-[#b91c1c] px-4 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
             >
-              <span className="inline-flex items-center gap-2">
-                <Plus size={16} /> 상품 추가
-              </span>
+              상품 등록
             </button>
             <button
               type="button"
