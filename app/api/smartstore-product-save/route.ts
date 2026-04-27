@@ -103,6 +103,12 @@ export async function POST(req: Request) {
       ? productUrl
       : `https://${productUrl}`;
 
+    // Scraping-only URL: if user pasted mobile host, try PC host for more stable HTML parsing.
+    // IMPORTANT: we still save the original normalizedUrl into DB (productUrl field).
+    const pcUrl = normalizedUrl
+      .replace("://m.smartstore.naver.com", "://smartstore.naver.com")
+      .replace("://m.brand.naver.com", "://brand.naver.com");
+
     if (!isLikelySmartstoreProductUrl(normalizedUrl)) {
       return NextResponse.json(
         {
@@ -181,6 +187,7 @@ export async function POST(req: Request) {
     console.log(`${SMARTSTORE_TRACE_LOG} [save] 시작`, {
       userId,
       productUrl: normalizedUrl,
+      pcUrl,
       productId: naverProductId,
       space,
       skipMetaFetch,
@@ -188,7 +195,7 @@ export async function POST(req: Request) {
     });
 
     if (!skipMetaFetch) {
-      const fetched = await fetchSmartstoreProductMeta(normalizedUrl, naverProductId);
+      const fetched = await fetchSmartstoreProductMeta(pcUrl, naverProductId);
       meta = fetched.meta;
       productPageFetch = fetched.productPageFetch;
     }
@@ -209,7 +216,7 @@ export async function POST(req: Request) {
       if (shoppingConfigured) {
         try {
           const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
-            productUrl: normalizedUrl,
+            productUrl: pcUrl,
             productId: naverProductId,
             existingNameHint: existing?.name ?? null,
             ogTitle: urlQueryHint,

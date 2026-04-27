@@ -168,6 +168,9 @@ export default function SmartstoreReviewTrackPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [addUrl, setAddUrl] = useState("");
   const [adding, setAdding] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualImageUrl, setManualImageUrl] = useState("");
 
   const [syncingTargetId, setSyncingTargetId] = useState<string | null>(null);
   const [syncAllLoading, setSyncAllLoading] = useState(false);
@@ -227,30 +230,45 @@ export default function SmartstoreReviewTrackPage() {
       setError("상품 URL을 입력해주세요.");
       return;
     }
+    if (showManualInput && !manualName.trim()) {
+      setError("상품명을 입력해주세요.");
+      return;
+    }
     setAdding(true);
     setError("");
     try {
       const res = await fetch("/api/smartstore-review-targets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productUrl }),
+        body: JSON.stringify({
+          productUrl,
+          manualName: showManualInput ? manualName.trim() : undefined,
+          manualImageUrl: showManualInput ? manualImageUrl.trim() : undefined,
+        }),
       });
       const data = (await res.json()) as any;
       if (res.status === 429) {
+        setShowManualInput(true);
         throw new Error(typeof data?.error === "string" ? data.error : "네이버 차단(429)");
       }
       if (!res.ok) {
+        if (res.status === 400) {
+          setShowManualInput(true);
+        }
         throw new Error(typeof data?.error === "string" ? data.error : "추가 실패");
       }
       await fetchTargets();
       setAddOpen(false);
+      setShowManualInput(false);
+      setManualName("");
+      setManualImageUrl("");
       setAddUrl("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setAdding(false);
     }
-  }, [addUrl, fetchTargets]);
+  }, [addUrl, fetchTargets, manualImageUrl, manualName, showManualInput]);
 
   const removeTarget = useCallback(async (targetId: string) => {
     if (!confirm("리뷰 관리 대상에서 삭제할까요?")) return;
@@ -547,7 +565,14 @@ export default function SmartstoreReviewTrackPage() {
                 <div className="text-[14px] font-black text-[#111827]">리뷰 대상 상품 추가</div>
                 <button
                   type="button"
-                  onClick={() => setAddOpen(false)}
+                  onClick={() => {
+                    setAddOpen(false);
+                    setShowManualInput(false);
+                    setManualName("");
+                    setManualImageUrl("");
+                    setAddUrl("");
+                    setError("");
+                  }}
                   className="rounded-[10px] px-3 py-1.5 text-[12px] font-extrabold text-[#6b7280] hover:bg-[#f9fafb]"
                 >
                   닫기
@@ -573,6 +598,32 @@ export default function SmartstoreReviewTrackPage() {
                     {adding ? "추가 중..." : "추가"}
                   </button>
                 </div>
+
+                {showManualInput ? (
+                  <div className="mt-4 rounded-[16px] border border-[#fee2e2] bg-[#fff1f2] p-4">
+                    <div className="text-[12px] font-extrabold text-[#b91c1c]">
+                      자동 불러오기에 실패했습니다. 상품 정보를 직접 입력해 주세요.
+                    </div>
+                    <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
+                      상품명 (필수)
+                    </label>
+                    <input
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                      placeholder="예: 아이폰 케이스"
+                      className="mt-2 h-10 w-full rounded-[12px] border border-[#fecaca] bg-white px-3 text-[13px] font-semibold text-[#111827] outline-none focus:ring-2 focus:ring-[#b91c1c]/10"
+                    />
+                    <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
+                      이미지 URL (선택)
+                    </label>
+                    <input
+                      value={manualImageUrl}
+                      onChange={(e) => setManualImageUrl(e.target.value)}
+                      placeholder="https://...jpg"
+                      className="mt-2 h-10 w-full rounded-[12px] border border-[#fecaca] bg-white px-3 text-[13px] font-semibold text-[#111827] outline-none focus:ring-2 focus:ring-[#b91c1c]/10"
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

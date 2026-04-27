@@ -4,6 +4,10 @@ import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { fetchSmartstoreProductMeta } from "@/lib/fetch-smartstore-product-meta";
 import {
+  fetchSmartstoreMetaViaShoppingSearchApi,
+  isSmartstoreShoppingSearchConfigured,
+} from "@/lib/fetch-smartstore-search-api";
+import {
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
 } from "@/lib/smartstore-url";
@@ -216,12 +220,21 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const productUrlRaw = String(body?.productUrl ?? "").trim();
+    const manualNameRaw = body?.manualName != null ? String(body.manualName).trim() : "";
+    const manualImageUrlRaw =
+      body?.manualImageUrl != null ? String(body.manualImageUrl).trim() : "";
     if (!productUrlRaw) {
       return NextResponse.json({ error: "productUrl이 필요합니다." }, { status: 400 });
     }
     const normalizedUrl = productUrlRaw.startsWith("http")
       ? productUrlRaw
       : `https://${productUrlRaw}`;
+
+    // Scraping-only URL: prefer PC host for stable meta parsing.
+    // IMPORTANT: keep saving normalizedUrl to DB (the user input host).
+    const pcUrl = normalizedUrl
+      .replace("://m.smartstore.naver.com", "://smartstore.naver.com")
+      .replace("://m.brand.naver.com", "://brand.naver.com");
     if (!isLikelySmartstoreProductUrl(normalizedUrl)) {
       return NextResponse.json({ error: "스마트스토어/브랜드스토어 상품 URL이 아닙니다." }, { status: 400 });
     }
@@ -231,18 +244,68 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "상품 URL에서 상품 번호를 찾을 수 없습니다." }, { status: 400 });
     }
 
-    // Bot-shield: this flow is a Naver scrape as well.
-    await randomSmartstoreDelay("ranking");
+    // Manual mode: skip all scraping and bot-shield delays (fast path)
+    if (manualNameRaw) {
+      const storeNameManual = extractStoreSlugFromUrl(normalizedUrl);
+      const created = await prisma.smartstoreReviewTarget.upsert({
+        where: { userId_productId: { userId, productId: naverProductId } },
+        update: {
+          productUrl: normalizedUrl,
+          name: manualNameRaw,
+          imageUrl: manualImageUrlRaw || null,
+          storeName: storeNameManual,
+        },
+        create: {
+          userId,
+          productId: naverProductId,
+          productUrl: normalizedUrl,
+          name: manualNameRaw,
+          imageUrl: manualImageUrlRaw || null,
+          storeName: storeNameManual,
+        },
+      });
+      return NextResponse.json({ ok: true, target: created, manual: true });
+    }
 
-    const meta = await fetchSmartstoreProductMeta(normalizedUrl, naverProductId);
-    const name = meta.meta.name?.trim() ? meta.meta.name.trim() : null;
-    const imageUrl = meta.meta.imageUrl?.trim() ? meta.meta.imageUrl.trim() : null;
-    if (!name || !imageUrl) {
+    // 1) scrape (mobile HTML parsing)
+    await randomSmartstoreDelay("ranking");
+    const meta = await fetchSmartstoreProductMeta(pcUrl, naverProductId);
+    let name = meta.meta.name?.trim() ? meta.meta.name.trim() : null;
+    let imageUrl = meta.meta.imageUrl?.trim() ? meta.meta.imageUrl.trim() : null;
+
+    // 2) shopping search fallback if name missing
+    if (!name) {
+      const shoppingConfigured = isSmartstoreShoppingSearchConfigured();
+      if (shoppingConfigured) {
+        try {
+          const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
+            productUrl: pcUrl,
+            productId: naverProductId,
+            existingNameHint: null,
+            ogTitle: null,
+            pageProductNameHint: null,
+          });
+          if (searchMeta.searchApiMatched) {
+            name = name ?? (searchMeta.name?.trim() ? searchMeta.name.trim() : null);
+            imageUrl =
+              imageUrl ??
+              (searchMeta.thumbnailLink?.trim() ? searchMeta.thumbnailLink.trim() : null);
+          }
+        } catch (e) {
+          if (isSmartstoreNaverRateLimitedError(e)) throw e;
+          console.error("[smartstore-review-targets][POST] shopping search fallback failed", e);
+        }
+      }
+    }
+
+    // Final fail-fast (after 1st + 2nd): still no name
+    if (!name) {
       return NextResponse.json(
-        { error: "네이버에서 정보를 가져오지 못했습니다 (429 차단 의심)" },
+        { error: "네이버에서 정보를 가져오지 못했습니다" },
         { status: 400 }
       );
     }
+
     const storeName = extractStoreSlugFromUrl(normalizedUrl);
 
     const created = await prisma.smartstoreReviewTarget.upsert({
