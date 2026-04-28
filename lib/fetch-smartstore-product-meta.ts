@@ -196,38 +196,46 @@ async function fetchSmartstoreProductMetaViaMobileHtml(
   }
 
   const html = await res.text();
-  const $ = cheerio.load(html);
-
-  // Fail-fast: og tags are most stable. If missing, do not do slow/fragile fallbacks.
-  const ogTitle = firstStringCandidate([$('meta[property="og:title"]').attr("content")]);
-  const ogImage = firstStringCandidate([$('meta[property="og:image"]').attr("content")]);
-  const name = ogTitle ? trimName(ogTitle) : null;
-  const imageUrl = ogImage ?? null;
-
-  const productPageFetch: SmartstoreProductPageFetchDiag = {
-    requestUrl: mobileUrl,
-    responseUrl: res.url || mobileUrl,
-    status: res.status,
-    responseOk: res.ok,
-    contentType: res.headers.get("content-type"),
-    bodyHeadSample: html.slice(0, 500) || "(빈 본문)",
-    htmlStatus: res.status,
-    htmlResponseUrl: res.url || mobileUrl,
-    htmlHeadSample: html.slice(0, 500) || "(빈 본문)",
-    apiUrl: null,
-    apiStatus: null,
-    apiHeadSample: null,
+  
+  // 🕵️‍♂️ [불도저 정규식] Cheerio보다 훨씬 강력하게 데이터 낚아채기
+  const snip = (regex: RegExp) => {
+    const match = html.match(regex);
+    return match ? match[1].replace(/\\u002F/g, '/').replace(/\\"/g, '"').trim() : null;
   };
 
-  return {
-    meta: {
-      name: name && name.trim() ? name : null,
-      imageUrl: imageUrl?.trim() ? imageUrl.trim() : null,
-      category: null,
-    },
-    productPageFetch,
-  };
-}
+  // 1. og 태그가 없어도 본문 JSON(PRELOADED_STATE)에서 강제로 뜯어냄
+  const name = snip(/<meta property="og:title" content="([^"]+)"/i) || 
+               snip(/"productName"\s*:\s*"([^"]+)"/i) ||
+               snip(/<title>([^<]+)<\/title>/i);
+
+  const imageUrl = snip(/<meta property="og:image" content="([^"]+)"/i) || 
+                   snip(/"representativeImageUrl"\s*:\s*"([^"]+)"/i);
+
+  const category = snip(/"categoryName"\s*:\s*"([^"]+)"/i) || 
+                   snip(/"wholeCategoryName"\s*:\s*"([^"]+)"/i);
+
+                   return {
+                    meta: {
+                      name: name ? trimName(name) : null,
+                      imageUrl: imageUrl ?? null,
+                      category: category ?? null,
+                    },
+                    productPageFetch: {
+                      requestUrl: mobileUrl,
+                      responseUrl: res.url || mobileUrl,
+                      status: res.status,
+                      responseOk: res.ok,
+                      contentType: res.headers.get("content-type"),
+                      bodyHeadSample: html.slice(0, 500) || "(빈 본문)",
+                      htmlStatus: res.status,
+                      htmlResponseUrl: res.url || mobileUrl,
+                      htmlHeadSample: html.slice(0, 500) || "(빈 본문)",
+                      apiUrl: null,
+                      apiStatus: null,
+                      apiHeadSample: null,
+                    },
+                  };
+                }
 
 function mergeImageUrlsUnique(...lists: string[][]): string[] {
   const seen = new Set<string>();
