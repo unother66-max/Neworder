@@ -5,30 +5,16 @@ import Link from "next/link";
 import TopNav from "@/components/top-nav";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import MeshGradient from "@/components/MeshGradient";
 
 export default function HomePage() {
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-white text-slate-900 font-sans">
-      <div className="fixed inset-0 z-[100] noise-bg pointer-events-none" />
-      
-     <style jsx global>{`
-        @keyframes rainbowFlow {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-
-        .rainbow-bg {
-          background: linear-gradient(125deg, #c1e5d3, #8cb8d9, #eac9e3, #f3e4c4, #c1e5d3);
-          background-size: 400% 400%;
-          animation: rainbowFlow 15s ease infinite;
-          will-change: background-position;
-        }
-        
-      
-      `}</style>
-
-      <div className="absolute inset-0 z-0 rainbow-bg pointer-events-none" />
+      {/* 배경 컨테이너 */}
+      <div className="fixed inset-0 z-0 pointer-events-none mask-fade-bottom">
+        <MeshGradient />
+        <div className="noise-overlay"></div>
+      </div>
 
       <div className="relative z-50">
         <TopNav showBreadcrumb={false} />
