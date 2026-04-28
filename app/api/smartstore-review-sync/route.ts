@@ -28,23 +28,36 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const targetId = String(body?.targetId ?? "").trim();
-    if (!targetId) {
-      return NextResponse.json(
-        { error: "targetId가 필요합니다." },
-        { status: 400 }
-      );
+    const productId = String(body?.productId ?? "").trim();
+    if (!targetId && !productId) {
+      return NextResponse.json({ error: "targetId 또는 productId가 필요합니다." }, { status: 400 });
     }
 
     const target = await prisma.smartstoreReviewTarget.findFirst({
-      where: { id: targetId, userId },
+      where: targetId ? { id: targetId, userId } : { productId, userId },
     });
 
     if (!target) {
       return NextResponse.json({ error: "리뷰 대상 상품을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    // Scraping-only URL:
+    // - Prefer MOBILE host (m.) for the review scraping engine
+    // - Drop ALL query params / fragments (NaPm, nl-*, etc.)
+    // IMPORTANT: keep DB value (target.productUrl) untouched; only use cleanMobileUrl for scraping.
+    const cleanMobileUrl = (() => {
+      try {
+        const u = new URL(target.productUrl);
+        if (u.hostname === "smartstore.naver.com") u.hostname = "m.smartstore.naver.com";
+        if (u.hostname === "brand.naver.com") u.hostname = "m.brand.naver.com";
+        return `${u.protocol}//${u.hostname}${u.pathname}`;
+      } catch {
+        return target.productUrl.split("#")[0]!.split("?")[0]!;
+      }
+    })();
+
     const snap = await fetchSmartstoreReviewSnapshot({
-      productUrl: target.productUrl,
+      productUrl: cleanMobileUrl,
       productId: target.productId,
     });
 

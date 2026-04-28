@@ -4,6 +4,12 @@ import {
   SmartstoreNaverRateLimitedError,
 } from "@/lib/smartstore-bot-shield";
 import * as cheerio from "cheerio";
+import {
+  buildNaverJsonFetchHeadersUnified,
+  buildSmartstoreMobileDocumentFetchHeaders,
+  loadSystemConfigNaverCookie,
+  SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
+} from "@/lib/naver-smartstore-unified-fetch-headers";
 
 /**
  * 네이버 스마트스토어·브랜드스토어 상품 상세 JSON API (HTML 없음).
@@ -30,77 +36,38 @@ export const SMARTSTORE_TRACE_LOG = "[smartstore]";
 
 const FETCH_TIMEOUT_MS = 12_000;
 
-const NAVER_CHROME_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
-const NAVER_MOBILE_CHROME_UA =
-  "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36";
-
-/** 상품 페이지 URL 기준 Origin (스마트스토어는 smartstore, 브랜드는 brand) */
-function naverProductPageOrigin(productPageUrl: string): string {
-  try {
-    const h = new URL(productPageUrl).hostname.toLowerCase().replace(/^www\./, "");
-    if (h === "smartstore.naver.com") return "https://smartstore.naver.com";
-    if (h === "brand.naver.com") return "https://brand.naver.com";
-  } catch {
-    /* ignore */
-  }
-  return "https://brand.naver.com";
-}
-
-function secFetchSite(productPageUrl: string, requestUrl: string): string {
-  try {
-    const p = new URL(productPageUrl);
-    const a = new URL(requestUrl);
-    if (p.origin === a.origin) return "same-origin";
-    const pn = p.hostname.toLowerCase();
-    const an = a.hostname.toLowerCase();
-    if (pn.endsWith("naver.com") && an.endsWith("naver.com")) return "same-site";
-  } catch {
-    /* ignore */
-  }
-  return "cross-site";
-}
-
 /** 서버 fetch: 브라우저 XHR와 유사한 헤더. browserMinimal: 클라이언트 fetch(CORS·브라우저 제약)용 최소 헤더 */
 export type NaverSmartstoreMetaHeaderMode = "serverLike" | "browserMinimal";
 
-/** 브라우저 XHR와 유사한 헤더 (API URL마다 Sec-Fetch-Site 정합) */
+/** 브라우저 XHR와 유사한 헤더 (API URL마다 Sec-Fetch-Site·Host 정합) */
 function buildNaverApiRequestHeaders(
   productPageUrl: string,
-  requestUrl: string
+  requestUrl: string,
+  naverCookie: string
 ): Record<string, string> {
-  const cookie = process.env.NAVER_COOKIE?.trim() || process.env.SMARTSTORE_COOKIE?.trim();
-  return {
-    "User-Agent": NAVER_CHROME_UA,
-    Accept: "application/json, text/plain, */*",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    Referer: productPageUrl,
-    "Cache-Control": "no-cache",
-    Origin: naverProductPageOrigin(productPageUrl),
-    "Sec-Fetch-Site": secFetchSite(productPageUrl, requestUrl),
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"macOS"',
-    ...(cookie ? { Cookie: cookie } : {}),
-  };
+  const productId = extractProductId(productPageUrl) ?? "";
+  return buildNaverJsonFetchHeadersUnified({
+    productId,
+    naverCookie,
+    productPageUrl,
+    requestUrl,
+  });
 }
 
 function buildNaverMetaFetchHeaders(
   productPageUrl: string,
   requestUrl: string,
-  mode: NaverSmartstoreMetaHeaderMode
+  mode: NaverSmartstoreMetaHeaderMode,
+  naverCookie: string
 ): Record<string, string> {
   if (mode === "browserMinimal") {
     return {
       Accept: "application/json, text/plain, */*",
-      "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      "Accept-Language": SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
       Referer: productPageUrl,
     };
   }
-  return buildNaverApiRequestHeaders(productPageUrl, requestUrl);
+  return buildNaverApiRequestHeaders(productPageUrl, requestUrl, naverCookie);
 }
 
 /** 저장 API·로그 호환. HTML 미사용 시 html* 필드는 고정 플레이스홀더, 본 응답은 api* 및 상단 필드에 반영 */
@@ -197,6 +164,15 @@ async function fetchSmartstoreProductMetaViaMobileHtml(
   const productIdResolved = (naverProductId?.trim() || extractProductId(normalized)) ?? null;
   const mobileUrl = toMobileProductUrl(normalized, productIdResolved);
 
+  const naverCookie = await loadSystemConfigNaverCookie();
+
+  const requestHeaders = buildSmartstoreMobileDocumentFetchHeaders({
+    mobileUrl,
+    normalizedProductUrl: normalized,
+    productId: productIdResolved,
+    naverCookie,
+  });
+
   await randomSmartstoreDelay("save");
 
   const controller = new AbortController();
@@ -205,21 +181,7 @@ async function fetchSmartstoreProductMetaViaMobileHtml(
   try {
     res = await fetch(mobileUrl, {
       method: "GET",
-      headers: {
-        "User-Agent": NAVER_MOBILE_CHROME_UA,
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-        Referer: "https://m.smartstore.naver.com/",
-        Connection: "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-site",
-        "Sec-Fetch-User": "?1",
-      },
+      headers: requestHeaders,
       redirect: "follow",
       cache: "no-store",
       signal: controller.signal,
@@ -328,7 +290,8 @@ async function tryResolveBrandChannelUidBySlug(
   slug: string,
   signal: AbortSignal,
   productPageUrl: string,
-  headerMode: NaverSmartstoreMetaHeaderMode
+  headerMode: NaverSmartstoreMetaHeaderMode,
+  naverCookie: string
 ): Promise<string | null> {
   const candidates = [
     `https://brand.naver.com/n/v2/channels/${encodeURIComponent(slug)}?withWindow=false`,
@@ -336,7 +299,7 @@ async function tryResolveBrandChannelUidBySlug(
   ];
   for (const metaUrl of candidates) {
     try {
-      const headers = buildNaverMetaFetchHeaders(productPageUrl, metaUrl, headerMode);
+      const headers = buildNaverMetaFetchHeaders(productPageUrl, metaUrl, headerMode, naverCookie);
       await randomSmartstoreDelay("save");
       const res = await fetch(metaUrl, {
         signal,
@@ -384,7 +347,8 @@ async function buildNaverProductDetailApiUrlCandidates(
   normalized: string,
   productId: string,
   signal: AbortSignal,
-  headerMode: NaverSmartstoreMetaHeaderMode
+  headerMode: NaverSmartstoreMetaHeaderMode,
+  naverCookie: string
 ): Promise<NaverProductApiCandidates> {
   const pid = encodeURIComponent(productId);
   const slug = extractChannelSlugFromProductUrl(normalized);
@@ -399,7 +363,8 @@ async function buildNaverProductDetailApiUrlCandidates(
         slug,
         signal,
         normalized,
-        headerMode
+        headerMode,
+        naverCookie
       );
       if (channelUid) {
         urls.push(
@@ -602,13 +567,16 @@ async function fetchSmartstoreProductCore(
     return { result: empty, productPageFetch: null };
   }
 
+  const naverCookie = await loadSystemConfigNaverCookie();
+
   let apiCandidates: string[] = [];
   try {
     const built = await buildNaverProductDetailApiUrlCandidates(
       normalized,
       productId,
       signal,
-      headerMode
+      headerMode,
+      naverCookie
     );
     apiCandidates = built.urls;
   } catch {
@@ -663,7 +631,12 @@ async function fetchSmartstoreProductCore(
           console.log(`${SMARTSTORE_TRACE_LOG} [meta] ④ 요청 API URL`, apiUrl);
         }
 
-        const requestHeaders = buildNaverMetaFetchHeaders(normalized, apiUrl, headerMode);
+        const requestHeaders = buildNaverMetaFetchHeaders(
+          normalized,
+          apiUrl,
+          headerMode,
+          naverCookie
+        );
 
         await randomSmartstoreDelay("save");
         const apiRes = await fetch(apiUrl, {

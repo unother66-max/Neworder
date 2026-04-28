@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 import * as cheerio from "cheerio";
+import {
+  buildNaverJsonFetchHeadersUnified,
+  loadSystemConfigNaverCookie,
+} from "@/lib/naver-smartstore-unified-fetch-headers";
 import { extractNaverSmartstoreProductId } from "@/lib/smartstore-url";
 
 const MIN_MONTHLY_VOLUME = 100;
@@ -91,21 +95,17 @@ async function fetchSellerTagsFromInternalApi(input: {
   )}/products/${encodeURIComponent(input.productId)}?withWindow=false`;
 
   try {
-    const cookie = process.env.NAVER_COOKIE?.trim() || process.env.SMARTSTORE_COOKIE?.trim() || "";
-    
-    // 네이버가 모바일 브라우저로 착각하게 만드는 풀세트 헤더
+    const naverCookie = await loadSystemConfigNaverCookie();
+    const headers = buildNaverJsonFetchHeadersUnified({
+      productId: input.productId,
+      naverCookie,
+      productPageUrl: input.productUrl,
+      requestUrl: apiUrl,
+    });
+
     const res = await fetch(apiUrl, {
       method: "GET",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": input.productUrl,
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-        ...(cookie ? { Cookie: cookie } : {}),
-      },
+      headers,
       cache: "no-store",
     });
 

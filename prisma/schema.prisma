@@ -262,3 +262,10 @@ model SmartstoreRankHistory {
   @@index([productId])
   @@index([productId, keyword])
 }
+
+/// 시스템 단일 설정(쿠키 등). row 1개만 쓰는 전제.
+model SystemConfig {
+  id         String  @id
+  naverCookie String?
+  updatedAt  DateTime @updatedAt
+}

@@ -11,6 +11,7 @@
  */
 import express from "express";
 import { runSmartstoreExtract } from "./run-smartstore-extract.mjs";
+import { runSmartstoreFetchHtml } from "./run-smartstore-extract.mjs";
 
 const PORT = Number(process.env.PORT || 8765);
 /** 로컬만: 127.0.0.1 (기본). LAN에서 직접 붙이려면 HOST=0.0.0.0 */
@@ -119,6 +120,64 @@ app.post("/extract", async (req, res) => {
     return res.json(payload);
   } catch (e) {
     logError("extract처리중", e, { productUrl, ms: Date.now() - started });
+    const msg = e instanceof Error ? e.message : String(e);
+    return res.status(500).json({ ok: false, error: msg });
+  }
+});
+
+app.post("/html", async (req, res) => {
+  const started = Date.now();
+
+  if (SECRET) {
+    const h = req.headers["x-smartstore-scrape-secret"];
+    if (h !== SECRET) {
+      logError("인증실패", new Error("x-smartstore-scrape-secret 불일치 또는 누락"), {
+        hasHeader: Boolean(h),
+      });
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+  }
+
+  const url = String(req.body?.url ?? req.body?.productUrl ?? "").trim();
+  const cookie = String(req.body?.cookie ?? "").trim();
+  console.log("[smartstore-scraper] 단계=요청수신(/html)", { url, ip: req.ip });
+
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    console.warn("[smartstore-scraper] 단계=검증실패(/html)", { reason: "url_not_http", url });
+    return res.status(400).json({ ok: false, error: "url must be http(s)" });
+  }
+
+  try {
+    const prevCookie = process.env.NAVER_COOKIE;
+    const prevSmartstoreCookie = process.env.SMARTSTORE_COOKIE;
+    if (cookie) {
+      process.env.NAVER_COOKIE = cookie;
+      process.env.SMARTSTORE_COOKIE = cookie;
+      console.log("[smartstore-scraper] cookie provided(/html)", { cookieLength: cookie.length });
+    }
+
+    const out = await runSmartstoreFetchHtml(url);
+
+    if (cookie) {
+      process.env.NAVER_COOKIE = prevCookie;
+      process.env.SMARTSTORE_COOKIE = prevSmartstoreCookie;
+    }
+
+    console.log("[smartstore-scraper] 단계=HTML완료", {
+      ms: Date.now() - started,
+      navStatus: out?.navStatus ?? null,
+      finalUrl: String(out?.finalUrl || "").slice(0, 160),
+      htmlLen: typeof out?.html === "string" ? out.html.length : 0,
+    });
+
+    return res.json({
+      ok: true,
+      finalUrl: out?.finalUrl ?? url,
+      navStatus: out?.navStatus ?? null,
+      html: out?.html ?? "",
+    });
+  } catch (e) {
+    logError("/html처리중", e, { url, ms: Date.now() - started });
     const msg = e instanceof Error ? e.message : String(e);
     return res.status(500).json({ ok: false, error: msg });
   }

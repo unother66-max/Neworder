@@ -17,6 +17,12 @@ export type PlaywrightServiceMetaResult = {
   category: string | null;
 };
 
+export type PlaywrightServiceHtmlResult = {
+  html: string;
+  finalUrl: string;
+  navStatus: number | null;
+};
+
 /** 상대경로·프록시 URL 등을 상품 페이지 기준 절대 https URL로 정리. 비어 있거나 실패하면 null */
 export function resolveProductAssetUrl(
   productPageUrl: string,
@@ -179,6 +185,107 @@ export async function fetchSmartstoreMetaFromPlaywrightService(
   });
 
   return out;
+}
+
+type HtmlResponseJson = {
+  ok?: unknown;
+  error?: unknown;
+  html?: unknown;
+  finalUrl?: unknown;
+  navStatus?: unknown;
+};
+
+/**
+ * POST {SMARTSTORE_PLAYWRIGHT_URL}/html — Playwright 서버에서 상품 페이지 HTML을 가져온다.
+ * (HTML 파싱/리뷰 추출은 호출자에서 수행)
+ */
+export async function fetchSmartstoreHtmlFromPlaywrightService(
+  productPageUrl: string,
+  opts?: { timeoutMs?: number }
+): Promise<PlaywrightServiceHtmlResult> {
+  const timeoutMs = opts?.timeoutMs ?? 55_000;
+  const base = readServiceBaseUrl();
+  const endpoint = `${base}/html`;
+  const cookie = process.env.NAVER_COOKIE?.trim() || process.env.SMARTSTORE_COOKIE?.trim() || "";
+
+  console.log(`${LOG_PREFIX} 단계=HTML요청준비`, {
+    입력상품URL: productPageUrl,
+    Playwright서비스URL: endpoint,
+    timeoutMs,
+    cookieProvided: Boolean(cookie),
+    cookieLength: cookie ? cookie.length : 0,
+  });
+
+  const secret = process.env.SMARTSTORE_PLAYWRIGHT_SECRET?.trim();
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    await randomSmartstoreDelay("save");
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(secret ? { "x-smartstore-scrape-secret": secret } : {}),
+      },
+      body: JSON.stringify({ url: productPageUrl, cookie: cookie || undefined }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`${LOG_PREFIX} 단계=HTML_fetch실패`, {
+      입력상품URL: productPageUrl,
+      Playwright서비스URL: endpoint,
+      error: msg,
+      stack: e instanceof Error ? e.stack : undefined,
+      aborted: e instanceof Error && e.name === "AbortError",
+    });
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(
+        `Playwright 서버 HTML 응답 시간 초과(${Math.round(timeoutMs / 1000)}초). Tunnel·맥 서버 가동 여부를 확인해주세요.`
+      );
+    }
+    throw new Error(`Playwright 서버 연결 실패(HTML): ${msg}`);
+  } finally {
+    clearTimeout(t);
+  }
+
+  let json: HtmlResponseJson;
+  try {
+    json = (await res.json()) as HtmlResponseJson;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`${LOG_PREFIX} 단계=HTML_JSON파싱실패`, {
+      httpStatus: res.status,
+      error: msg,
+      stack: e instanceof Error ? e.stack : undefined,
+    });
+    throw new Error("Playwright 서버 HTML 응답이 JSON이 아닙니다. 스크래퍼 로그를 확인해주세요.");
+  }
+
+  if (!res.ok || json.ok !== true) {
+    const errText =
+      typeof json.error === "string" && json.error.trim()
+        ? json.error.trim()
+        : `HTTP ${res.status}`;
+    console.error(`${LOG_PREFIX} 단계=HTML_http에러`, {
+      httpStatus: res.status,
+      error: errText,
+      body: json,
+    });
+    throw new Error(`Playwright 서버 HTML 수집 실패: ${errText}`);
+  }
+
+  const html = typeof json.html === "string" ? json.html : "";
+  const finalUrl =
+    typeof json.finalUrl === "string" && json.finalUrl.trim() ? json.finalUrl.trim() : productPageUrl;
+  const navStatusRaw = json.navStatus;
+  const navStatus =
+    typeof navStatusRaw === "number" && Number.isFinite(navStatusRaw) ? navStatusRaw : null;
+
+  return { html, finalUrl, navStatus };
 }
 
 /** SMARTSTORE_PLAYWRIGHT_URL 이 있으면 원격 Playwright 서비스 경로 사용 (없으면 서버 내 getSmartstoreProductSnapshot) */

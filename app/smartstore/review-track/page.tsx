@@ -127,6 +127,26 @@ function StarBar({
   );
 }
 
+function CompactStarBar({
+  label,
+  count,
+  total,
+}: {
+  label: string;
+  count: number;
+  total: number;
+}) {
+  const pct = total > 0 ? (count / total) * 100 : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-6 shrink-0 text-[10px] font-black text-[#6b7280]">{label}</div>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef2f7]">
+        <div className="h-1.5 rounded-full bg-[#111827]" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function ProductThumb({ src, alt }: { src: string | null; alt: string }) {
   const [broken, setBroken] = useState(false);
   const finalSrc = src?.trim();
@@ -278,6 +298,7 @@ export default function SmartstoreReviewTrackPage() {
     try {
       const res = await fetch(`/api/smartstore-review-targets?id=${encodeURIComponent(targetId)}`, {
         method: "DELETE",
+        credentials: "include",
       });
       const data = (await res.json()) as any;
       if (!res.ok) {
@@ -296,7 +317,7 @@ export default function SmartstoreReviewTrackPage() {
       const res = await fetch("/api/smartstore-review-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetId: t.id }),
+        body: JSON.stringify({ productId: t.target.productId }),
       });
       const data = (await res.json()) as any;
       if (res.status === 429) {
@@ -368,7 +389,7 @@ export default function SmartstoreReviewTrackPage() {
             >
               <span className="inline-flex items-center gap-2">
                 <RefreshCw size={16} className={syncAllLoading ? "animate-spin" : ""} />
-                {syncAllLoading ? "업데이트 중..." : "업데이트"}
+                {syncAllLoading ? "전체 업데이트 중..." : "전체 업데이트"}
               </span>
             </button>
           </div>
@@ -412,163 +433,139 @@ export default function SmartstoreReviewTrackPage() {
           )}
         </div>
 
-        <div className="mt-6 overflow-hidden rounded-[18px] bg-white shadow-sm ring-1 ring-[#e5e7eb]">
-          <div className="border-b border-[#f3f4f6] px-4 py-3 text-[13px] font-black text-[#111827]">
-            리뷰 추적
-          </div>
-          {loading ? (
-            <div className="p-4 text-[13px] font-semibold text-[#6b7280]">불러오는 중...</div>
-          ) : targets.length === 0 ? (
-            <div className="p-4 text-[13px] font-semibold text-[#6b7280]">대상 없음</div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="w-full min-w-[980px] border-separate border-spacing-0">
-                <thead>
-                  <tr className="bg-[#f9fafb] text-left text-[12px] font-black text-[#6b7280]">
-                    <th className="sticky left-0 z-10 bg-[#f9fafb] px-4 py-3">상품</th>
-                    <th className="px-4 py-3">전체 리뷰수</th>
-                    <th className="px-4 py-3">포토/동영상</th>
-                    <th className="px-4 py-3">한달사용</th>
-                    <th className="px-4 py-3">재구매</th>
-                    <th className="px-4 py-3">스토어픽</th>
-                    <th className="px-4 py-3">평점</th>
-                    <th className="px-4 py-3">5점~1점 분포</th>
-                    <th className="px-4 py-3 text-right">동작</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {targets.map((t) => {
-                    const stars = starSummaryToCounts(t.target.reviewStarSummary);
-                    const totalStars = stars
-                      ? stars["1"] + stars["2"] + stars["3"] + stars["4"] + stars["5"]
-                      : 0;
-                    return (
-                      <tr key={t.id} className="border-b border-[#f3f4f6] align-top">
-                        <td className="sticky left-0 z-10 bg-white px-4 py-4">
-                          <div className="flex items-start gap-3">
-                            <ProductThumb src={t.target.imageUrl} alt={t.target.name} />
-                            <div className="min-w-0">
-                              <div className="truncate text-[13px] font-black text-[#111827]">
-                                {t.target.name}
-                              </div>
-                              <div className="mt-0.5 truncate text-[12px] font-semibold text-[#9ca3af]">
-                                {t.target.storeName ? `${t.target.storeName} · ` : ""}상품ID {t.target.productId}
-                              </div>
-                              <div className="mt-1 text-[11px] font-semibold text-[#9ca3af]">
-                                업데이트 {t.target.updatedAtLabel}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="text-[14px] font-black text-[#111827]">
-                            {fmtNum(t.target.reviewCount)}
-                          </div>
-                          <DeltaChip n={t.delta.reviewCount} />
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="text-[14px] font-black text-[#111827]">
-                            {fmtNum(t.target.reviewPhotoVideoCount)}
-                          </div>
-                          <DeltaChip n={t.delta.reviewPhotoVideoCount} />
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="text-[14px] font-black text-[#111827]">
-                            {fmtNum(t.target.reviewMonthlyUseCount)}
-                          </div>
-                          <DeltaChip n={t.delta.reviewMonthlyUseCount} />
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="text-[14px] font-black text-[#111827]">
-                            {fmtNum(t.target.reviewRepurchaseCount)}
-                          </div>
-                          <DeltaChip n={t.delta.reviewRepurchaseCount} />
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="text-[14px] font-black text-[#111827]">
-                            {fmtNum(t.target.reviewStorePickCount)}
-                          </div>
-                          <DeltaChip n={t.delta.reviewStorePickCount} />
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="text-[14px] font-black text-[#111827]">
-                            {fmtRating(t.target.reviewRating)}
-                          </div>
-                          <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[11px] font-extrabold text-[#9ca3af]">
-                            {t.delta.reviewRating == null || t.delta.reviewRating === 0 ? (
-                              <>
-                                <Minus size={12} /> 0
-                              </>
-                            ) : t.delta.reviewRating > 0 ? (
-                              <>
-                                <ArrowUpRight size={12} /> +{t.delta.reviewRating}
-                              </>
-                            ) : (
-                              <>
-                                <ArrowDownRight size={12} /> {t.delta.reviewRating}
-                              </>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          {stars ? (
-                            <div className="min-w-[260px] space-y-1.5">
-                              <StarBar label="5점" count={stars["5"]} total={totalStars} />
-                              <StarBar label="4점" count={stars["4"]} total={totalStars} />
-                              <StarBar label="3점" count={stars["3"]} total={totalStars} />
-                              <StarBar label="2점" count={stars["2"]} total={totalStars} />
-                              <StarBar label="1점" count={stars["1"]} total={totalStars} />
-                            </div>
-                          ) : (
-                            <div className="text-[12px] font-semibold text-[#9ca3af]">-</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => syncOne(t)}
-                              disabled={syncingTargetId === t.id}
-                              className="rounded-[12px] bg-[#111827] px-3 py-2 text-[12px] font-extrabold text-white disabled:opacity-50"
-                            >
-                              <span className="inline-flex items-center gap-2">
-                                <RefreshCw
-                                  size={14}
-                                  className={syncingTargetId === t.id ? "animate-spin" : ""}
-                                />
-                                {syncingTargetId === t.id ? "동기화..." : "동기화"}
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeTarget(t.id)}
-                              className="rounded-[12px] bg-white px-3 py-2 text-[12px] font-extrabold text-[#ef4444] ring-1 ring-[#fee2e2] hover:bg-[#fff1f2]"
-                            >
-                              <span className="inline-flex items-center gap-2">
-                                <Trash2 size={14} /> 삭제
-                              </span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        <div className="mt-6 space-y-4">
+          <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
+                  등록된 상품
+                </div>
+                <div className="mt-1 text-[12px] text-[#6b7280]">
+                  각 상품은 개별 업데이트/삭제가 가능합니다.
+                </div>
+              </div>
+              <div className="text-[11px] text-[#9ca3af]">* 상단 버튼은 전체 업데이트입니다.</div>
             </div>
+          </div>
+
+          {loading ? (
+            <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-14 text-center text-[14px] text-[#9ca3af]">
+              불러오는 중...
+            </div>
+          ) : targets.length === 0 ? (
+            <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+              <p className="text-[18px] font-bold text-[#111827]">아직 등록된 상품이 없어요</p>
+              <p className="mt-2 text-[14px] text-[#9ca3af]">
+                상단의 상품 등록 버튼으로 스마트스토어 상품 URL을 추가해보세요.
+              </p>
+            </div>
+          ) : (
+            targets.map((t) => {
+              const stars = starSummaryToCounts(t.target.reviewStarSummary);
+              const totalStars = stars
+                ? stars["1"] + stars["2"] + stars["3"] + stars["4"] + stars["5"]
+                : 0;
+              return (
+                <div
+                  key={t.id}
+                  className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)] md:px-6"
+                >
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex min-w-0 items-center gap-4">
+                      <ProductThumb src={t.target.imageUrl} alt={t.target.name} />
+                      <div className="min-w-0">
+                        <div className="truncate text-[14px] font-black text-[#111827]">
+                          {t.target.name}
+                        </div>
+                        <div className="mt-1 truncate text-[12px] font-semibold text-[#6b7280]">
+                          {t.target.storeName ? `${t.target.storeName} · ` : ""}
+                          상품ID {t.target.productId}
+                        </div>
+                        <div className="mt-1 text-[11px] font-semibold text-[#9ca3af]">
+                          업데이트 {t.target.updatedAtLabel}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-4 md:justify-center">
+                      <div className="min-w-[140px] rounded-[16px] bg-[#f9fafb] px-4 py-3 ring-1 ring-[#eef2f7]">
+                        <div className="text-[11px] font-black text-[#6b7280]">리뷰 수</div>
+                        <div className="mt-1 text-[18px] font-black tracking-[-0.02em] text-[#111827]">
+                          {fmtNum(t.target.reviewCount)}
+                        </div>
+                        <DeltaChip n={t.delta.reviewCount} />
+                      </div>
+
+                      <div className="min-w-[140px] rounded-[16px] bg-[#f9fafb] px-4 py-3 ring-1 ring-[#eef2f7]">
+                        <div className="text-[11px] font-black text-[#6b7280]">평점</div>
+                        <div className="mt-1 text-[18px] font-black tracking-[-0.02em] text-[#111827]">
+                          {fmtRating(t.target.reviewRating)}
+                        </div>
+                        <div className="mt-1 text-[11px] font-semibold text-[#9ca3af]">
+                          {t.delta.reviewRating == null || t.delta.reviewRating === 0 ? (
+                            <>
+                              <Minus size={12} className="inline-block" /> 0
+                            </>
+                          ) : t.delta.reviewRating > 0 ? (
+                            <>
+                              <ArrowUpRight size={12} className="inline-block" /> +{t.delta.reviewRating}
+                            </>
+                          ) : (
+                            <>
+                              <ArrowDownRight size={12} className="inline-block" /> {t.delta.reviewRating}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 md:shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => syncOne(t)}
+                        disabled={syncingTargetId === t.id}
+                        className="h-[40px] rounded-[14px] bg-[#111827] px-4 text-[12px] font-extrabold text-white shadow-sm disabled:opacity-50"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <RefreshCw
+                            size={14}
+                            className={syncingTargetId === t.id ? "animate-spin" : ""}
+                          />
+                          {syncingTargetId === t.id ? "업데이트..." : "업데이트"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeTarget(t.id)}
+                        className="inline-flex h-[40px] w-[40px] items-center justify-center rounded-[14px] bg-white text-[#ef4444] ring-1 ring-[#fee2e2] transition hover:bg-[#fff1f2]"
+                        aria-label="삭제"
+                        title="삭제"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {stars ? (
+                    <div className="mt-4 grid gap-2 md:grid-cols-5">
+                      <CompactStarBar label="5점" count={stars["5"]} total={totalStars} />
+                      <CompactStarBar label="4점" count={stars["4"]} total={totalStars} />
+                      <CompactStarBar label="3점" count={stars["3"]} total={totalStars} />
+                      <CompactStarBar label="2점" count={stars["2"]} total={totalStars} />
+                      <CompactStarBar label="1점" count={stars["1"]} total={totalStars} />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
           )}
         </div>
 
         {addOpen ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            role="dialog"
-            aria-modal
-          >
-            <div className="w-full max-w-[720px] rounded-[18px] bg-white shadow-xl ring-1 ring-black/5">
-              <div className="flex items-center justify-between border-b border-[#f3f4f6] px-4 py-3">
-                <div className="text-[14px] font-black text-[#111827]">리뷰 대상 상품 추가</div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
+            <div className="w-full max-w-[520px] rounded-[24px] bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-[#f3f4f6] px-6 py-5">
+                <h2 className="text-[18px] font-black text-[#111827]">상품 등록</h2>
                 <button
                   type="button"
                   onClick={() => {
@@ -579,57 +576,125 @@ export default function SmartstoreReviewTrackPage() {
                     setAddUrl("");
                     setError("");
                   }}
-                  className="rounded-[10px] px-3 py-1.5 text-[12px] font-extrabold text-[#6b7280] hover:bg-[#f9fafb]"
+                  className="text-[22px] leading-none text-[#9ca3af] hover:text-[#111827]"
+                  aria-label="닫기"
                 >
-                  닫기
+                  ×
                 </button>
               </div>
-              <div className="p-4">
-                <div className="text-[12px] font-semibold text-[#6b7280]">
-                  상품 URL을 입력하면 네이버에서 즉석으로 정보를 수집해 리뷰 추적 대상에 추가합니다.
+              <div className="px-6 py-5">
+                <p className="text-[13px] leading-relaxed text-[#6b7280]">
+                  추적할 스마트스토어·브랜드스토어 상품 페이지 주소를 입력하세요. 브라우저 주소창의{" "}
+                  <span className="font-bold text-[#374151]">상품 상세 URL</span>을 붙여넣으면 됩니다.
+                </p>
+
+                <div className="mt-4 rounded-[16px] border border-[#eef2f7] bg-[#f9fafb] px-4 py-3">
+                  <p className="text-[12px] font-extrabold text-[#4b5563]">
+                    상품 URL 형식{" "}
+                    <span className="font-bold text-[#6b7280]">
+                      (상점ID와 상품ID를 꼭 포함하여 추가해주세요.)
+                    </span>
+                  </p>
+                  <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-[#6b7280]">
+                    <li className="flex gap-2">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                      <span>
+                        일반 상품:{" "}
+                        <span className="font-semibold text-[#374151]">
+                          http://smartstore.naver.com/
+                          <span className="text-[#7c3aed]">상점ID</span>/products/
+                          <span className="text-[#7c3aed]">상품ID</span>?..
+                        </span>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                      <span>
+                        브랜드 상품:{" "}
+                        <span className="font-semibold text-[#374151]">
+                          http://brand.naver.com/
+                          <span className="text-[#7c3aed]">상점ID</span>/products/
+                          <span className="text-[#7c3aed]">상품ID</span>?..
+                        </span>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                      <span>
+                        윈도우 상품:{" "}
+                        <span className="font-semibold text-[#374151]">
+                          http://shopping.naver.com/window-products/
+                          <span className="text-[#7c3aed]">카테고리</span>/
+                          <span className="text-[#7c3aed]">상품ID</span>?..
+                        </span>
+                      </span>
+                    </li>
+                  </ul>
                 </div>
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <input
-                    value={addUrl}
-                    onChange={(e) => setAddUrl(e.target.value)}
-                    placeholder="예: https://smartstore.naver.com/.../products/123"
-                    className="h-10 flex-1 rounded-[12px] border border-[#e5e7eb] px-3 text-[13px] font-semibold text-[#111827] outline-none focus:ring-2 focus:ring-[#111827]/10"
-                  />
+
+                <label className="mt-4 block text-[12px] font-bold text-[#4b5563]">상품 URL</label>
+                <input
+                  type="url"
+                  value={addUrl}
+                  onChange={(e) => setAddUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addTargetByUrl()}
+                  placeholder="https://smartstore.naver.com/…/products/1234567890"
+                  className="mt-2 w-full rounded-[12px] border border-[#e5e7eb] px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
+                />
+                {error ? <p className="mt-2 text-[13px] text-[#dc2626]">{error}</p> : null}
+
+                {showManualInput ? (
+                  <div className="mt-4 rounded-[16px] border border-[#fee2e2] bg-[#fff1f2] px-4 py-4">
+                    <p className="text-[12px] font-extrabold text-[#b91c1c]">
+                      자동 등록에 실패했어요. 수동으로 상품 정보를 입력해 등록할 수 있습니다.
+                    </p>
+                    <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
+                      상품명
+                    </label>
+                    <input
+                      type="text"
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                      placeholder="예: 아이폰 케이스"
+                      className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
+                    />
+                    <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
+                      이미지 URL
+                    </label>
+                    <input
+                      type="url"
+                      value={manualImageUrl}
+                      onChange={(e) => setManualImageUrl(e.target.value)}
+                      placeholder="https://...jpg"
+                      className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddOpen(false);
+                      setShowManualInput(false);
+                      setManualName("");
+                      setManualImageUrl("");
+                      setAddUrl("");
+                      setError("");
+                    }}
+                    className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                  >
+                    취소
+                  </button>
                   <button
                     type="button"
                     onClick={addTargetByUrl}
                     disabled={adding}
-                    className="h-10 rounded-[12px] bg-[#111827] px-4 text-[13px] font-extrabold text-white disabled:opacity-50"
+                    className="h-[46px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] disabled:opacity-60"
                   >
-                    {adding ? "추가 중..." : "추가"}
+                    {adding ? (showManualInput ? "수동 등록 중..." : "상품 정보 수집 중...") : showManualInput ? "수동 등록" : "등록"}
                   </button>
                 </div>
-
-                {showManualInput ? (
-                  <div className="mt-4 rounded-[16px] border border-[#fee2e2] bg-[#fff1f2] p-4">
-                    <div className="text-[12px] font-extrabold text-[#b91c1c]">
-                      자동 불러오기에 실패했습니다. 상품 정보를 직접 입력해 주세요.
-                    </div>
-                    <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
-                      상품명 (필수)
-                    </label>
-                    <input
-                      value={manualName}
-                      onChange={(e) => setManualName(e.target.value)}
-                      placeholder="예: 아이폰 케이스"
-                      className="mt-2 h-10 w-full rounded-[12px] border border-[#fecaca] bg-white px-3 text-[13px] font-semibold text-[#111827] outline-none focus:ring-2 focus:ring-[#b91c1c]/10"
-                    />
-                    <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
-                      이미지 URL (선택)
-                    </label>
-                    <input
-                      value={manualImageUrl}
-                      onChange={(e) => setManualImageUrl(e.target.value)}
-                      placeholder="https://...jpg"
-                      className="mt-2 h-10 w-full rounded-[12px] border border-[#fecaca] bg-white px-3 text-[13px] font-semibold text-[#111827] outline-none focus:ring-2 focus:ring-[#b91c1c]/10"
-                    />
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>

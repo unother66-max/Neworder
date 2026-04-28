@@ -799,3 +799,88 @@ export async function runSmartstoreExtract(productUrl) {
   const last = attempts[attempts.length - 1];
   return buildReturn(attempts, last, productUrl);
 }
+
+/**
+ * 스마트스토어 상품 페이지 HTML을 Playwright로 가져온다.
+ * - 기존 runSmartstoreExtract의 내비게이션 체인/차단 감지 로직을 재사용
+ * - 성공 시 { ok:true, finalUrl, navStatus, html } 반환
+ */
+export async function runSmartstoreFetchHtml(productUrl) {
+  if (!productUrl || typeof productUrl !== "string") {
+    throw new Error("productUrl must be a non-empty string");
+  }
+
+  const attempts = [];
+  const label = "html_fetch";
+
+  let browser = await chromium.launch({
+    headless: true,
+    args: CHROMIUM_ARGS,
+  });
+
+  try {
+    const row = await navigateChainAndExtract(browser, productUrl, label);
+    attempts.push(row);
+
+    if (isSecurityPageAbortRow(row)) {
+      const err = new Error("SMARTSTORE_SECURITY_PAGE");
+      err.details = { attempts, row };
+      throw err;
+    }
+
+    // 네비게이션 단계에서 429/에러페이지 등으로 막힌 경우
+    if (attemptLooksBlocked(row) || row?.navStatus === 429) {
+      const err = new Error("SMARTSTORE_BLOCKED_OR_ERROR_PAGE");
+      err.details = { attempts, row };
+      throw err;
+    }
+
+    // navigateChainAndExtract 내부에서 page.content() 샘플을 만들지만 전체 HTML은 남기지 않는다.
+    // 여기서는 동일 체인 로직을 1회 더 수행해 full HTML을 가져온다 (가장 단순/안전한 방식).
+  } finally {
+    await browser.close().catch(() => {});
+  }
+
+  // 2nd pass: HTML을 직접 수집 (Signals까지 기다린 뒤 page.content())
+  browser = await chromium.launch({
+    headless: true,
+    args: CHROMIUM_ARGS,
+  });
+
+  try {
+    const cookie = String(process.env.NAVER_COOKIE || process.env.SMARTSTORE_COOKIE || "").trim();
+    const ctx = await browser.newContext(smartstoreBrowserContextOptions({ cookie }));
+    await ctx.addInitScript(SMARTSTORE_ANTI_DETECT_INIT);
+
+    const page = await ctx.newPage();
+    page.setDefaultNavigationTimeout(GOTO_MS);
+
+    try {
+      await installSmartstoreRoutes(page);
+    } catch {
+      /* ignore */
+    }
+
+    await page.goto("https://www.naver.com/", { waitUntil: "domcontentloaded", timeout: 18_000 });
+    await sleep(randInt(400, 950));
+    await page.goto("https://shopping.naver.com/", { waitUntil: "domcontentloaded", timeout: 18_000 });
+    await sleep(randInt(400, 950));
+
+    const nav = await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: GOTO_MS });
+    const navStatus = nav?.status?.() ?? null;
+    const finalUrl = page.url() || productUrl;
+
+    await sleep(randInt(900, 2200));
+    await reinforceNavigatorInPage(page).catch(() => {});
+    await humanLikeInteraction(page, label).catch(() => {});
+    await waitForProductDomSignals(page, label);
+    await sleep(randInt(500, 1100));
+
+    const html = await page.content();
+    await ctx.close().catch(() => {});
+
+    return { ok: true, finalUrl, navStatus, html };
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
