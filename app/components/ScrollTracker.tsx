@@ -4,12 +4,12 @@ import { useEffect } from "react";
 
 export default function ScrollTracker() {
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let timer: number | null = null;
 
     const handleScroll = () => {
       document.body.classList.add("is-scrolling");
 
-      if (timer) window.clearTimeout(timer);
+      if (timer != null) window.clearTimeout(timer);
 
       timer = window.setTimeout(() => {
         document.body.classList.remove("is-scrolling");
@@ -19,7 +19,7 @@ export default function ScrollTracker() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      if (timer) window.clearTimeout(timer);
+      if (timer != null) window.clearTimeout(timer);
     };
   }, []);
 

@@ -10,6 +10,28 @@ import {
 
 const LOG_P = "[smartstore-review-fetcher-lite]";
 
+export type SmartstoreRecentReview = {
+  reviewKey: string;
+  postedAt: Date | null;
+  rating: number | null;
+  author: string | null;
+  content: string;
+};
+
+export type SmartstoreReviewSnapshot = {
+  productPageUrl: string;
+  summary: {
+    reviewCount: number;
+    reviewRating: number;
+    photoVideoReviewCount: number;
+    monthlyUseReviewCount: number;
+    repurchaseReviewCount: number;
+    storePickReviewCount: number;
+    starScoreSummary: Record<"1" | "2" | "3" | "4" | "5", number>;
+  };
+  recentReviews: SmartstoreRecentReview[];
+};
+
 /**
  * 🎯 [스나이퍼 로직] HTML 원본에서 정규식으로 데이터를 낚아챕니다.
  * 브라우저를 띄우지 않아도 되기 때문에 Vercel에서 에러가 날 일이 없습니다.
@@ -39,7 +61,7 @@ function extractDataByBulldozer(html: string) {
 export async function fetchSmartstoreReviewSnapshot(input: {
   productUrl: string;
   productId: string;
-}) {
+}): Promise<SmartstoreReviewSnapshot> {
   const productId = String(input.productId).trim();
   const pageUrl = `https://m.smartstore.naver.com/products/${productId}`;
   

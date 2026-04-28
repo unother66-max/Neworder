@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import AnimatedBackground from "./components/AnimatedBackground";
+import Providers from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -47,7 +48,9 @@ export default function RootLayout({
         <div className="grain-overlay z-10" aria-hidden="true" />
 
         {/* 3. 실제 콘텐츠 */}
-        <div className="relative z-20">{children}</div>
+        <Providers>
+          <div className="relative z-20">{children}</div>
+        </Providers>
       </body>
     </html>
   );
