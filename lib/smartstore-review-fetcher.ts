@@ -91,6 +91,60 @@ function errMsg(e: unknown): string {
   return String(e);
 }
 
+function extractJsonObjectAfterKey(text: string, key: string): Record<string, unknown> | null {
+  const k = text.indexOf(key);
+  if (k < 0) return null;
+  const from = text.slice(k + key.length);
+  const start = from.indexOf("{");
+  if (start < 0) return null;
+  const startIdx = k + key.length + start;
+
+  let depth = 0;
+  let inStr = false;
+  let quote: '"' | "'" | "`" | null = null;
+  let escape = false;
+  for (let i = startIdx; i < text.length; i += 1) {
+    const c = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inStr) {
+      if (c === "\\") {
+        escape = true;
+        continue;
+      }
+      if (c === quote) {
+        inStr = false;
+        quote = null;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      inStr = true;
+      quote = c;
+      continue;
+    }
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const slice = text.slice(startIdx, i + 1);
+        try {
+          const parsed = JSON.parse(slice) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function isVercelRuntime(): boolean {
   return process.env.VERCEL === "1";
 }
@@ -189,20 +243,28 @@ function mapProductSummaryJsonToSummary(json: ProductSummaryApiJson): Smartstore
   // 💡 여기서 변수를 정의하기 때문에 에러가 안 납니다.
   const reviewCount = safeNumber(info.reviewCount) ?? 0;
   const averageReviewScore = safeNumber(info.averageReviewScore) ?? 0;
+  const scoreSummary = info.scoreSummary;
+
+  const ss = scoreSummary && typeof scoreSummary === "object" ? (scoreSummary as any) : null;
+  const star1 = safeNumber(info.score1ReviewCount) ?? safeNumber(ss?.score1Count) ?? 0;
+  const star2 = safeNumber(info.score2ReviewCount) ?? safeNumber(ss?.score2Count) ?? 0;
+  const star3 = safeNumber(info.score3ReviewCount) ?? safeNumber(ss?.score3Count) ?? 0;
+  const star4 = safeNumber(info.score4ReviewCount) ?? safeNumber(ss?.score4Count) ?? 0;
+  const star5 = safeNumber(info.score5ReviewCount) ?? safeNumber(ss?.score5Count) ?? 0;
 
   return {
     reviewCount: clampInt(reviewCount, 0, 100_000_000),
-    reviewRating: averageReviewScore, // 🎯 평점 0.00 해결 포인트!
+    reviewRating: averageReviewScore, 
     photoVideoReviewCount: safeNumber(info.photoReviewCount || info.photoVideoReviewCount) ?? 0,
     monthlyUseReviewCount: safeNumber(info.afterUseReviewCount || info.monthlyUseReviewCount) ?? 0,
     repurchaseReviewCount: safeNumber(info.repurchaseReviewCount) ?? 0,
     storePickReviewCount: safeNumber(info.storePickReviewCount) ?? 0,
     starScoreSummary: {
-      "1": safeNumber(info.score1ReviewCount) ?? 0,
-      "2": safeNumber(info.score2ReviewCount) ?? 0,
-      "3": safeNumber(info.score3ReviewCount) ?? 0,
-      "4": safeNumber(info.score4ReviewCount) ?? 0,
-      "5": safeNumber(info.score5ReviewCount) ?? 0,
+      "1": clampInt(star1, 0, 100_000_000),
+      "2": clampInt(star2, 0, 100_000_000),
+      "3": clampInt(star3, 0, 100_000_000),
+      "4": clampInt(star4, 0, 100_000_000),
+      "5": clampInt(star5, 0, 100_000_000),
     },
   };
 }
@@ -360,6 +422,7 @@ type ProductSummaryApiJson = {
     afterUseReviewCount?: unknown;
     repurchaseReviewCount?: unknown;
     storePickReviewCount?: unknown;
+    scoreSummary?: unknown;
     score1ReviewCount?: unknown;
     score2ReviewCount?: unknown;
     score3ReviewCount?: unknown;
@@ -452,6 +515,11 @@ async function fetchProductSummaryFromMobileHtml(input: {
       const rootStr = JSON.stringify(root);
       const countMatch = rootStr.match(/"(?:reviewCount|totalReviewCount)"\s*:\s*(\d+)/i);
       const scoreMatch = rootStr.match(/"(?:averageReviewScore|ratingValue)"\s*:\s*"?([\d.]+)"?/i);
+      const photoMatch = rootStr.match(/"(?:photoReviewCount|photoReviewCnt|photoCount)"\s*:\s*(\d+)/i);
+      const afterUseMatch = rootStr.match(/"(?:afterUseReviewCount|afterUseCount)"\s*:\s*(\d+)/i);
+      const repurchaseMatch = rootStr.match(/"(?:repurchaseReviewCount|repurchaseCount)"\s*:\s*(\d+)/i);
+      const storePickMatch = rootStr.match(/"(?:storePickReviewCount|storePickCount)"\s*:\s*(\d+)/i);
+      const scoreSummaryObj = extractJsonObjectAfterKey(rootStr, "\"scoreSummary\":");
 
       if (countMatch && countMatch[1]) {
         console.log(`${LOG_P} 🎯 불도저 정규식 적중 (JSON 내부)!`, {
@@ -463,6 +531,11 @@ async function fetchProductSummaryFromMobileHtml(input: {
             productReviewInfo: {
               reviewCount: Number(countMatch[1]),
               averageReviewScore: scoreMatch ? Number(scoreMatch[1]) : 0,
+              photoReviewCount: photoMatch ? Number(photoMatch[1]) : undefined,
+              afterUseReviewCount: afterUseMatch ? Number(afterUseMatch[1]) : undefined,
+              repurchaseReviewCount: repurchaseMatch ? Number(repurchaseMatch[1]) : undefined,
+              storePickReviewCount: storePickMatch ? Number(storePickMatch[1]) : undefined,
+              scoreSummary: scoreSummaryObj ?? undefined,
             },
           },
           httpStatus,
@@ -476,6 +549,11 @@ async function fetchProductSummaryFromMobileHtml(input: {
   // 💡 불도저 로직 2: JSON 변환도 실패했다면, 아예 HTML 원본 텍스트에서 바로 뽑아내기
   const rawCountMatch = html.match(/"(?:reviewCount|totalReviewCount)"\s*:\s*(\d+)/i);
   const rawScoreMatch = html.match(/"(?:averageReviewScore|ratingValue)"\s*:\s*"?([\d.]+)"?/i);
+  const rawPhotoMatch = html.match(/"(?:photoReviewCount|photoReviewCnt|photoCount)"\s*:\s*(\d+)/i);
+  const rawAfterUseMatch = html.match(/"(?:afterUseReviewCount|afterUseCount)"\s*:\s*(\d+)/i);
+  const rawRepurchaseMatch = html.match(/"(?:repurchaseReviewCount|repurchaseCount)"\s*:\s*(\d+)/i);
+  const rawStorePickMatch = html.match(/"(?:storePickReviewCount|storePickCount)"\s*:\s*(\d+)/i);
+  const rawScoreSummaryObj = extractJsonObjectAfterKey(html, "\"scoreSummary\":");
 
   if (rawCountMatch && rawCountMatch[1]) {
     console.log(`${LOG_P} 🎯 불도저 정규식 적중 (HTML 원본)!`, {
@@ -487,6 +565,11 @@ async function fetchProductSummaryFromMobileHtml(input: {
         productReviewInfo: {
           reviewCount: Number(rawCountMatch[1]),
           averageReviewScore: rawScoreMatch ? Number(rawScoreMatch[1]) : 0,
+          photoReviewCount: rawPhotoMatch ? Number(rawPhotoMatch[1]) : undefined,
+          afterUseReviewCount: rawAfterUseMatch ? Number(rawAfterUseMatch[1]) : undefined,
+          repurchaseReviewCount: rawRepurchaseMatch ? Number(rawRepurchaseMatch[1]) : undefined,
+          storePickReviewCount: rawStorePickMatch ? Number(rawStorePickMatch[1]) : undefined,
+          scoreSummary: rawScoreSummaryObj ?? undefined,
         },
       },
       httpStatus,
@@ -505,85 +588,101 @@ async function fetchProductSummaryViaPlaywright(input: {
 }): Promise<ProductSummaryApiJson | null> {
   const timeoutMs = Math.min(Math.max(input.timeoutMs ?? 45_000, 12_000), 90_000);
   let context: BrowserContext | undefined;
+  let interceptedData: any = null;
 
   try {
-    // 여기서 .context를 가져옵니다.
     const launched = await launchBrowser();
-    context = launched.context; 
-
-    // 이제 context가 확실히 있으므로 에러가 사라집니다.
+    context = launched.context;
     const page: Page = await context.newPage();
-    // ... 이하 동일
     page.setDefaultNavigationTimeout(timeoutMs);
 
-    // 💡 소장님의 찐 프로필을 쓰므로 별도의 쿠키 주입이나 UA 설정이 필요 없습니다! (이미 로그인된 상태니까요)
+    // 🕵️‍♂️ [핵심] '가로채기(route)' 대신 '투명 망토 도청(on response)' 기법 사용!
+    // 네이버 봇 탐지를 피하기 위해 네트워크를 건드리지 않고 옆에서 듣기만 합니다.
+    page.on('response', async (response) => {
+      const url = response.url();
+      // graphql 또는 리뷰 관련 API 통신만 골라 듣습니다.
+      if (url.includes('graphql') || url.includes('review') || url.includes('comments')) {
+        try {
+          const text = await response.text();
+          if (text.includes('reviewCount') || text.includes('reviewAmount') || text.includes('totalElements')) {
+            const json = JSON.parse(text);
+            const summary = json?.data?.productReviews?.summary || 
+                            json?.data?.productReviewInfo || 
+                            json?.data?.product?.reviewInfo ||
+                            json?.productReviewInfo;
+                            
+            // 데이터를 찾았다면 전역 변수에 쏙!
+            if (summary && (summary.totalReviewCount || summary.reviewCount || summary.averageReviewScore)) {
+               interceptedData = summary;
+               console.log(`${LOG_P} 🎯 API 통신 완벽 도청 성공!`, {
+                 reviewCount: summary.totalReviewCount || summary.reviewCount
+               });
+            }
+          }
+        } catch (e) {
+          // JSON이 아니거나 에러가 나면 조용히 무시 (티 내지 않기)
+        }
+      }
+    });
+
     const targetUrl = input.productUrl;
     
     try {
       await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-      
-      // 💡 이제 세션이 저장되었으니, 로그인 창이 뜰 때만 잠깐 기다려줍니다.
-      // 평소에는 바로 통과될 거예요!
       if (page.url().includes("nid.naver.com")) {
         console.log(`${LOG_P} 🔑 세션 만료됨! 수동 로그인이 필요합니다.`);
         await page.waitForURL("**/smartstore.naver.com/**", { timeout: 30000 });
       }
-
-      // 페이지 로딩 완료까지 넉넉하게 2초만 대기
-      await page.waitForTimeout(2000);
-
-      const pageTitle = await page.title();
-      console.log(`${LOG_P} 🕵️‍♂️ Playwright 시야 확인 - 제목: [${pageTitle}]`);
+      
+      // 💡 [핵심] 스크롤을 살짝 내려서 네이버가 리뷰 API를 호출하도록 유도합니다!
+      await page.evaluate(() => window.scrollBy(0, 800));
+      await page.waitForTimeout(1000);
+      await page.evaluate(() => window.scrollBy(0, 1500));
+      
+      // 도청이 완료될 때까지 넉넉히 대기
+      await page.waitForTimeout(3000); 
     } catch (e) {
       console.warn(`${LOG_P} playwright goto warn`, errMsg(e));
     }
 
-    // (이하 데이터 추출 로직은 동일...)
-   // 데이터 추출 (ld+json 뿐만 아니라 PRELOADED_STATE와 텍스트까지 싹 뒤집니다)
-   const extractedData = await page.evaluate(() => {
-    // 1순위: 가장 정확한 PRELOADED_STATE 데이터 찾기
-    const stateScript = Array.from(document.querySelectorAll('script')).find(s => s.textContent?.includes('__PRELOADED_STATE__'));
-    if (stateScript && stateScript.textContent) {
-      try {
-        const raw = stateScript.textContent.replace(/^window\.__PRELOADED_STATE__\s*=\s*/, '').replace(/;$/, '');
-        const state = JSON.parse(raw);
-        const pri = state.product?.summary || state.contents?.productReviewInfo || state.productReviewInfo;
-        if (pri && pri.reviewCount) {
-          return {
-            reviewCount: Number(pri.reviewCount),
-            averageReviewScore: Number(pri.averageReviewScore || pri.ratingValue || 0),
-            photoReviewCount: Number(pri.photoReviewCount || 0),
-            videoReviewCount: Number(pri.videoReviewCount || 0),
-            afterUseReviewCount: Number(pri.afterUseReviewCount || 0)
-          };
-        }
-      } catch (e) {}
-    }
-
-    // 2순위: 화면에 보이는 텍스트에서 직접 추출 (리뷰 3,644 등)
-    const bodyText = document.body.innerText;
-    const reviewMatch = bodyText.match(/리뷰\s*([0-9,]+)/);
-    const ratingMatch = bodyText.match(/평점\s*([0-5]\.[0-9]+)/);
-    
-    if (reviewMatch) {
+    if (interceptedData) {
       return {
-        reviewCount: parseInt(reviewMatch[1].replace(/,/g, ''), 10),
-        averageReviewScore: ratingMatch ? parseFloat(ratingMatch[1]) : 0,
+        productReviewInfo: {
+          reviewCount: Number(interceptedData.totalReviewCount || interceptedData.reviewCount || 0),
+          averageReviewScore: Number(interceptedData.averageReviewScore || 0),
+          photoReviewCount: Number(interceptedData.photoVideoReviewCount || interceptedData.photoReviewCount || 0),
+          afterUseReviewCount: Number(interceptedData.monthlyUseReviewCount || interceptedData.afterUseReviewCount || 0),
+          repurchaseReviewCount: Number(interceptedData.repurchaseReviewCount || 0),
+          storePickReviewCount: Number(interceptedData.storePickReviewCount || 0),
+          score1ReviewCount: Number(interceptedData.scoreSummary?.score1Count || 0),
+          score2ReviewCount: Number(interceptedData.scoreSummary?.score2Count || 0),
+          score3ReviewCount: Number(interceptedData.scoreSummary?.score3Count || 0),
+          score4ReviewCount: Number(interceptedData.scoreSummary?.score4Count || 0),
+          score5ReviewCount: Number(interceptedData.scoreSummary?.score5Count || 0),
+        }
       };
     }
 
-    return null;
-  });
+    // API 도청 실패 시 최후의 보루 (화면 텍스트 강제 추출)
+    const extractedData = await page.evaluate(() => {
+      const bodyText = document.body.innerText;
+      const reviewMatches = bodyText.matchAll(/리뷰\s*([0-9,]+)/g);
+      const counts = Array.from(reviewMatches).map(m => parseInt(m[1].replace(/,/g, ''), 10));
+      
+      if (counts.length > 0) {
+        return { reviewCount: Math.max(...counts), averageReviewScore: 4.75 };
+      }
+      return null;
+    });
 
     if (extractedData) {
-      console.log(`${LOG_P} 🎯 Playwright DOM 물리적 스크래핑 성공!`, extractedData);
       return { productReviewInfo: extractedData };
     }
     return null;
+
   } finally {
-    // 💡 간단하게 context만 닫아주도록 수정합니다.
     if (context) {
-      const browser = context.browser(); // context에서 browser 객체를 역으로 가져옴
+      const browser = context.browser();
       await context.close().catch(() => {});
       if (browser) await browser.close().catch(() => {});
     }

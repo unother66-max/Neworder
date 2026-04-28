@@ -127,21 +127,39 @@ function StarBar({
   );
 }
 
-function CompactStarBar({
-  label,
-  count,
-  total,
-}: {
-  label: string;
-  count: number;
-  total: number;
-}) {
+function StarTrackTick({ label, count, total }: { label: string; count: number; total: number }) {
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-6 shrink-0 text-[10px] font-black text-[#6b7280]">{label}</div>
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef2f7]">
-        <div className="h-1.5 rounded-full bg-[#111827]" style={{ width: `${pct}%` }} />
+    <div className="min-w-0">
+      <div className="h-1 overflow-hidden rounded-full bg-gray-200">
+        <div className="h-1 rounded-full bg-gray-900" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-1 text-center text-[10px] font-semibold text-gray-500">{label}</div>
+    </div>
+  );
+}
+
+function MetricStat({
+  label,
+  value,
+  delta,
+}: {
+  label: string;
+  value: string;
+  delta: number | null | undefined;
+}) {
+  const d =
+    delta == null || delta === 0
+      ? "- 0"
+      : delta > 0
+        ? `+ ${delta.toLocaleString()}`
+        : `- ${Math.abs(delta).toLocaleString()}`;
+  return (
+    <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2">
+      <div className="text-[10px] font-extrabold text-gray-600">{label}</div>
+      <div className="mt-0.5 flex items-baseline justify-between gap-2">
+        <div className="text-[16px] font-black tracking-[-0.02em] text-gray-900">{value}</div>
+        <div className="text-[10px] font-semibold text-gray-400">{d}</div>
       </div>
     </div>
   );
@@ -468,54 +486,61 @@ export default function SmartstoreReviewTrackPage() {
               return (
                 <div
                   key={t.id}
-                  className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)] md:px-6"
+                  className="rounded-[22px] border border-gray-200 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)] md:px-6"
                 >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="flex min-w-0 items-center gap-4">
                       <ProductThumb src={t.target.imageUrl} alt={t.target.name} />
                       <div className="min-w-0">
-                        <div className="truncate text-[14px] font-black text-[#111827]">
+                        <div className="truncate text-[14px] font-black text-gray-900">
                           {t.target.name}
                         </div>
-                        <div className="mt-1 truncate text-[12px] font-semibold text-[#6b7280]">
+                        <div className="mt-1 truncate text-[12px] font-semibold text-gray-600">
                           {t.target.storeName ? `${t.target.storeName} · ` : ""}
                           상품ID {t.target.productId}
                         </div>
-                        <div className="mt-1 text-[11px] font-semibold text-[#9ca3af]">
+                        <div className="mt-1 text-[11px] font-semibold text-gray-400">
                           업데이트 {t.target.updatedAtLabel}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4 md:justify-center">
-                      <div className="min-w-[140px] rounded-[16px] bg-[#f9fafb] px-4 py-3 ring-1 ring-[#eef2f7]">
-                        <div className="text-[11px] font-black text-[#6b7280]">리뷰 수</div>
-                        <div className="mt-1 text-[18px] font-black tracking-[-0.02em] text-[#111827]">
-                          {fmtNum(t.target.reviewCount)}
-                        </div>
-                        <DeltaChip n={t.delta.reviewCount} />
-                      </div>
-
-                      <div className="min-w-[140px] rounded-[16px] bg-[#f9fafb] px-4 py-3 ring-1 ring-[#eef2f7]">
-                        <div className="text-[11px] font-black text-[#6b7280]">평점</div>
-                        <div className="mt-1 text-[18px] font-black tracking-[-0.02em] text-[#111827]">
-                          {fmtRating(t.target.reviewRating)}
-                        </div>
-                        <div className="mt-1 text-[11px] font-semibold text-[#9ca3af]">
-                          {t.delta.reviewRating == null || t.delta.reviewRating === 0 ? (
-                            <>
-                              <Minus size={12} className="inline-block" /> 0
-                            </>
-                          ) : t.delta.reviewRating > 0 ? (
-                            <>
-                              <ArrowUpRight size={12} className="inline-block" /> +{t.delta.reviewRating}
-                            </>
-                          ) : (
-                            <>
-                              <ArrowDownRight size={12} className="inline-block" /> {t.delta.reviewRating}
-                            </>
-                          )}
-                        </div>
+                    <div className="flex w-full flex-col gap-3 md:flex-1 md:px-4">
+                      <div className="grid w-full grid-cols-3 gap-2">
+                        <MetricStat
+                          label="리뷰 수"
+                          value={fmtNum(t.target.reviewCount)}
+                          delta={t.delta.reviewCount}
+                        />
+                        <MetricStat
+                          label="포토/영상"
+                          value={fmtNum(t.target.reviewPhotoVideoCount)}
+                          delta={t.delta.reviewPhotoVideoCount}
+                        />
+                        <MetricStat
+                          label="한달사용"
+                          value={fmtNum(t.target.reviewMonthlyUseCount)}
+                          delta={t.delta.reviewMonthlyUseCount}
+                        />
+                        <MetricStat
+                          label="재구매"
+                          value={fmtNum(t.target.reviewRepurchaseCount)}
+                          delta={t.delta.reviewRepurchaseCount}
+                        />
+                        <MetricStat
+                          label="스토어픽"
+                          value={fmtNum(t.target.reviewStorePickCount)}
+                          delta={t.delta.reviewStorePickCount}
+                        />
+                        <MetricStat
+                          label="평점"
+                          value={
+                            t.target.reviewRating == null
+                              ? "-"
+                              : `★ ${fmtRating(t.target.reviewRating)}`
+                          }
+                          delta={t.delta.reviewRating}
+                        />
                       </div>
                     </div>
 
@@ -547,12 +572,14 @@ export default function SmartstoreReviewTrackPage() {
                   </div>
 
                   {stars ? (
-                    <div className="mt-4 grid gap-2 md:grid-cols-5">
-                      <CompactStarBar label="5점" count={stars["5"]} total={totalStars} />
-                      <CompactStarBar label="4점" count={stars["4"]} total={totalStars} />
-                      <CompactStarBar label="3점" count={stars["3"]} total={totalStars} />
-                      <CompactStarBar label="2점" count={stars["2"]} total={totalStars} />
-                      <CompactStarBar label="1점" count={stars["1"]} total={totalStars} />
+                    <div className="mt-4 rounded-2xl border border-gray-200 bg-white px-4 py-3">
+                      <div className="grid grid-cols-5 gap-4">
+                        <StarTrackTick label="5점" count={stars["5"]} total={totalStars} />
+                        <StarTrackTick label="4점" count={stars["4"]} total={totalStars} />
+                        <StarTrackTick label="3점" count={stars["3"]} total={totalStars} />
+                        <StarTrackTick label="2점" count={stars["2"]} total={totalStars} />
+                        <StarTrackTick label="1점" count={stars["1"]} total={totalStars} />
+                      </div>
                     </div>
                   ) : null}
                 </div>
