@@ -209,6 +209,75 @@ export default function SmartstoreRankPage() {
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualName, setManualName] = useState("");
   const [manualImageUrl, setManualImageUrl] = useState("");
+  const [isAddHovered, setIsAddHovered] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [updateHover, setUpdateHover] = useState<{
+    id: string | null;
+    x: number;
+    y: number;
+  }>({ id: null, x: 0, y: 0 });
+  const [rankChangeHover, setRankChangeHover] = useState<{
+    id: string | null;
+    x: number;
+    y: number;
+  }>({ id: null, x: 0, y: 0 });
+  const [trackingHover, setTrackingHover] = useState<{
+    id: string | null;
+    x: number;
+    y: number;
+  }>({ id: null, x: 0, y: 0 });
+  const [kwManageHover, setKwManageHover] = useState<{
+    id: string | null;
+    x: number;
+    y: number;
+  }>({ id: null, x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setMousePos({ x, y });
+  };
+
+  const handleUpdateMouseMove = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    id: string
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setUpdateHover({ id, x, y });
+  };
+
+  const handleRankChangeMouseMove = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    id: string
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setRankChangeHover({ id, x, y });
+  };
+
+  const handleTrackingMouseMove = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    id: string
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setTrackingHover({ id, x, y });
+  };
+
+  const handleKwManageMouseMove = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    id: string
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setKwManageHover({ id, x, y });
+  };
 
   const [kwModalProduct, setKwModalProduct] = useState<SmartstoreProductRow | null>(null);
   const [kwInput, setKwInput] = useState("");
@@ -726,13 +795,64 @@ export default function SmartstoreRankPage() {
 </div>
                 <button
                   type="button"
+                  className={`
+                    relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px]
+                    bg-[#333333] px-4 text-[13px] font-bold tracking-wide text-white font-sans
+                    transition-all duration-300 ease-in-out
+                  `}
+                  onMouseEnter={() => setIsAddHovered(true)}
+                  onMouseLeave={() => setIsAddHovered(false)}
+                  onMouseMove={handleMouseMove}
                   onClick={() => {
                     setRegMetaNotice("");
                     setRegisterOpen(true);
                   }}
-                  className="h-[44px] min-w-[108px] rounded-[14px] bg-[#b91c1c] px-4 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
                 >
-                  상품 등록
+                  <span className="relative z-30 flex items-center gap-1.5">
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    상품 등록
+                  </span>
+
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                    style={{
+                      transformOrigin: "left",
+                      transform: isAddHovered ? "scaleX(1)" : "scaleX(0)",
+                      transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                      backgroundColor: "#2563EB",
+                    }}
+                  />
+
+                  <div
+                    className={`
+                      absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                      transition-opacity duration-200 ease-out
+                      ${isAddHovered ? "opacity-100" : "opacity-0"}
+                    `}
+                    style={{
+                      left: `${mousePos.x}px`,
+                      top: `${mousePos.y}px`,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage:
+                        "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter:
+                        "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                    }}
+                  />
                 </button>
               </div>
             </div>
@@ -857,13 +977,59 @@ export default function SmartstoreRankPage() {
                           type="button"
                           onClick={() => handleUpdateProduct(p)}
                           disabled={updatingId === p.id}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60`}
+                          onMouseEnter={() =>
+                            setUpdateHover((prev) => ({
+                              ...prev,
+                              id: p.id,
+                            }))
+                          }
+                          
+                          onMouseLeave={() =>
+                            setUpdateHover((prev) =>
+                              prev.id === p.id ? { ...prev, id: null } : prev
+                            )
+                          }
+                          onMouseMove={(e) => handleUpdateMouseMove(e, p.id)}
+                          className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60`}
                         >
-                          {updatingId === p.id
-                            ? p.keywords.length > 0
-                              ? "업데이트·순위 조회 중..."
-                              : "업데이트 중..."
-                            : "업데이트"}
+                          <span className="relative z-30 pointer-events-none">
+                            {updatingId === p.id
+                              ? p.keywords.length > 0
+                                ? "업데이트·순위 조회 중..."
+                                : "업데이트 중..."
+                              : "업데이트"}
+                          </span>
+
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform:
+                                updateHover.id === p.id ? "scaleX(1)" : "scaleX(0)",
+                              transition:
+                                "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${updateHover.id === p.id ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${updateHover.x}px`,
+                              top: `${updateHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
                         <button
                           type="button"
@@ -872,30 +1038,169 @@ export default function SmartstoreRankPage() {
                               "순위 변화 차트·이력은 2차에서 제공됩니다. 지금은 키워드를 등록하고 목록을 유지해 주세요."
                             )
                           }
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                          onMouseEnter={() =>
+                            setRankChangeHover((prev) => ({ ...prev, id: p.id }))
+                          }
+                          onMouseLeave={() =>
+                            setRankChangeHover((prev) =>
+                              prev.id === p.id ? { ...prev, id: null } : prev
+                            )
+                          }
+                          onMouseMove={(e) => handleRankChangeMouseMove(e, p.id)}
+                          className={`
+                            relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px]
+                            border-1 px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out
+                            ${rankChangeHover.id === p.id ? "border-[#2563EB] text-white" : "border-black text-black"}
+                          `}
                         >
-                          순위 변화 보기
+                          <span className="relative z-30 pointer-events-none">
+                            순위 변화 보기
+                          </span>
+
+                          <div
+                            className="pointer-events-none absolute inset-0 z-0 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform:
+                                rankChangeHover.id === p.id
+                                  ? "scaleX(1)"
+                                  : "scaleX(0)",
+                              transition:
+                                "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+                              backgroundColor: "#2563EB",
+                              opacity: 1,
+                              mixBlendMode: "normal",
+                              filter: "none",
+                              backdropFilter: "none",
+                              willChange: "transform",
+                            }}
+                          />
+
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${rankChangeHover.id === p.id ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${rankChangeHover.x}px`,
+                              top: `${rankChangeHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleToggleTracking(p)}
                           disabled={trackingLoadingId === p.id}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition ${
+                          onMouseEnter={() =>
+                            setTrackingHover((prev) => ({ ...prev, id: p.id }))
+                          }
+                          onMouseLeave={() =>
+                            setTrackingHover((prev) =>
+                              prev.id === p.id ? { ...prev, id: null } : prev
+                            )
+                          }
+                          onMouseMove={(e) => handleTrackingMouseMove(e, p.id)}
+                          className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold font-sans transition-colors duration-0 ease-in-out disabled:cursor-not-allowed ${
                             p.isAutoTracking
-                              ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
-                              : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
+                              ? "bg-[#2563EB] text-white"
+                              : trackingHover.id === p.id
+                                ? "bg-transparent border-2 border-[#2563EB] text-white"
+                                : "bg-transparent border-1 border-black text-black"
                           } ${trackingLoadingId === p.id ? "opacity-60" : ""}`}
                         >
-                          {trackingLoadingId === p.id
-                            ? "처리 중..."
-                            : `자동추적 ${p.isAutoTracking ? "ON" : "OFF"}`}
+                          <span className="relative z-30 pointer-events-none">
+                            {trackingLoadingId === p.id
+                              ? "처리 중..."
+                              : `자동추적 ${p.isAutoTracking ? "ON" : "OFF"}`}
+                          </span>
+
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform:
+                                trackingHover.id === p.id ? "scaleX(1)" : "scaleX(0)",
+                              transition:
+                                "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${trackingHover.id === p.id ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${trackingHover.x}px`,
+                              top: `${trackingHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
                         <button
                           type="button"
                           onClick={() => void openKwModal(p)}
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#b91c1c] px-4 text-[14px] font-bold text-white shadow-[0_8px_20px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
+                          onMouseEnter={() =>
+                            setKwManageHover((prev) => ({ ...prev, id: p.id }))
+                          }
+                          onMouseLeave={() =>
+                            setKwManageHover((prev) =>
+                              prev.id === p.id ? { ...prev, id: null } : prev
+                            )
+                          }
+                          onMouseMove={(e) => handleKwManageMouseMove(e, p.id)}
+                          className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white font-sans transition-all duration-300 ease-in-out"
                         >
-                          키워드 관리
+                          <span className="relative z-30 pointer-events-none">
+                            키워드 관리
+                          </span>
+
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform:
+                                kwManageHover.id === p.id ? "scaleX(1)" : "scaleX(0)",
+                              transition:
+                                "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${kwManageHover.id === p.id ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${kwManageHover.x}px`,
+                              top: `${kwManageHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
                         <button
                           type="button"

@@ -28,25 +28,28 @@ export const authOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.name = user.name;
+        // 🚨 서버가 튕기지 않도록 한글 이름을 안전하게 인코딩 (암호화)
+        token.name = user.name ? encodeURIComponent(user.name) : null;
         token.email = user.email;
-        token.picture = user.image;
+        // 프로필 이미지 URL에 혹시 모를 한글이 있을 경우를 대비
+        token.picture = user.image ? encodeURI(user.image) : null; 
       }
       return token;
     },
     async session({ session, token }) {
-      // Ensure session.user.id is always populated (fallback to token.sub)
       const id =
         typeof (token as any).id === "string" && String((token as any).id).trim()
           ? String((token as any).id).trim()
           : typeof token.sub === "string" && token.sub.trim()
             ? token.sub.trim()
             : "";
+            
       session.user = {
         id,
-        name: typeof token.name === "string" ? token.name : null,
+        // 🚨 프론트엔드(화면)에서는 정상적인 한글 닉네임으로 보이도록 다시 디코딩 (해독)
+        name: typeof token.name === "string" ? decodeURIComponent(token.name) : null,
         email: typeof token.email === "string" ? token.email : null,
-        image: typeof token.picture === "string" ? token.picture : null,
+        image: typeof token.picture === "string" ? decodeURI(token.picture) : null,
       };
       return session;
     },

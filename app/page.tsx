@@ -9,6 +9,14 @@ import AutoSpinGlobe from "@/components/AutoSpinGlobe";
 
 export default function HomePage() {
   const [isCtaHovered, setIsCtaHovered] = useState(false);
+  const [ctaMousePos, setCtaMousePos] = useState({ x: 0, y: 0 });
+
+  const handleCtaMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setCtaMousePos({ x, y });
+  };
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-white text-slate-900 font-sans">
       {/* 배경 컨테이너 */}
@@ -37,6 +45,7 @@ export default function HomePage() {
   href="/place"
   onMouseEnter={() => setIsCtaHovered(true)}
   onMouseLeave={() => setIsCtaHovered(false)}
+  onMouseMove={handleCtaMouseMove}
   className={`
     relative isolate z-20 inline-flex items-center px-8 py-4 rounded-full font-bold text-lg tracking-wide 
     bg-transparent border-2 transition-colors duration-0 ease-in-out overflow-hidden
@@ -46,7 +55,7 @@ export default function HomePage() {
 >
   {/* 글씨: z-10으로 배경 위로 올리고, 색상 변화에 duration을 줘서 부드럽게 */}
   <span
-    className="relative z-10"
+    className="relative z-30"
     style={{ color: isCtaHovered ? "#FFFFFF" : "#000000" }}
   >
     무료로 시작하기
@@ -54,7 +63,7 @@ export default function HomePage() {
 
   {/* 💡 쨍한 블루 배경 레이어 (색상을 #0051FF로 변경) */}
   <div
-    className="absolute inset-0 w-full h-full z-0"
+    className="pointer-events-none absolute inset-0 w-full h-full z-0"
     style={{
       transformOrigin: "left",
       transform: isCtaHovered ? "scaleX(1)" : "scaleX(0)",
@@ -65,6 +74,26 @@ export default function HomePage() {
       filter: "none",
       backdropFilter: "none",
       willChange: "transform",
+    }}
+  />
+
+  {/* 💡 마우스를 따라다니는 글로우 (smartstore 버튼과 동일 설정값) */}
+  <div
+    className={`
+      absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+      transition-opacity duration-200 ease-out
+      ${isCtaHovered ? "opacity-100" : "opacity-0"}
+    `}
+    style={{
+      left: `${ctaMousePos.x}px`,
+      top: `${ctaMousePos.y}px`,
+      pointerEvents: "none",
+      zIndex: 25,
+      backgroundImage:
+        "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.45) 38%, rgba(255,255,255,0) 72%)",
+      mixBlendMode: "soft-light",
+      filter:
+        "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
     }}
   />
 </Link>

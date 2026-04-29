@@ -149,7 +149,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("smartstore")}
               onMouseLeave={() => scheduleClose("smartstore")}
             >
-              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/90 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/smartstore"
@@ -169,7 +169,7 @@ const TopNav = (_props: TopNavProps) => {
                         순위 추적
                       </span>
 
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm ring-1 ring-black/5">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-black/5">
                         <span className="text-[11px] font-black leading-none text-[#03c75a]">
                           N
                         </span>
@@ -204,7 +204,7 @@ const TopNav = (_props: TopNavProps) => {
                         순위 추적
                       </span>
 
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm ring-1 ring-black/5">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-black/5">
                         <span className="text-[11px] font-black leading-none text-[#03c75a]">
                           N
                         </span>
@@ -276,7 +276,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("blog")}
               onMouseLeave={() => scheduleClose("blog")}
             >
-              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/90 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/top-blog"
@@ -333,7 +333,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("place")}
               onMouseLeave={() => scheduleClose("place")}
             >
-              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/90 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/place"
@@ -430,7 +430,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("kakao")}
               onMouseLeave={() => scheduleClose("kakao")}
             >
-              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/90 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/kakao-place"
