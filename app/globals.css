@@ -2,6 +2,22 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@font-face {
+  font-family: "Poppins";
+  src: url("/fonts/Poppins-Medium.woff") format("woff");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "NotoSansKR";
+  src: url("/fonts/NotoSansKR-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -60,11 +76,26 @@ body {
   margin: 0;
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-sans), "Noto Sans KR", system-ui, -apple-system,
-    "Segoe UI", Roboto, "Apple SD Gothic Neo", Arial, sans-serif;
+  font-family: "Poppins", "NotoSansKR", sans-serif;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+a,
+button,
+input,
+textarea {
+  font-family: "Poppins", "NotoSansKR", sans-serif !important;
 }
 
 a {
@@ -117,6 +148,7 @@ img {
 }
 
 :root {
+  --font-sans: "Poppins", "NotoSansKR", sans-serif;
   --background: #ffffff;
   --foreground: #0f172a;
   --card: oklch(1 0 0);
@@ -345,4 +377,18 @@ img {
   background-repeat: repeat;
   opacity: 2.3; /* 💡 너무 진하면 이 숫자를 0.03~0.05로 줄이세요 */
   /* mix-blend-mode: overlay; (만약 노이즈가 색상을 덮어서 탁해진다면 이 줄의 주석을 푸세요) */
+}
+
+/* WebGL Earth 글씨, 로고, 모든 부가 UI 무조건 강제 숨김 */
+.leaflet-control-attribution,
+.leaflet-bottom,
+.we-logo,
+.we-info,
+.cesium-widget-credits,
+.cesium-credit-textContainer,
+.cesium-credit-logoContainer {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
