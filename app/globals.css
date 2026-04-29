@@ -375,7 +375,7 @@ img {
   z-index: 10; /* 배경 위에 올라오도록 */
   background-image: url('/noise.png');
   background-repeat: repeat;
-  opacity: 2.3; /* 💡 너무 진하면 이 숫자를 0.03~0.05로 줄이세요 */
+  opacity: 1.0; /* 💡 너무 진하면 이 숫자를 0.03~0.05로 줄이세요 */
   /* mix-blend-mode: overlay; (만약 노이즈가 색상을 덮어서 탁해진다면 이 줄의 주석을 푸세요) */
 }
 
@@ -391,4 +391,40 @@ img {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+/* --- 커스텀 스크롤바 (스크롤 시에만 표시) --- */
+
+/* 스크롤바 전체 영역 (너비 얇게) */
+::-webkit-scrollbar {
+  width: 8px;
+  background-color: transparent; /* 트랙(배경)은 완전히 투명하게 */
+}
+
+/* 스크롤바 막대 (기본 투명, 호버 시 색상 표시) */
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 10px;
+}
+
+/* 스크롤 영역에 마우스를 올렸을 때(스크롤 중) 막대 표시 */
+body:hover::-webkit-scrollbar-thumb,
+div:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5); /* Tailwind gray-400 의 반투명 색상 */
+}
+
+/* 막대에 마우스를 직접 올렸을 때 조금 더 진하게 */
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.8);
+}
+
+/* Firefox 지원 (가늘게, 마우스 오버 전까지 투명 효과는 Firefox 특성상 완벽하진 않음) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+}
+
+*:hover {
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
 }

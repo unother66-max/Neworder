@@ -7,13 +7,13 @@ export default function LoginPage() {
   const [showEmailLogin, setShowEmailLogin] = useState(false);
 
   return (
-    <main className="min-h-screen bg-[#f3f3f4] flex items-center justify-center px-4">
+    <main className="min-h-screen bg-[#f3f3f4] flex items-center justify-center px-4 pt-24">
       <div className="w-full max-w-[420px] text-center">
         <div className="flex justify-center">
           <img
             src="/logo.png"
             alt="SellerLabs"
-            className="h-14 w-auto object-contain"
+            className="h-13 w-auto object-contain"
           />
         </div>
 

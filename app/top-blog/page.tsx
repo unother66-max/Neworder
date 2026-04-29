@@ -184,7 +184,7 @@ export default function Home() {
   };
 
   return (
-  <main className="min-h-screen bg-[#f3f5f9] text-[#111827]">
+  <main className="min-h-screen bg-[#f3f5f9] text-[#111827] pt-24">
     <TopNav active="blog" />
 
     <section className="mx-auto max-w-[1180px] px-5 py-8">

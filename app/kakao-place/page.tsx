@@ -349,7 +349,7 @@ export default function KakaoPlacePage() {
     return (
       <>
         <TopNav active="kakao-place" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9]">
+        <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9] pt-24">
           <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
         </main>
       </>
@@ -360,7 +360,7 @@ export default function KakaoPlacePage() {
     return (
       <>
         <TopNav active="kakao-place" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9]">
+        <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9] pt-24">
           <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
         </main>
       </>
@@ -372,7 +372,7 @@ export default function KakaoPlacePage() {
   return (
     <>
       <TopNav active="kakao-place" />
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111]">
+      <main className="min-h-screen bg-[#f4f4f5] text-[#111111] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
 
           {/* Page header */}

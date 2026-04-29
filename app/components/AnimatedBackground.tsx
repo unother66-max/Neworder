@@ -82,8 +82,7 @@ const AnimatedBackground = () => {
         </svg>
       </div>
 
-      {/* Grain */}
-      <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay noise-overlay" aria-hidden="true" />
+     
     </div>
   );
 };

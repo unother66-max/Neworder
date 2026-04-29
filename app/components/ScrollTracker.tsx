@@ -8,12 +8,14 @@ export default function ScrollTracker() {
 
     const handleScroll = () => {
       document.body.classList.add("is-scrolling");
+      document.documentElement.classList.add("is-scrolling");
 
       if (timer != null) window.clearTimeout(timer);
 
       timer = window.setTimeout(() => {
         document.body.classList.remove("is-scrolling");
-      }, 1000);
+        document.documentElement.classList.remove("is-scrolling");
+      }, 800);
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });

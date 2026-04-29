@@ -1,14 +1,14 @@
 'use client';
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import TopNav from "@/components/top-nav";
-import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/ui/button";
 import MeshGradient from "@/components/MeshGradient";
 import AutoSpinGlobe from "@/components/AutoSpinGlobe";
 
 export default function HomePage() {
+  const [isCtaHovered, setIsCtaHovered] = useState(false);
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-white text-slate-900 font-sans">
       {/* 배경 컨테이너 */}
@@ -33,9 +33,41 @@ export default function HomePage() {
               순위 분석까지 한 곳에서 관리할 수 있습니다.
             </p>
             <div className="mt-12 flex flex-col gap-4 sm:flex-row items-start">
-              <Link href="/place" className={cn(buttonVariants({ size: "lg" }), "h-14 rounded-xl bg-slate-900 px-8 text-[16px] font-bold text-white shadow-xl transition-all hover:-translate-y-1")}>
-                무료로 시작하기
-              </Link>
+            <Link
+  href="/place"
+  onMouseEnter={() => setIsCtaHovered(true)}
+  onMouseLeave={() => setIsCtaHovered(false)}
+  className={`
+    relative isolate z-20 inline-flex items-center px-8 py-4 rounded-full font-bold text-lg tracking-wide 
+    bg-transparent border-2 transition-colors duration-0 ease-in-out overflow-hidden
+    /* 💡 핵심: 호버 시 테두리색도 파란색으로 같이 바꿔야 쨍해 보입니다 */
+    ${isCtaHovered ? 'text-white border-[#0029FF]' : 'text-black border-black'}
+  `}
+>
+  {/* 글씨: z-10으로 배경 위로 올리고, 색상 변화에 duration을 줘서 부드럽게 */}
+  <span
+    className="relative z-10"
+    style={{ color: isCtaHovered ? "#FFFFFF" : "#000000" }}
+  >
+    무료로 시작하기
+  </span>
+
+  {/* 💡 쨍한 블루 배경 레이어 (색상을 #0051FF로 변경) */}
+  <div
+    className="absolute inset-0 w-full h-full z-0"
+    style={{
+      transformOrigin: "left",
+      transform: isCtaHovered ? "scaleX(1)" : "scaleX(0)",
+      transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+      backgroundColor: "#0029FF",
+      opacity: 1,
+      mixBlendMode: "normal",
+      filter: "none",
+      backdropFilter: "none",
+      willChange: "transform",
+    }}
+  />
+</Link>
               
             </div>
           </div>
