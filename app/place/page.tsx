@@ -1274,7 +1274,7 @@ return (
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
-                  매장 순위 추적
+                  플레이스 순위 추적
                 </h1>
                 <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[11px] font-bold text-[#4b5563]">
                   PLACE

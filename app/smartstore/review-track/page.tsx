@@ -373,13 +373,13 @@ export default function SmartstoreReviewTrackPage() {
   if (!mounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#f8fafc]">
+    <main className="min-h-screen bg-[#f8fafc] pt-24">
       <TopNav activeSmartstoreSub="review-track" />
 
       <div className="mx-auto max-w-[1100px] px-4 pb-16 pt-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <div className="text-[18px] font-black text-[#111827]">리뷰 관리</div>
+            <div className="text-[18px] font-black text-[#111827]">상품 리뷰 관리</div>
             <div className="text-[12px] font-semibold text-[#9ca3af]">
               스마트스토어 상품의 리뷰 수/평점을 수집하고 변화를 추적합니다.
             </div>

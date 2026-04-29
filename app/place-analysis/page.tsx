@@ -622,14 +622,14 @@ await loadSavedPlaces();
     <>
       <TopNav active="place-analysis" />
 
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111]">
+      <main className="min-h-screen bg-[#f4f4f5] text-[#111111] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
             <div className="flex flex-col gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
-                    매장 순위 분석
+                    플레이스 키워드 분석
                   </h1>
                 </div>
 

@@ -149,7 +149,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("smartstore")}
               onMouseLeave={() => scheduleClose("smartstore")}
             >
-              <div className="rounded-[32px] border border-white/50 bg-white/70 backdrop-blur-2xl p-3 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/smartstore"
@@ -158,15 +158,65 @@ const TopNav = (_props: TopNavProps) => {
                       isSmartstorePriceActive ? "bg-blue-50/40 pl-6" : ""
                     }`}
                   >
-                    <span
-                      className={`text-sm font-bold ${
-                        isSmartstorePriceActive
-                          ? "text-[#0051FF]"
-                          : "text-slate-800 group-hover/item:text-[#0051FF]"
-                      }`}
-                    >
-                      네이버 가격비교
+                    <div className="flex items-center justify-between gap-3">
+                      <span
+                        className={`text-sm font-bold ${
+                          isSmartstorePriceActive
+                            ? "text-[#0051FF]"
+                            : "text-slate-800 group-hover/item:text-[#0051FF]"
+                        }`}
+                      >
+                        순위 추적
+                      </span>
+
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm ring-1 ring-black/5">
+                        <span className="text-[11px] font-black leading-none text-[#03c75a]">
+                          N
+                        </span>
+                        <img
+                          src="/naver_가격비교.svg"
+                          alt="가격비교"
+                          width={64}
+                          height={14}
+                          className="h-3.5 w-auto"
+                        />
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                     실시간 키워드 순위 확인
                     </span>
+                  </Link>
+                  <Link
+                    href="/smartstore/plus-store-ranking-track"
+                    aria-current={isSmartstorePlusActive ? "page" : undefined}
+                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                      isSmartstorePlusActive ? "bg-blue-50/40 pl-6" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span
+                        className={`text-sm font-bold ${
+                          isSmartstorePlusActive
+                            ? "text-[#0051FF]"
+                            : "text-slate-800 group-hover/item:text-[#0051FF]"
+                        }`}
+                      >
+                        순위 추적
+                      </span>
+
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm ring-1 ring-black/5">
+                        <span className="text-[11px] font-black leading-none text-[#03c75a]">
+                          N
+                        </span>
+                        <img
+                          src="/naver_플러스스토어.svg"
+                          alt="플러스스토어"
+                          width={64}
+                          height={14}
+                          className="h-3.5 w-auto"
+                        />
+                      </span>
+                    </div>
                     <span className="text-[11px] text-slate-400 mt-0.5">
                       실시간 키워드 순위 확인
                     </span>
@@ -185,30 +235,10 @@ const TopNav = (_props: TopNavProps) => {
                           : "text-slate-800 group-hover/item:text-[#0051FF]"
                       }`}
                     >
-                      리뷰 트래킹
+                      리뷰 분석
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
                       리뷰 변화/알림 관리
-                    </span>
-                  </Link>
-                  <Link
-                    href="/smartstore/plus-store-ranking-track"
-                    aria-current={isSmartstorePlusActive ? "page" : undefined}
-                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
-                      isSmartstorePlusActive ? "bg-blue-50/40 pl-6" : ""
-                    }`}
-                  >
-                    <span
-                      className={`text-sm font-bold ${
-                        isSmartstorePlusActive
-                          ? "text-[#0051FF]"
-                          : "text-slate-800 group-hover/item:text-[#0051FF]"
-                      }`}
-                    >
-                      플러스 스토어 순위
-                    </span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
-                      상위 노출 리스트 보기
                     </span>
                   </Link>
                 </div>
@@ -246,7 +276,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("blog")}
               onMouseLeave={() => scheduleClose("blog")}
             >
-              <div className="rounded-[32px] border border-white/50 bg-white/70 backdrop-blur-2xl p-3 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/top-blog"
@@ -265,7 +295,7 @@ const TopNav = (_props: TopNavProps) => {
                       상위 블로그 찾기
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
-                      실시간 상위 블로그 확인
+                      체험단 / 상위 블로그 확인
                     </span>
                   </Link>
                 </div>
@@ -303,7 +333,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("place")}
               onMouseLeave={() => scheduleClose("place")}
             >
-              <div className="rounded-[32px] border border-white/50 bg-white/70 backdrop-blur-2xl p-3 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/place"
@@ -326,6 +356,26 @@ const TopNav = (_props: TopNavProps) => {
                     </span>
                   </Link>
                   <Link
+                    href="/place-review"
+                    aria-current={isPlaceReviewActive ? "page" : undefined}
+                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                      isPlaceReviewActive ? "bg-blue-50/40 pl-6" : ""
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-bold ${
+                        isPlaceReviewActive
+                          ? "text-[#0051FF]"
+                          : "text-slate-800 group-hover/item:text-[#0051FF]"
+                      }`}
+                    >
+                      리뷰 분석
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                      리뷰 변화/알림 관리
+                    </span>
+                  </Link>
+                  <Link
                     href="/place-analysis"
                     aria-current={isPlaceAnalysisActive ? "page" : undefined}
                     className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
@@ -343,26 +393,6 @@ const TopNav = (_props: TopNavProps) => {
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
                       황금 키워드 발굴 도구
-                    </span>
-                  </Link>
-                  <Link
-                    href="/place-review"
-                    aria-current={isPlaceReviewActive ? "page" : undefined}
-                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
-                      isPlaceReviewActive ? "bg-blue-50/40 pl-6" : ""
-                    }`}
-                  >
-                    <span
-                      className={`text-sm font-bold ${
-                        isPlaceReviewActive
-                          ? "text-[#0051FF]"
-                          : "text-slate-800 group-hover/item:text-[#0051FF]"
-                      }`}
-                    >
-                      상위 노출 리스트
-                    </span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
-                      현재 상위 노출 중인 리스트 보기
                     </span>
                   </Link>
                 </div>
@@ -400,7 +430,7 @@ const TopNav = (_props: TopNavProps) => {
               onMouseEnter={() => openMenu("kakao")}
               onMouseLeave={() => scheduleClose("kakao")}
             >
-              <div className="rounded-[32px] border border-white/50 bg-white/70 backdrop-blur-2xl p-3 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)]">
+              <div className="rounded-[32px] border border-white/70 bg-white/95 backdrop-blur-2xl p-3 shadow-[0_30px_70px_-18px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/kakao-place"
@@ -416,10 +446,30 @@ const TopNav = (_props: TopNavProps) => {
                           : "text-slate-800 group-hover/item:text-[#0051FF]"
                       }`}
                     >
-                      순위 추적
+                      키워드 순위 추적
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
                       실시간 키워드 순위 확인
+                    </span>
+                  </Link>
+                  <Link
+                    href="/kakao-ranking"
+                    aria-current={isKakaoRankingActive ? "page" : undefined}
+                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                      isKakaoRankingActive ? "bg-blue-50/40 pl-6" : ""
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-bold ${
+                        isKakaoRankingActive
+                          ? "text-[#0051FF]"
+                          : "text-slate-800 group-hover/item:text-[#0051FF]"
+                      }`}
+                    >
+                      지역 순위 추적
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                    해당 지역별 순위 확인
                     </span>
                   </Link>
                   <Link
@@ -440,26 +490,6 @@ const TopNav = (_props: TopNavProps) => {
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
                       황금 키워드 발굴 도구
-                    </span>
-                  </Link>
-                  <Link
-                    href="/kakao-ranking"
-                    aria-current={isKakaoRankingActive ? "page" : undefined}
-                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
-                      isKakaoRankingActive ? "bg-blue-50/40 pl-6" : ""
-                    }`}
-                  >
-                    <span
-                      className={`text-sm font-bold ${
-                        isKakaoRankingActive
-                          ? "text-[#0051FF]"
-                          : "text-slate-800 group-hover/item:text-[#0051FF]"
-                      }`}
-                    >
-                      상위 노출 리스트
-                    </span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
-                      현재 상위 노출 중인 리스트 보기
                     </span>
                   </Link>
                 </div>
