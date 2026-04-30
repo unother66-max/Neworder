@@ -60,6 +60,13 @@ export default function KakaoAnalysisPage() {
   const [savedKeywordIds, setSavedKeywordIds] = useState<Set<string>>(new Set());
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
 
+  // --- 디자인 통일용 호버 및 마우스 상태값 ---
+  const [isAnalyzeHovered, setIsAnalyzeHovered] = useState(false);
+  const [analyzeMousePos, setAnalyzeMousePos] = useState({ x: 0, y: 0 });
+
+  const [rankRegHover, setRankRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
+  const [kwRegHover, setKwRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -211,7 +218,7 @@ export default function KakaoAnalysisPage() {
     return (
       <>
         <TopNav active="kakao-analysis" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f4f4f5] pt-24">
+        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
           <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
         </main>
       </>
@@ -222,7 +229,7 @@ export default function KakaoAnalysisPage() {
     return (
       <>
         <TopNav active="kakao-analysis" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f4f4f5] pt-24">
+        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
           <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
         </main>
       </>
@@ -233,7 +240,7 @@ export default function KakaoAnalysisPage() {
     <>
       <TopNav active="kakao-analysis" />
 
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111] pt-24">
+      <main className="min-h-screen bg-[#f8fafc] text-[#111111] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
             <div className="flex flex-col gap-4">
@@ -242,7 +249,7 @@ export default function KakaoAnalysisPage() {
                   <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
                     카카오맵 순위 분석
                   </h1>
-                  <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[11px] font-bold text-[#4b5563]">
+                  <span className="rounded-full bg-[#eff6ff] px-2 py-1 text-[11px] font-bold text-[#2563eb]">
                     KAKAO
                   </span>
                 </div>
@@ -262,7 +269,7 @@ export default function KakaoAnalysisPage() {
                       if (e.key === "Enter") handleAnalyze();
                     }}
                     placeholder="예: 한남동 맛집"
-                    className="h-[54px] w-full rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                    className="h-[54px] w-full rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white"
                   />
                   {keyword ? (
                     <button
@@ -279,11 +286,33 @@ export default function KakaoAnalysisPage() {
                   type="button"
                   onClick={handleAnalyze}
                   disabled={loading}
-                  className={`h-[54px] shrink-0 rounded-[16px] bg-[#b91c1c] px-7 text-[15px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b] ${
-                    loading ? "opacity-60" : ""
-                  }`}
+                  onMouseEnter={() => setIsAnalyzeHovered(true)}
+                  onMouseLeave={() => setIsAnalyzeHovered(false)}
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setAnalyzeMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }}
+                  className="relative isolate inline-flex h-[54px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-7 text-[15px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                 >
-                  {loading ? "분석 중..." : "분석"}
+                  <span className="relative z-30 pointer-events-none">
+                    {loading ? "분석 중..." : "분석"}
+                  </span>
+                  <div 
+                    className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" 
+                    style={{ transformOrigin: "left", transform: isAnalyzeHovered ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} 
+                  />
+                  <div
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl transition-opacity duration-200 ease-out ${isAnalyzeHovered ? "opacity-100" : "opacity-0"}`}
+                    style={{
+                      left: `${analyzeMousePos.x}px`,
+                      top: `${analyzeMousePos.y}px`,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                    }}
+                  />
                 </button>
               </div>
 
@@ -301,11 +330,13 @@ export default function KakaoAnalysisPage() {
                         onClick={() => setKeyword(item.keyword)}
                         className={`rounded-[14px] border px-4 py-3 text-left transition ${
                           item.keyword === searchedKeyword
-                            ? "border-[#b91c1c] bg-[#fef2f2]"
+                            ? "border-[#2563eb] bg-[#eff6ff]"
                             : "border-[#e5e7eb] bg-white hover:bg-[#fafafa]"
                         }`}
                       >
-                        <div className="text-[13px] font-bold text-[#111827]">{item.keyword}</div>
+                        <div className={`text-[13px] font-bold ${item.keyword === searchedKeyword ? "text-[#2563eb]" : "text-[#111827]"}`}>
+                          {item.keyword}
+                        </div>
                         <div className="mt-1 text-[12px] text-[#6b7280]">
                           전체 {formatCount(item.total)} · 모바일 {formatCount(item.mobile)} · PC{" "}
                           {formatCount(item.pc)}
@@ -362,8 +393,8 @@ export default function KakaoAnalysisPage() {
                       const pid = String(item.placeId || "").trim();
                       const isRankSaved = pid ? savedRankIds.has(pid) : false;
                       const isKwSaved = pid ? savedKeywordIds.has(pid) : false;
-                      const rk = `ranking-${pid || item.name}`;
-                      const kw = `keyword-${pid || item.name}`;
+                      const rkId = `ranking-${pid || item.name}`;
+                      const kwId = `keyword-${pid || item.name}`;
 
                       return (
                         <tr
@@ -377,7 +408,7 @@ export default function KakaoAnalysisPage() {
                                 <img
                                   src={item.imageUrl}
                                   alt={item.name}
-                                  className="h-[56px] w-[56px] shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb]"
+                                  className="h-[56px] w-[56px] rounded-[12px] object-cover ring-1 ring-[#e5e7eb]"
                                   loading="lazy"
                                   referrerPolicy="no-referrer"
                                   onError={(e) => {
@@ -406,6 +437,8 @@ export default function KakaoAnalysisPage() {
                           <td className="px-4 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
                             {formatRating(item.review?.rating ?? null)}
                           </td>
+                          
+                          {/* 랭킹 추적 등록 버튼 */}
                           <td className="px-4 py-5 text-center">
                             {isRankSaved ? (
                               <button
@@ -419,15 +452,28 @@ export default function KakaoAnalysisPage() {
                               <button
                                 type="button"
                                 onClick={() => handleRegister(item, "ranking")}
-                                disabled={registeringKey === rk}
-                                className={`h-[42px] rounded-[14px] bg-[#b91c1c] px-4 text-[14px] font-bold text-white transition hover:bg-[#991b1b] ${
-                                  registeringKey === rk ? "opacity-60" : ""
-                                }`}
+                                disabled={registeringKey === rkId}
+                                onMouseEnter={() => setRankRegHover({ id: rkId, x: 0, y: 0 })}
+                                onMouseLeave={() => setRankRegHover({ id: null, x: 0, y: 0 })}
+                                onMouseMove={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setRankRegHover({ id: rkId, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                                }}
+                                className="relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                               >
-                                {registeringKey === rk ? "등록 중..." : "등록"}
+                                <span className="relative z-30 pointer-events-none">
+                                  {registeringKey === rkId ? "등록 중" : "등록"}
+                                </span>
+                                <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: rankRegHover.id === rkId ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />
+                                <div
+                                  className={`absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl transition-opacity duration-200 ease-out ${rankRegHover.id === rkId ? "opacity-100" : "opacity-0"}`}
+                                  style={{ left: `${rankRegHover.x}px`, top: `${rankRegHover.y}px`, zIndex: 25, backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)", mixBlendMode: "soft-light", filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))" }}
+                                />
                               </button>
                             )}
                           </td>
+
+                          {/* 순위 추적 등록 버튼 */}
                           <td className="px-4 py-5 text-center">
                             {isKwSaved ? (
                               <button
@@ -441,20 +487,31 @@ export default function KakaoAnalysisPage() {
                               <button
                                 type="button"
                                 onClick={() => handleRegister(item, "keyword")}
-                                disabled={registeringKey === kw}
-                                className={`h-[42px] rounded-[14px] bg-[#b91c1c] px-4 text-[14px] font-bold text-white transition hover:bg-[#991b1b] ${
-                                  registeringKey === kw ? "opacity-60" : ""
-                                }`}
+                                disabled={registeringKey === kwId}
+                                onMouseEnter={() => setKwRegHover({ id: kwId, x: 0, y: 0 })}
+                                onMouseLeave={() => setKwRegHover({ id: null, x: 0, y: 0 })}
+                                onMouseMove={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setKwRegHover({ id: kwId, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                                }}
+                                className="relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                               >
-                                {registeringKey === kw ? "등록 중..." : "등록"}
+                                <span className="relative z-30 pointer-events-none">
+                                  {registeringKey === kwId ? "등록 중" : "등록"}
+                                </span>
+                                <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: kwRegHover.id === kwId ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />
+                                <div
+                                  className={`absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl transition-opacity duration-200 ease-out ${kwRegHover.id === kwId ? "opacity-100" : "opacity-0"}`}
+                                  style={{ left: `${kwRegHover.x}px`, top: `${kwRegHover.y}px`, zIndex: 25, backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)", mixBlendMode: "soft-light", filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))" }}
+                                />
                               </button>
                             )}
                           </td>
+
                           <td className="px-4 py-5 text-center">
                             <button
                               type="button"
                               disabled
-                              title="카카오맵 전용 리뷰 추적은 준비 중입니다. 네이버 플레이스 리뷰 추적을 이용해 주세요."
                               className="h-[42px] cursor-not-allowed rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-4 text-[13px] font-bold text-[#9ca3af]"
                             >
                               준비중

@@ -226,6 +226,28 @@ export default function SmartstoreReviewTrackPage() {
     >
   >({});
 
+  // 디자인 통일용 상태값 (호버 및 마우스 위치)
+  const [isAddHovered, setIsAddHovered] = useState(false);
+  const [isSyncAllHovered, setIsSyncAllHovered] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [syncAllMousePos, setSyncAllMousePos] = useState({ x: 0, y: 0 });
+  const [updateHover, setUpdateHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleSyncAllMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSyncAllMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleUpdateMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setUpdateHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
   useEffect(() => setMounted(true), []);
 
   const fetchTargets = useCallback(async () => {
@@ -388,6 +410,14 @@ export default function SmartstoreReviewTrackPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              className={`
+                relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px]
+                bg-[#333333] px-4 text-[13px] font-bold tracking-wide text-white font-sans
+                transition-all duration-300 ease-in-out
+              `}
+              onMouseEnter={() => setIsAddHovered(true)}
+              onMouseLeave={() => setIsAddHovered(false)}
+              onMouseMove={handleMouseMove}
               onClick={() => {
                 setError("");
                 setShowManualInput(false);
@@ -395,20 +425,81 @@ export default function SmartstoreReviewTrackPage() {
                 setManualImageUrl("");
                 setAddOpen(true);
               }}
-              className="h-[44px] min-w-[108px] rounded-[14px] bg-[#b91c1c] px-4 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
             >
-              상품 등록
+              <span className="relative z-30 pointer-events-none">상품 등록</span>
+              <div
+                className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                style={{
+                  transformOrigin: "left",
+                  transform: isAddHovered ? "scaleX(1)" : "scaleX(0)",
+                  transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                  backgroundColor: "#2563EB",
+                }}
+              />
+              <div
+                className={`
+                  absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                  transition-opacity duration-200 ease-out
+                  ${isAddHovered ? "opacity-100" : "opacity-0"}
+                `}
+                style={{
+                  left: `${mousePos.x}px`,
+                  top: `${mousePos.y}px`,
+                  pointerEvents: "none",
+                  zIndex: 25,
+                  backgroundImage:
+                    "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                  mixBlendMode: "soft-light",
+                  filter:
+                    "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                }}
+              />
             </button>
+
             <button
               type="button"
               onClick={syncAll}
               disabled={syncAllLoading || targets.length === 0}
-              className="rounded-[12px] bg-[#111827] px-4 py-2 text-[13px] font-extrabold text-white shadow-sm disabled:opacity-50"
+              onMouseEnter={() => setIsSyncAllHovered(true)}
+              onMouseLeave={() => setIsSyncAllHovered(false)}
+              onMouseMove={handleSyncAllMouseMove}
+              className={`
+                relative inline-flex h-[44px] items-center justify-center overflow-hidden rounded-[14px]
+                bg-[#333333] px-4 text-[13px] font-extrabold tracking-wide text-white font-sans
+                transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed
+              `}
             >
-              <span className="inline-flex items-center gap-2">
+              <span className="relative z-30 inline-flex items-center gap-2 pointer-events-none">
                 <RefreshCw size={16} className={syncAllLoading ? "animate-spin" : ""} />
                 {syncAllLoading ? "전체 업데이트 중..." : "전체 업데이트"}
               </span>
+              <div
+                className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                style={{
+                  transformOrigin: "left",
+                  transform: isSyncAllHovered ? "scaleX(1)" : "scaleX(0)",
+                  transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                  backgroundColor: "#2563EB",
+                }}
+              />
+              <div
+                className={`
+                  absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                  transition-opacity duration-200 ease-out
+                  ${isSyncAllHovered ? "opacity-100" : "opacity-0"}
+                `}
+                style={{
+                  left: `${syncAllMousePos.x}px`,
+                  top: `${syncAllMousePos.y}px`,
+                  pointerEvents: "none",
+                  zIndex: 25,
+                  backgroundImage:
+                    "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                  mixBlendMode: "soft-light",
+                  filter:
+                    "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                }}
+              />
             </button>
           </div>
         </div>
@@ -549,24 +640,54 @@ export default function SmartstoreReviewTrackPage() {
                         type="button"
                         onClick={() => syncOne(t)}
                         disabled={syncingTargetId === t.id}
-                        className="h-[40px] rounded-[14px] bg-[#111827] px-4 text-[12px] font-extrabold text-white shadow-sm disabled:opacity-50"
+                        onMouseEnter={() => setUpdateHover({ id: t.id, x: updateHover.x, y: updateHover.y })}
+                        onMouseLeave={() => setUpdateHover((prev) => prev.id === t.id ? { ...prev, id: null } : prev)}
+                        onMouseMove={(e) => handleUpdateMouseMove(e, t.id)}
+                        className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-extrabold text-white font-sans transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
-                        <span className="inline-flex items-center gap-2">
+                        <span className="relative z-30 inline-flex items-center gap-2 pointer-events-none">
                           <RefreshCw
                             size={14}
                             className={syncingTargetId === t.id ? "animate-spin" : ""}
                           />
                           {syncingTargetId === t.id ? "업데이트..." : "업데이트"}
                         </span>
+                        <div
+                          className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                          style={{
+                            transformOrigin: "left",
+                            transform: updateHover.id === t.id ? "scaleX(1)" : "scaleX(0)",
+                            transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                            backgroundColor: "#2563EB",
+                          }}
+                        />
+                        <div
+                          className={`
+                            absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                            transition-opacity duration-200 ease-out
+                            ${updateHover.id === t.id ? "opacity-100" : "opacity-0"}
+                          `}
+                          style={{
+                            left: `${updateHover.x}px`,
+                            top: `${updateHover.y}px`,
+                            pointerEvents: "none",
+                            zIndex: 25,
+                            backgroundImage:
+                              "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                            mixBlendMode: "soft-light",
+                            filter:
+                              "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                          }}
+                        />
                       </button>
                       <button
                         type="button"
                         onClick={() => removeTarget(t.id)}
-                        className="inline-flex h-[40px] w-[40px] items-center justify-center rounded-[14px] bg-white text-[#ef4444] ring-1 ring-[#fee2e2] transition hover:bg-[#fff1f2]"
+                        className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6] ring-1 ring-transparent hover:ring-[#e5e7eb]`}
                         aria-label="삭제"
                         title="삭제"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={16} className="stroke-[#111827]" strokeWidth={2} />
                       </button>
                     </div>
                   </div>
@@ -717,7 +838,7 @@ export default function SmartstoreReviewTrackPage() {
                     type="button"
                     onClick={addTargetByUrl}
                     disabled={adding}
-                    className="h-[46px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] disabled:opacity-60"
+                    className="h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60"
                   >
                     {adding ? (showManualInput ? "수동 등록 중..." : "상품 정보 수집 중...") : showManualInput ? "수동 등록" : "등록"}
                   </button>
@@ -730,4 +851,3 @@ export default function SmartstoreReviewTrackPage() {
     </main>
   );
 }
-

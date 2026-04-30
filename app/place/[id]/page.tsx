@@ -138,6 +138,16 @@ export default function PlaceDetailPage() {
   const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
 
+  // 디자인 통일용 상태값 (호버 및 마우스 위치)
+  const [trackingHover, setTrackingHover] = useState(false);
+  const [trackingMousePos, setTrackingMousePos] = useState({ x: 0, y: 0 });
+  const [kwManageHover, setKwManageHover] = useState(false);
+  const [kwManageMousePos, setKwManageMousePos] = useState({ x: 0, y: 0 });
+  const [updateHover, setUpdateHover] = useState(false);
+  const [updateMousePos, setUpdateMousePos] = useState({ x: 0, y: 0 });
+  const [addKwHover, setAddKwHover] = useState(false);
+  const [addKwMousePos, setAddKwMousePos] = useState({ x: 0, y: 0 });
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -567,7 +577,8 @@ export default function PlaceDetailPage() {
     <>
       <TopNav active="place" />
 
-      <main className="min-h-screen bg-[#f8fafc] text-[#111827]">
+      {/* 🚨 pt-24를 추가하여 메뉴 잘림 현상 해결! */}
+      <main className="min-h-screen bg-[#f8fafc] text-[#111827] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           {loading ? (
             <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-8 text-[14px] text-[#6b7280] shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -643,7 +654,7 @@ export default function PlaceDetailPage() {
                           <div className="text-[11px] text-[#9ca3af]">자동 추적</div>
                           <div
                             className={`mt-1 text-[14px] font-semibold ${
-                              isAllTrackingOn ? "text-[#b91c1c]" : "text-[#6b7280]"
+                              isAllTrackingOn ? "text-[#2563EB]" : "text-[#6b7280]"
                             }`}
                           >
                             {trackingUpdating
@@ -685,30 +696,130 @@ export default function PlaceDetailPage() {
                     <button
                       onClick={handleToggleTracking}
                       disabled={trackingUpdating || !place?.keywords?.length}
-                      className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition ${
+                      onMouseEnter={() => setTrackingHover(true)}
+                      onMouseLeave={() => setTrackingHover(false)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setTrackingMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                      }}
+                      className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 ${
                         isAllTrackingOn
-                          ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
-                          : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
-                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                          ? "bg-[#2563EB] text-white"
+                          : trackingHover
+                            ? "bg-transparent border border-[#2563EB] text-white"
+                            : "bg-transparent border border-[#d1d5db] text-[#111827]"
+                      }`}
                     >
-                      {trackingUpdating
-                        ? "처리 중..."
-                        : `자동추적 ${isAllTrackingOn ? "ON" : "OFF"}`}
+                      <span className="relative z-30 pointer-events-none">
+                        {trackingUpdating ? "처리 중..." : `자동추적 ${isAllTrackingOn ? "ON" : "OFF"}`}
+                      </span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: trackingHover ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className={`
+                          absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                          transition-opacity duration-200 ease-out
+                          ${trackingHover ? "opacity-100" : "opacity-0"}
+                        `}
+                        style={{
+                          left: `${trackingMousePos.x}px`,
+                          top: `${trackingMousePos.y}px`,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage:
+                            "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                        }}
+                      />
                     </button>
 
                     <button
                       onClick={openKeywordModal}
-                      className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                      onMouseEnter={() => setKwManageHover(true)}
+                      onMouseLeave={() => setKwManageHover(false)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setKwManageMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                      }}
+                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
                     >
-                      키워드관리
+                      <span className="relative z-30 pointer-events-none">키워드관리</span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: kwManageHover ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className={`
+                          absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                          transition-opacity duration-200 ease-out
+                          ${kwManageHover ? "opacity-100" : "opacity-0"}
+                        `}
+                        style={{
+                          left: `${kwManageMousePos.x}px`,
+                          top: `${kwManageMousePos.y}px`,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage:
+                            "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                        }}
+                      />
                     </button>
 
                     <button
                       onClick={handleUpdateRanks}
                       disabled={updating}
-                      className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60"
+                      onMouseEnter={() => setUpdateHover(true)}
+                      onMouseLeave={() => setUpdateHover(false)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setUpdateMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                      }}
+                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {updating ? "업데이트 중..." : "업데이트"}
+                      <span className="relative z-30 pointer-events-none">
+                        {updating ? "업데이트 중..." : "업데이트"}
+                      </span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: updateHover ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className={`
+                          absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                          transition-opacity duration-200 ease-out
+                          ${updateHover ? "opacity-100" : "opacity-0"}
+                        `}
+                        style={{
+                          left: `${updateMousePos.x}px`,
+                          top: `${updateMousePos.y}px`,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage:
+                            "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                        }}
+                      />
                     </button>
                   </div>
                 </div>
@@ -752,80 +863,80 @@ export default function PlaceDetailPage() {
                     </thead>
 
                     <tbody>
-  {allHistoryRows.length === 0 ? (
-    <tr>
-      <td
-        colSpan={place.keywords.length + 1}
-        className="px-6 py-14 text-center text-[13px] text-[#9ca3af]"
-      >
-        아직 저장된 순위 이력이 없습니다.
-      </td>
-    </tr>
-  ) : (
-    allHistoryRows.map((row, rowIndex) => (
-      <tr
-        key={row.createdAt}
-        className="border-t border-[#f3f4f6] bg-white"
-      >
-        <td className="whitespace-nowrap px-5 py-4 align-top text-[12px] font-semibold text-[#6b7280]">
-          {formatDateLabel(row.createdAt)}
-        </td>
+                      {allHistoryRows.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={place.keywords.length + 1}
+                            className="px-6 py-14 text-center text-[13px] text-[#9ca3af]"
+                          >
+                            아직 저장된 순위 이력이 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        allHistoryRows.map((row, rowIndex) => (
+                          <tr
+                            key={row.createdAt}
+                            className="border-t border-[#f3f4f6] bg-white"
+                          >
+                            <td className="whitespace-nowrap px-5 py-4 align-top text-[12px] font-semibold text-[#6b7280]">
+                              {formatDateLabel(row.createdAt)}
+                            </td>
 
-        {place.keywords.map((keyword) => {
-          const current = row.values[keyword.id];
-          const currentRank = current?.rank ?? null;
-          const rankMeta = getRankMeta(currentRank);
+                            {place.keywords.map((keyword) => {
+                              const current = row.values[keyword.id];
+                              const currentRank = current?.rank ?? null;
+                              const rankMeta = getRankMeta(currentRank);
 
-          const previousRow = allHistoryRows[rowIndex + 1];
-          const previousRank = previousRow?.values?.[keyword.id]?.rank ?? null;
+                              const previousRow = allHistoryRows[rowIndex + 1];
+                              const previousRank = previousRow?.values?.[keyword.id]?.rank ?? null;
 
-          let diff: number | null = null;
+                              let diff: number | null = null;
 
-          if (
-            currentRank !== null &&
-            currentRank !== undefined &&
-            previousRank !== null &&
-            previousRank !== undefined
-          ) {
-            diff = previousRank - currentRank;
-          }
+                              if (
+                                currentRank !== null &&
+                                currentRank !== undefined &&
+                                previousRank !== null &&
+                                previousRank !== undefined
+                              ) {
+                                diff = previousRank - currentRank;
+                              }
 
-          return (
-            <td
-              key={`${row.createdAt}-${keyword.id}`}
-              className="border-l border-[#f3f4f6] px-4 py-4 align-top"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-[14px] font-black text-[#111827]">
-                    {rankMeta.main}
-                  </div>
-                  <div className="mt-0.5 text-[11px] font-semibold text-[#9ca3af]">
-                    {rankMeta.sub}
-                  </div>
-                </div>
+                              return (
+                                <td
+                                  key={`${row.createdAt}-${keyword.id}`}
+                                  className="border-l border-[#f3f4f6] px-4 py-4 align-top"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-[14px] font-black text-[#111827]">
+                                        {rankMeta.main}
+                                      </div>
+                                      <div className="mt-0.5 text-[11px] font-semibold text-[#9ca3af]">
+                                        {rankMeta.sub}
+                                      </div>
+                                    </div>
 
-                <div className="pt-[2px] text-[11px] font-bold">
-                  {diff === null ? (
-                    <span className="text-[#9ca3af]">-</span>
-                  ) : diff > 0 ? (
-                    <span className="text-[#ef4444]">▲ {diff}</span>
-                  ) : diff < 0 ? (
-                    <span className="text-[#2563eb]">
-                      ▼ {Math.abs(diff)}
-                    </span>
-                  ) : (
-                    <span className="text-[#9ca3af]">-</span>
-                  )}
-                </div>
-              </div>
-            </td>
-          );
-        })}
-      </tr>
-    ))
-  )}
-</tbody>
+                                    <div className="pt-[2px] text-[11px] font-bold">
+                                      {diff === null ? (
+                                        <span className="text-[#9ca3af]">-</span>
+                                      ) : diff > 0 ? (
+                                        <span className="text-[#ef4444]">▲ {diff}</span>
+                                      ) : diff < 0 ? (
+                                        <span className="text-[#2563eb]">
+                                          ▼ {Math.abs(diff)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[#9ca3af]">-</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
                   </table>
                 </div>
               </div>
@@ -986,7 +1097,7 @@ export default function PlaceDetailPage() {
                       value={keywordInput}
                       onChange={(e) => setKeywordInput(e.target.value)}
                       placeholder="키워드 입력 (쉼표로 여러개)"
-                      className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                      className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
                     />
                     <button
                       onClick={async () => {
@@ -1013,9 +1124,41 @@ export default function PlaceDetailPage() {
                         setKeywordInput("");
                         await loadPlaceDetail();
                       }}
-                      className="h-[48px] rounded-[16px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937]"
+                      onMouseEnter={() => setAddKwHover(true)}
+                      onMouseLeave={() => setAddKwHover(false)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setAddKwMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                      }}
+                      className="relative inline-flex h-[48px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
                     >
-                      추가
+                      <span className="relative z-30 pointer-events-none">추가</span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: addKwHover ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className={`
+                          absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                          transition-opacity duration-200 ease-out
+                          ${addKwHover ? "opacity-100" : "opacity-0"}
+                        `}
+                        style={{
+                          left: `${addKwMousePos.x}px`,
+                          top: `${addKwMousePos.y}px`,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage:
+                            "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                        }}
+                      />
                     </button>
                   </div>
                 </div>
@@ -1062,7 +1205,7 @@ export default function PlaceDetailPage() {
 
                               await loadPlaceDetail();
                             }}
-                            className="shrink-0 rounded-[12px] border border-[#fecaca] bg-white px-3 py-2 text-[12px] font-bold text-[#dc2626] transition hover:bg-[#fafafa]"
+                            className="shrink-0 rounded-[12px] border border-[#e5e7eb] bg-white px-3 py-2 text-[12px] font-bold text-[#111827] transition hover:bg-[#f3f4f6]"
                           >
                             삭제
                           </button>

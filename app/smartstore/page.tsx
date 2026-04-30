@@ -754,7 +754,7 @@ export default function SmartstoreRankPage() {
   return (
     <>
       <TopNav activeSmartstoreSub="rank-naver-price" />
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111] pt-24">
+      <main className="min-h-screen bg-[#f8fafc] text-[#111111] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1203,18 +1203,18 @@ export default function SmartstoreRankPage() {
                           />
                         </button>
                         <button
-                          type="button"
-                          onClick={() => handleDelete(p.id)}
-                          disabled={deletingId === p.id}
-                          className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#fef2f2] ${deletingId === p.id ? "opacity-60" : ""}`}
-                          aria-label="삭제"
-                        >
-                          {deletingId === p.id ? (
-                            <span className="text-[12px] text-[#dc2626]">...</span>
-                          ) : (
-                            <Trash2 className="h-[18px] w-[18px] stroke-[#dc2626]" strokeWidth={2} />
-                          )}
-                        </button>
+  type="button"
+  onClick={() => handleDelete(p.id)}
+  disabled={deletingId === p.id}
+  className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6] ${deletingId === p.id ? "opacity-60" : ""}`}
+  aria-label="삭제"
+>
+  {deletingId === p.id ? (
+    <span className="text-[12px] text-[#111827]">...</span>
+  ) : (
+    <Trash2 className="h-[18px] w-[18px] stroke-[#111827]" strokeWidth={2} />
+  )}
+</button>
                       </div>
                     </div>
                   </div>

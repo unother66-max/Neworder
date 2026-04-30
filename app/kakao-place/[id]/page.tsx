@@ -51,7 +51,7 @@ function fmtRank(rank: number | null | undefined): string {
 function getRankChangeUi(prev: number | null, curr: number | null) {
   if (prev === null || curr === null) return null;
   const diff = prev - curr;
-  if (diff > 0) return { text: `▲ ${diff}`, cls: "text-[#b91c1c] font-bold text-[11px]" };
+  if (diff > 0) return { text: `▲ ${diff}`, cls: "text-[#ef4444] font-bold text-[11px]" };
   if (diff < 0) return { text: `▼ ${Math.abs(diff)}`, cls: "text-[#2563eb] font-bold text-[11px]" };
   return { text: "-", cls: "text-[#9ca3af] text-[11px]" };
 }
@@ -71,6 +71,10 @@ export default function KakaoPlaceDetailPage() {
   const [activeKw, setActiveKw] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [pinning, setPinning] = useState(false);
+
+  // --- 디자인 통일용 상태값 ---
+  const [updateHover, setUpdateHover] = useState(false);
+  const [updateMousePos, setUpdateMousePos] = useState({ x: 0, y: 0 });
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
@@ -149,7 +153,7 @@ export default function KakaoPlaceDetailPage() {
     return (
       <>
         <TopNav active="kakao-place" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f4f4f5]">
+        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
           <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
         </main>
       </>
@@ -160,7 +164,7 @@ export default function KakaoPlaceDetailPage() {
     return (
       <>
         <TopNav active="kakao-place" />
-        <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f4f4f5]">
+        <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f8fafc] pt-24">
           <p className="text-[15px] text-[#6b7280]">{fetchError}</p>
           <button type="button" onClick={() => router.back()}
             className="rounded-[14px] border border-[#d1d5db] bg-white px-5 py-2 text-[14px] font-bold text-[#111827] hover:bg-[#f9fafb]">
@@ -173,7 +177,6 @@ export default function KakaoPlaceDetailPage() {
 
   const activeKeyword = place?.keywords.find((k) => k.keyword === activeKw) ?? null;
 
-  // 날짜 기준 중복 제거 (같은 날짜면 최신 1개만)
   const dedupedHistory: RankRow[] = (() => {
     if (!activeKeyword) return [];
     const seen = new Map<string, RankRow>();
@@ -188,7 +191,7 @@ export default function KakaoPlaceDetailPage() {
   return (
     <>
       <TopNav active="kakao-place" />
-      <main className="min-h-screen bg-[#f4f4f5]">
+      <main className="min-h-screen bg-[#f8fafc] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-6 md:px-6 lg:px-8">
 
           {/* 뒤로가기 */}
@@ -199,7 +202,7 @@ export default function KakaoPlaceDetailPage() {
 
           {/* Store card */}
           {place && (
-            <div className={`overflow-hidden rounded-[22px] border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${place.isPinned ? "border-[#fca5a5]" : "border-[#e5e7eb]"}`}>
+            <div className={`overflow-hidden rounded-[22px] border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${place.isPinned ? "border-[#2563EB]/30" : "border-[#e5e7eb]"}`}>
               <div className="px-5 py-5 md:px-6">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="flex min-w-0 gap-4">
@@ -214,7 +217,6 @@ export default function KakaoPlaceDetailPage() {
                     )}
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        {place.isPinned && <Pin className="h-[14px] w-[14px] fill-[#b91c1c] stroke-[#b91c1c]" />}
                         <h2 className="text-[22px] font-black tracking-[-0.03em] text-[#111827]">{place.name}</h2>
                         {place.category && (
                           <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">{place.category}</span>
@@ -229,7 +231,7 @@ export default function KakaoPlaceDetailPage() {
                       {place.kakaoUrl && (
                         <a href={place.kakaoUrl} target="_blank" rel="noreferrer"
                           className="mt-2 inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#111827] hover:bg-[#f9fafb]">
-                          카카오맵
+                          카카오맵 바로가기
                         </a>
                       )}
                     </div>
@@ -237,12 +239,46 @@ export default function KakaoPlaceDetailPage() {
 
                   <div className="flex flex-nowrap items-center gap-2">
                     <button type="button" onClick={handleTogglePin} disabled={pinning}
-                      className={`inline-flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-[14px] border transition ${place.isPinned ? "border-[#fca5a5] bg-white" : "border-[#d1d5db] bg-white hover:bg-[#f9fafb]"} ${pinning ? "opacity-60" : ""}`}>
-                      <Pin className={`h-[16px] w-[16px] ${place.isPinned ? "fill-[#b91c1c] stroke-[#b91c1c]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
+                      className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] border transition ${place.isPinned ? "border-[#2563EB] bg-white" : "border-[#d1d5db] bg-white hover:bg-[#f9fafb]"} ${pinning ? "opacity-60" : ""}`}>
+                      <Pin className={`h-[18px] w-[18px] ${place.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
                     </button>
-                    <button type="button" onClick={handleUpdate} disabled={updating}
-                      className={`inline-flex h-[42px] items-center justify-center rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${updating ? "opacity-60" : ""}`}>
-                      {updating ? "업데이트 중..." : "업데이트"}
+                    
+                    {/* 업데이트 버튼: 오로라 테마 적용 */}
+                    <button
+                      onClick={handleUpdate}
+                      disabled={updating}
+                      onMouseEnter={() => setUpdateHover(true)}
+                      onMouseLeave={() => setUpdateHover(false)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setUpdateMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                      }}
+                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <span className="relative z-30 pointer-events-none">
+                        {updating ? "업데이트 중..." : "업데이트"}
+                      </span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: updateHover ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className={`absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl transition-opacity duration-200 ease-out ${updateHover ? "opacity-100" : "opacity-0"}`}
+                        style={{
+                          left: `${updateMousePos.x}px`,
+                          top: `${updateMousePos.y}px`,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                        }}
+                      />
                     </button>
                   </div>
                 </div>
@@ -265,17 +301,17 @@ export default function KakaoPlaceDetailPage() {
               ) : (
                 <>
                   {/* Keyword tabs */}
-                  <div className="flex gap-2 overflow-x-auto border-b border-[#f3f4f6] px-5 py-3 md:px-6">
+                  <div className="flex gap-2 overflow-x-auto border-b border-[#f3f4f6] px-5 py-3 md:px-6 no-scrollbar">
                     {place.keywords.map((kw) => (
                       <button
                         key={kw.id}
                         type="button"
                         onClick={() => setActiveKw(kw.keyword)}
-                        className={`shrink-0 rounded-full px-4 py-1.5 text-[13px] font-bold transition ${activeKw === kw.keyword ? "bg-[#111827] text-white" : "border border-[#d1d5db] bg-white text-[#6b7280] hover:bg-[#f9fafb]"}`}
+                        className={`shrink-0 rounded-full px-4 py-1.5 text-[13px] font-bold transition ${activeKw === kw.keyword ? "bg-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#6b7280] hover:bg-[#f9fafb]"}`}
                       >
                         {kw.keyword}
                         {kw.latestRank && kw.latestRank > 0 && (
-                          <span className={`ml-1.5 text-[11px] ${activeKw === kw.keyword ? "text-white/70" : "text-[#9ca3af]"}`}>
+                          <span className={`ml-1.5 text-[11px] ${activeKw === kw.keyword ? "text-white/80" : "text-[#9ca3af]"}`}>
                             {kw.latestRank}위
                           </span>
                         )}
@@ -295,9 +331,9 @@ export default function KakaoPlaceDetailPage() {
                       <table className="min-w-full border-collapse overflow-hidden rounded-[14px] border border-[#e5e7eb] text-[13px]">
                         <thead className="bg-[#f9fafb]">
                           <tr>
-                            <th className="border-b border-[#e5e7eb] px-4 py-3 text-left text-[11px] font-extrabold text-[#6b7280]">날짜</th>
-                            <th className="border-b border-[#e5e7eb] px-4 py-3 text-center text-[11px] font-extrabold text-[#6b7280]">검색 순위</th>
-                            <th className="border-b border-[#e5e7eb] px-4 py-3 text-center text-[11px] font-extrabold text-[#6b7280]">증감</th>
+                            <th className="border-b border-[#e5e7eb] px-5 py-3.5 text-left text-[11px] font-extrabold text-[#6b7280]">날짜</th>
+                            <th className="border-b border-[#e5e7eb] px-4 py-3.5 text-center text-[11px] font-extrabold text-[#6b7280]">검색 순위</th>
+                            <th className="border-b border-[#e5e7eb] px-5 py-3.5 text-right text-[11px] font-extrabold text-[#6b7280]">증감</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -307,14 +343,14 @@ export default function KakaoPlaceDetailPage() {
                             const currRank = row.rank > 0 ? row.rank : null;
                             const change = getRankChangeUi(prevRank, currRank);
                             return (
-                              <tr key={row.id} className="border-t border-[#f3f4f6] bg-white hover:bg-[#fafafa]">
-                                <td className="px-4 py-3 text-[12px] font-semibold text-[#6b7280]">{row.date}</td>
-                                <td className="px-4 py-3 text-center">
-                                  <span className={`text-[14px] font-black ${currRank ? "text-[#111827]" : "text-[#9ca3af]"}`}>
+                              <tr key={row.id} className="border-t border-[#f3f4f6] bg-white hover:bg-[#fcfcfc] transition-colors">
+                                <td className="px-5 py-4 text-[13px] font-semibold text-[#6b7280]">{row.date}</td>
+                                <td className="px-4 py-4 text-center">
+                                  <span className={`text-[15px] font-black ${currRank ? "text-[#111827]" : "text-[#9ca3af]"}`}>
                                     {fmtRank(row.rank)}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 text-center">
+                                <td className="px-5 py-4 text-right">
                                   {change ? (
                                     <span className={change.cls}>{change.text}</span>
                                   ) : (

@@ -76,6 +76,12 @@ export default function PlaceReviewDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [trackingUpdating, setTrackingUpdating] = useState(false);
 
+  // --- 디자인 통일용 호버 상태값 ---
+  const [trackingHover, setTrackingHover] = useState(false);
+  const [trackingMousePos, setTrackingMousePos] = useState({ x: 0, y: 0 });
+  const [updateHover, setUpdateHover] = useState(false);
+  const [updateMousePos, setUpdateMousePos] = useState({ x: 0, y: 0 });
+
   const loadDetail = async () => {
     if (!id) return;
     const res = await fetch(
@@ -160,7 +166,8 @@ export default function PlaceReviewDetailPage() {
     <>
       <TopNav active="place-review" />
 
-      <main className="min-h-screen bg-[#f8fafc] text-[#111827]">
+      {/* 🚨 상단 겹침 해결: pt-24 추가 */}
+      <main className="min-h-screen bg-[#f8fafc] text-[#111827] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           {loading ? (
             <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-8 text-[14px] text-[#6b7280] shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -261,15 +268,49 @@ export default function PlaceReviewDetailPage() {
                         }
                       }}
                       disabled={trackingUpdating}
-                      className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      onMouseEnter={() => setTrackingHover(true)}
+                      onMouseLeave={() => setTrackingHover(false)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setTrackingMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                      }}
+                      className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 ${
                         place.reviewAutoTracking
-                          ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
-                          : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
+                          ? "bg-[#2563EB] text-white"
+                          : trackingHover
+                            ? "bg-transparent border border-[#2563EB] text-white"
+                            : "bg-transparent border border-[#d1d5db] text-[#111827]"
                       }`}
                     >
-                      {trackingUpdating
-                        ? "변경 중..."
-                        : `자동추적 ${place.reviewAutoTracking ? "ON" : "OFF"}`}
+                      <span className="relative z-30 pointer-events-none">
+                        {trackingUpdating ? "변경 중..." : `자동추적 ${place.reviewAutoTracking ? "ON" : "OFF"}`}
+                      </span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: trackingHover ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className={`
+                          absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                          transition-opacity duration-200 ease-out
+                          ${trackingHover ? "opacity-100" : "opacity-0"}
+                        `}
+                        style={{
+                          left: `${trackingMousePos.x}px`,
+                          top: `${trackingMousePos.y}px`,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage:
+                            "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                        }}
+                      />
                     </button>
 
                     <button
@@ -304,9 +345,43 @@ export default function PlaceReviewDetailPage() {
                         }
                       }}
                       disabled={updating}
-                      className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60"
+                      onMouseEnter={() => setUpdateHover(true)}
+                      onMouseLeave={() => setUpdateHover(false)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setUpdateMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                      }}
+                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {updating ? "업데이트 중..." : "업데이트"}
+                      <span className="relative z-30 pointer-events-none">
+                        {updating ? "업데이트 중..." : "업데이트"}
+                      </span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: updateHover ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className={`
+                          absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                          transition-opacity duration-200 ease-out
+                          ${updateHover ? "opacity-100" : "opacity-0"}
+                        `}
+                        style={{
+                          left: `${updateMousePos.x}px`,
+                          top: `${updateMousePos.y}px`,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage:
+                            "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                        }}
+                      />
                     </button>
                   </div>
                 </div>
@@ -462,4 +537,3 @@ export default function PlaceReviewDetailPage() {
     </>
   );
 }
-

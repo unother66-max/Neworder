@@ -75,6 +75,63 @@ export default function KakaoPlacePage() {
   const [trackingLoadingId, setTrackingLoadingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // --- 디자인 통일용 호버 및 마우스 상태값 ---
+  const [isAddHovered, setIsAddHovered] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  
+  const [updateHover, setUpdateHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const [rankChangeHover, setRankChangeHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const [trackingHover, setTrackingHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const [kwManageHover, setKwManageHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+
+  // 모달 안쪽 버튼 호버 상태값
+  const [modalSearchHovered, setModalSearchHovered] = useState(false);
+  const [modalSearchMousePos, setModalSearchMousePos] = useState({ x: 0, y: 0 });
+  const [modalRegHover, setModalRegHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const [kwSaveHovered, setKwSaveHovered] = useState(false);
+  const [kwSaveMousePos, setKwSaveMousePos] = useState({ x: 0, y: 0 });
+
+  // 마우스 이동 핸들러들
+  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleUpdateMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setUpdateHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleRankChangeMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setRankChangeHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleTrackingMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTrackingHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleKwManageMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setKwManageHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleModalSearchMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setModalSearchMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleModalRegMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setModalRegHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleKwSaveMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setKwSaveMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
   // 매장등록 모달
   const [registerOpen, setRegisterOpen] = useState(false);
   const [regQuery, setRegQuery] = useState("");
@@ -255,7 +312,7 @@ export default function KakaoPlacePage() {
     }
   };
 
-  // ── Keyword modal (app/place style) ──────────────────────────────────────
+  // ── Keyword modal ──────────────────────────────────────
 
   const openKwModal = (store: KakaoPlaceStore) => {
     setKwModalStore(store);
@@ -349,7 +406,7 @@ export default function KakaoPlacePage() {
     return (
       <>
         <TopNav active="kakao-place" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9] pt-24">
+        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
           <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
         </main>
       </>
@@ -360,7 +417,7 @@ export default function KakaoPlacePage() {
     return (
       <>
         <TopNav active="kakao-place" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9] pt-24">
+        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
           <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
         </main>
       </>
@@ -372,7 +429,7 @@ export default function KakaoPlacePage() {
   return (
     <>
       <TopNav active="kakao-place" />
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111] pt-24">
+      <main className="min-h-screen bg-[#f8fafc] text-[#111111] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
 
           {/* Page header */}
@@ -383,7 +440,7 @@ export default function KakaoPlacePage() {
                   <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
                     카카오맵 순위 추적
                   </h1>
-                  <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[11px] font-bold text-[#4b5563]">
+                  <span className="rounded-full bg-[#eff6ff] px-2 py-1 text-[11px] font-bold text-[#2563eb]">
                     KAKAO
                   </span>
                 </div>
@@ -399,17 +456,42 @@ export default function KakaoPlacePage() {
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     placeholder="등록된 매장 검색"
-                    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white"
                   />
                   <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280]">
                     🔍
                   </div>
                 </div>
                 <button
+                  onMouseEnter={() => setIsAddHovered(true)}
+                  onMouseLeave={() => setIsAddHovered(false)}
+                  onMouseMove={handleMouseMove}
                   onClick={() => setRegisterOpen(true)}
-                  className="h-[44px] min-w-[108px] rounded-[14px] bg-[#b91c1c] px-4 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
+                  className="relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out"
                 >
-                  매장 등록
+                  <span className="relative z-30 pointer-events-none">매장 등록</span>
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                    style={{
+                      transformOrigin: "left",
+                      transform: isAddHovered ? "scaleX(1)" : "scaleX(0)",
+                      transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                      backgroundColor: "#2563EB",
+                    }}
+                  />
+                  <div
+                    className="absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl transition-opacity duration-200 ease-out"
+                    style={{
+                      left: `${mousePos.x}px`,
+                      top: `${mousePos.y}px`,
+                      opacity: isAddHovered ? 1 : 0,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                    }}
+                  />
                 </button>
               </div>
             </div>
@@ -467,7 +549,6 @@ export default function KakaoPlacePage() {
 
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            {store.isPinned && <Pin className="h-[14px] w-[14px] fill-[#b91c1c] stroke-[#b91c1c]" />}
                             <h3 className="text-[20px] font-black tracking-[-0.03em] text-[#111827]">{store.name}</h3>
                             {store.category && (
                               <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">{store.category}</span>
@@ -488,70 +569,157 @@ export default function KakaoPlacePage() {
                         </div>
                       </div>
 
-                      {/* Actions: 핀 | 업데이트 | 순위변화보기 | 자동추적 | 키워드관리 | 🗑️ */}
+                      {/* Actions */}
                       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
-                        {/* 핀 */}
                         <button
                           type="button"
                           onClick={() => handleTogglePin(store)}
-                          disabled={pinningId === store.id}
-                          className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb] ${pinningId === store.id ? "opacity-60" : ""}`}
-                          aria-label="상단 고정"
+                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb]"
+                          aria-label="핀 고정"
                         >
-                          <Pin
-                            className={`h-[20px] w-[20px] transition ${
-                              store.isPinned
-                                ? "fill-[#b91c1c] stroke-[#b91c1c]"
-                                : "stroke-[#6b7280]"
-                            }`}
-                            strokeWidth={2}
-                          />
+                          <Pin className={`h-[20px] w-[20px] transition ${store.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
                         </button>
-                        {/* 업데이트 */}
+
                         <button
-                          type="button"
                           onClick={() => handleUpdate(store)}
                           disabled={updatingId === store.id}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${updatingId === store.id ? "opacity-60" : ""}`}
+                          onMouseEnter={() => setUpdateHover({ id: store.id, x: updateHover.x, y: updateHover.y })}
+                          onMouseLeave={() => setUpdateHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleUpdateMouseMove(e, store.id)}
+                          className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                         >
-                          {updatingId === store.id ? "업데이트 중..." : "업데이트"}
+                          <span className="relative z-30 pointer-events-none">
+                            {updatingId === store.id ? "업데이트 중..." : "업데이트"}
+                          </span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: updateHover.id === store.id ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className="absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl transition-opacity duration-200 ease-out"
+                            style={{
+                              left: `${updateHover.x}px`,
+                              top: `${updateHover.y}px`,
+                              opacity: updateHover.id === store.id ? 1 : 0,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
-                        {/* 순위변화보기 */}
+
                         <button
-                          type="button"
                           onClick={() => router.push(`/kakao-place/${store.id}`)}
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                          onMouseEnter={() => setRankChangeHover({ id: store.id, x: rankChangeHover.x, y: rankChangeHover.y })}
+                          onMouseLeave={() => setRankChangeHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleRankChangeMouseMove(e, store.id)}
+                          className={`relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out ${rankChangeHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                         >
-                          순위변화보기
+                          <span className="relative z-30 pointer-events-none">순위변화보기</span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-0 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: rankChangeHover.id === store.id ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className="absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl transition-opacity duration-200 ease-out"
+                            style={{
+                              left: `${rankChangeHover.x}px`,
+                              top: `${rankChangeHover.y}px`,
+                              opacity: rankChangeHover.id === store.id ? 1 : 0,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
-                        {/* 자동추적 */}
+
                         <button
-                          type="button"
                           onClick={() => handleToggleTracking(store)}
                           disabled={trackingLoadingId === store.id}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition ${store.isAutoTracking ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]" : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"} ${trackingLoadingId === store.id ? "opacity-60" : ""}`}
+                          onMouseEnter={() => setTrackingHover({ id: store.id, x: trackingHover.x, y: trackingHover.y })}
+                          onMouseLeave={() => setTrackingHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleTrackingMouseMove(e, store.id)}
+                          className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:opacity-60 ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === store.id ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
                         >
-                          {trackingLoadingId === store.id ? "처리 중..." : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
+                          <span className="relative z-30 pointer-events-none">
+                            {trackingLoadingId === store.id ? "처리 중" : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
+                          </span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: trackingHover.id === store.id ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className="absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl transition-opacity duration-200 ease-out"
+                            style={{
+                              left: `${trackingHover.x}px`,
+                              top: `${trackingHover.y}px`,
+                              opacity: trackingHover.id === store.id ? 1 : 0,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
-                        {/* 키워드관리 */}
+
                         <button
-                          type="button"
                           onClick={() => openKwModal(store)}
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#b91c1c] px-4 text-[14px] font-bold text-white shadow-[0_8px_20px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
+                          onMouseEnter={() => setKwManageHover({ id: store.id, x: kwManageHover.x, y: kwManageHover.y })}
+                          onMouseLeave={() => setKwManageHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleKwManageMouseMove(e, store.id)}
+                          className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
                         >
-                          키워드 관리
+                          <span className="relative z-30 pointer-events-none">키워드 관리</span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: kwManageHover.id === store.id ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className="absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl transition-opacity duration-200 ease-out"
+                            style={{
+                              left: `${kwManageHover.x}px`,
+                              top: `${kwManageHover.y}px`,
+                              opacity: kwManageHover.id === store.id ? 1 : 0,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
-                        {/* 삭제 (휴지통 이모지) */}
+
                         <button
                           type="button"
                           onClick={() => handleDelete(store.id)}
-                          disabled={deletingId === store.id}
-                          className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#fef2f2] ${deletingId === store.id ? "opacity-60" : ""}`}
-                          aria-label="삭제"
+                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6]"
                         >
-                          {deletingId === store.id
-                            ? <span className="text-[12px] text-[#dc2626]">...</span>
-                            : <Trash2 className="h-[18px] w-[18px] stroke-[#dc2626]" strokeWidth={2} />}
+                          <Trash2 className="h-[18px] w-[18px] stroke-[#111827]" strokeWidth={2} />
                         </button>
                       </div>
                     </div>
@@ -575,14 +743,13 @@ export default function KakaoPlacePage() {
                           {store.keywords.length === 0 ? (
                             <tr>
                               <td colSpan={5} className="px-4 py-6 text-center text-[12px] text-[#9ca3af]">
-                                지금 키워드를 등록하고, 내 매장의 키워드 별 순위를 확인해보세요.
-                                <br />
+                                지금 키워드를 등록하고, 내 매장의 키워드 별 순위를 확인해보세요.<br />
                                 <span className="font-semibold">[키워드 관리]</span> 버튼을 눌러 시작할 수 있어요.
                               </td>
                             </tr>
                           ) : (
                             store.keywords.map((kw) => (
-                              <tr key={kw.id} className="border-t border-[#f3f4f6] bg-white hover:bg-[#fafafa]">
+                              <tr key={kw.id} className="border-t border-[#f3f4f6] bg-white hover:bg-[#fafafa] transition-colors">
                                 <td className="px-4 py-3 text-[13px] font-semibold text-[#111827]">{kw.keyword}</td>
                                 <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">{fmtVolume(kw.totalVolume)}</td>
                                 <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">{fmtVolume(kw.mobileVolume)}</td>
@@ -591,9 +758,7 @@ export default function KakaoPlacePage() {
                                   <span className={`text-[13px] font-bold ${kw.latestRank && kw.latestRank > 0 ? "text-[#111827]" : "text-[#9ca3af]"}`}>
                                     {fmtRank(kw.latestRank)}
                                   </span>
-                                  {kw.latestRankDate && (
-                                    <p className="text-[10px] text-[#9ca3af]">{kw.latestRankDate}</p>
-                                  )}
+                                  {kw.latestRankDate && <p className="text-[10px] text-[#9ca3af]">{kw.latestRankDate}</p>}
                                 </td>
                               </tr>
                             ))
@@ -602,8 +767,7 @@ export default function KakaoPlacePage() {
                       </table>
                     </div>
                     <p className="mt-2 text-right text-[11px] text-[#9ca3af]">
-                      마지막 업데이트:{" "}
-                      <span className="font-semibold text-[#6b7280]">{store.latestUpdatedAt || "-"}</span>
+                      마지막 업데이트: <span className="font-semibold text-[#6b7280]">{store.latestUpdatedAt || "-"}</span>
                     </p>
                   </div>
                 </div>
@@ -613,9 +777,9 @@ export default function KakaoPlacePage() {
         </section>
       </main>
 
-      {/* ── Register Modal ─────────────────────────────────────────────────── */}
+      {/* Register Modal */}
       {registerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
           <div className="w-full max-w-[520px] rounded-[24px] bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#f3f4f6] px-6 py-5">
               <h2 className="text-[18px] font-black text-[#111827]">매장 등록</h2>
@@ -628,11 +792,39 @@ export default function KakaoPlacePage() {
                   type="text" placeholder="매장명으로 검색" value={regQuery}
                   onChange={(e) => setRegQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleRegSearch()}
-                  className="flex-1 rounded-[12px] border border-[#e5e7eb] px-4 py-2.5 text-[14px] focus:border-[#b91c1c] focus:outline-none"
+                  className="flex-1 rounded-[12px] border border-[#e5e7eb] px-4 py-2.5 text-[14px] outline-none transition focus:border-[#2563eb]"
                 />
-                <button type="button" onClick={handleRegSearch} disabled={regSearchLoading}
-                  className="rounded-[12px] bg-[#111827] px-5 py-2.5 text-[14px] font-bold text-white hover:bg-[#1f2937] disabled:opacity-60">
-                  {regSearchLoading ? "검색 중..." : "검색"}
+                <button
+                  onMouseEnter={() => setModalSearchHovered(true)}
+                  onMouseLeave={() => setModalSearchHovered(false)}
+                  onMouseMove={handleModalSearchMouseMove}
+                  onClick={handleRegSearch}
+                  disabled={regSearchLoading}
+                  className="relative inline-flex h-[44px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                >
+                  <span className="relative z-30 pointer-events-none">{regSearchLoading ? "검색 중" : "검색"}</span>
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                    style={{
+                      transformOrigin: "left",
+                      transform: modalSearchHovered ? "scaleX(1)" : "scaleX(0)",
+                      transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                      backgroundColor: "#2563EB",
+                    }}
+                  />
+                  <div
+                    className="absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl transition-opacity duration-200 ease-out"
+                    style={{
+                      left: `${modalSearchMousePos.x}px`,
+                      top: `${modalSearchMousePos.y}px`,
+                      opacity: modalSearchHovered ? 1 : 0,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter: "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                    }}
+                  />
                 </button>
               </div>
               {regSearchError && <p className="mt-2 text-[13px] text-[#dc2626]">{regSearchError}</p>}
@@ -655,9 +847,37 @@ export default function KakaoPlacePage() {
                       <p className="text-[12px] text-[#6b7280]">{item.address}</p>
                       {item.category && <p className="text-[11px] text-[#9ca3af]">{item.category}</p>}
                     </div>
-                    <button type="button" onClick={() => handleRegSave(item)} disabled={regSavingId === item.kakaoId}
-                      className="shrink-0 rounded-[10px] bg-[#b91c1c] px-3 py-1.5 text-[13px] font-bold text-white hover:bg-[#991b1b] disabled:opacity-60">
-                      {regSavingId === item.kakaoId ? "등록 중..." : "등록"}
+                    <button
+                      onMouseEnter={() => setModalRegHover({ id: item.kakaoId, x: modalRegHover.x, y: modalRegHover.y })}
+                      onMouseLeave={() => setModalRegHover((prev) => prev.id === item.kakaoId ? { ...prev, id: null } : prev)}
+                      onMouseMove={(e) => handleModalRegMouseMove(e, item.kakaoId)}
+                      onClick={() => handleRegSave(item)}
+                      disabled={regSavingId === item.kakaoId}
+                      className="relative inline-flex h-[36px] shrink-0 min-w-[70px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                    >
+                      <span className="relative z-30 pointer-events-none">{regSavingId === item.kakaoId ? "등록 중" : "등록"}</span>
+                      <div
+                        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                        style={{
+                          transformOrigin: "left",
+                          transform: modalRegHover.id === item.kakaoId ? "scaleX(1)" : "scaleX(0)",
+                          transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                          backgroundColor: "#2563EB",
+                        }}
+                      />
+                      <div
+                        className="absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-xl transition-opacity duration-200 ease-out"
+                        style={{
+                          left: `${modalRegHover.x}px`,
+                          top: `${modalRegHover.y}px`,
+                          opacity: modalRegHover.id === item.kakaoId ? 1 : 0,
+                          pointerEvents: "none",
+                          zIndex: 25,
+                          backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                          mixBlendMode: "soft-light",
+                          filter: "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                        }}
+                      />
                     </button>
                   </div>
                 ))}
@@ -667,11 +887,10 @@ export default function KakaoPlacePage() {
         </div>
       )}
 
-      {/* ── Keyword Modal (app/place style) ──────────────────────────────── */}
+      {/* Keyword Modal */}
       {kwModalStore && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
           <div className="w-full max-w-[860px] overflow-hidden rounded-[24px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
-            {/* Header */}
             <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -679,15 +898,10 @@ export default function KakaoPlacePage() {
                   <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">{kwModalStore.name}</h2>
                   <p className="mt-2 text-[14px] text-[#6b7280]">키워드를 직접 입력해서 관리하세요.</p>
                 </div>
-                <button onClick={closeKwModal}
-                  className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]">
-                  닫기
-                </button>
+                <button onClick={closeKwModal} className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]">닫기</button>
               </div>
             </div>
-
             <div className="max-h-[78vh] overflow-y-auto px-6 py-6">
-              {/* 직접 키워드 추가 */}
               <div className="rounded-[18px] border border-[#e5e7eb] bg-white p-5">
                 <p className="text-[13px] font-bold text-[#4b5563]">직접 키워드 추가</p>
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row">
@@ -696,55 +910,64 @@ export default function KakaoPlacePage() {
                     onChange={(e) => setKwInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addDirectKeywords()}
                     placeholder="쉼표(,)로 여러 개 입력 가능"
-                    className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                    className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition focus:border-[#2563eb] focus:bg-white"
                   />
-                  <button type="button" onClick={addDirectKeywords}
-                    className="h-[48px] rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">
-                    추가
-                  </button>
+                  <button onClick={addDirectKeywords} className="h-[48px] rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">추가</button>
                 </div>
               </div>
-
-              {/* 저장 예정 키워드 */}
               <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[13px] font-bold text-[#4b5563]">저장 예정 키워드</p>
-                  <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] font-bold text-[#4b5563]">
-                    {tempKeywords.length}개
-                  </span>
+                  <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] font-bold text-[#4b5563]">{tempKeywords.length}개</span>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2.5">
                   {tempKeywords.length === 0 ? (
-                    <div className="w-full rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-8 text-center text-[14px] text-[#9ca3af]">
-                      아직 추가된 키워드가 없습니다.
-                    </div>
+                    <div className="w-full rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-8 text-center text-[14px] text-[#9ca3af]">아직 추가된 키워드가 없습니다.</div>
                   ) : (
                     tempKeywords.map((kw, idx) => (
-                      <div key={`${kw}-${idx}`}
-                        className="inline-flex items-center gap-2 rounded-full border border-[#d1d5db] bg-white px-4 py-2 text-[13px] font-bold text-[#111827]">
+                      <div key={`${kw}-${idx}`} className="inline-flex items-center gap-2 rounded-full border border-[#d1d5db] bg-white px-4 py-2 text-[13px] font-bold text-[#111827]">
                         <span>{kw}</span>
-                        <button type="button" onClick={() => removeTempKeyword(kw)}
-                          disabled={deletingKwKey === kw}
-                          className="text-[#dc2626] transition hover:opacity-80">
-                          {deletingKwKey === kw ? "..." : "✕"}
-                        </button>
+                        <button type="button" onClick={() => removeTempKeyword(kw)} disabled={deletingKwKey === kw} className="text-[#dc2626] transition hover:opacity-80">{deletingKwKey === kw ? "..." : "✕"}</button>
                       </div>
                     ))
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Footer */}
             <div className="border-t border-[#f3f4f6] bg-[#fcfcfc] px-6 py-4">
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button onClick={closeKwModal}
-                  className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">
-                  취소
-                </button>
-                <button onClick={saveKeywords} disabled={kwSaving}
-                  className="h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60">
-                  {kwSaving ? "저장 중..." : "키워드 저장"}
+                <button onClick={closeKwModal} className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">취소</button>
+                <button
+                  onMouseEnter={() => setKwSaveHovered(true)}
+                  onMouseLeave={() => setKwSaveHovered(false)}
+                  onMouseMove={handleKwSaveMouseMove}
+                  onClick={saveKeywords}
+                  disabled={kwSaving}
+                  className="relative inline-flex h-[46px] min-w-[120px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                >
+                  <span className="relative z-30 pointer-events-none">{kwSaving ? "저장 중" : "키워드 저장"}</span>
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                    style={{
+                      transformOrigin: "left",
+                      transform: kwSaveHovered ? "scaleX(1)" : "scaleX(0)",
+                      transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                      backgroundColor: "#2563EB",
+                    }}
+                  />
+                  <div
+                    className="absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl transition-opacity duration-200 ease-out"
+                    style={{
+                      left: `${kwSaveMousePos.x}px`,
+                      top: `${kwSaveMousePos.y}px`,
+                      opacity: kwSaveHovered ? 1 : 0,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter: "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                    }}
+                  />
                 </button>
               </div>
             </div>

@@ -30,7 +30,6 @@ type RankPlaceItem = {
   category?: string;
   address?: string;
   imageUrl?: string;
-  /** pcmap GraphQL 광고(PlaceAdSummary) 행 */
   isPromotedAd?: boolean;
   review?: {
     total?: number;
@@ -86,10 +85,6 @@ type BatchAttempt = {
   headers: Record<string, string>;
 };
 
-/**
- * 브라우저 세션(credentials)으로 pcmap GraphQL 호출 — 서버보다 지역 businesses가 잘 나옴.
- * pcmap Referer → map.naver Referer 순으로 여러 번 시도(폴백 쿼리·좌표는 서버와 동일 규칙).
- */
 async function tryFetchBusinessesBatchInBrowser(
   keyword: string,
   signal?: AbortSignal
@@ -100,7 +95,6 @@ async function tryFetchBusinessesBatchInBrowser(
   const attempts: BatchAttempt[] = [];
   const fb = buildLocationFallbackSearchKeyword(trimmed);
 
-  /* map.naver와 동일한 순위를 위해 전체 검색어를 먼저 시도, 0건일 때만 업종-only 폴백 */
   {
     const coords = pickBusinessesCoords(trimmed);
     attempts.push({
@@ -174,15 +168,11 @@ export default function PlaceAnalysisPage() {
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [searchedKeyword, setSearchedKeyword] = useState("");
-  const [relatedKeywords, setRelatedKeywords] = useState<RelatedKeywordItem[]>(
-    []
-  );
+  const [relatedKeywords, setRelatedKeywords] = useState<RelatedKeywordItem[]>([]);
   const [list, setList] = useState<RankPlaceItem[]>([]);
   const [error, setError] = useState("");
-  /** 브라우저 GraphQL로 businesses 배치를 받아 API에 넘겼는지 */
-  const [naverMapDataSource, setNaverMapDataSource] = useState<
-    null | "batch" | "allSearch"
-  >(null);
+  
+  const [naverMapDataSource, setNaverMapDataSource] = useState<null | "batch" | "allSearch">(null);
   const [placeSearchHint, setPlaceSearchHint] = useState("");
   const [analysisDiagnostics, setAnalysisDiagnostics] = useState<{
     failureCode: string | null;
@@ -196,56 +186,62 @@ export default function PlaceAnalysisPage() {
   const [savedReviewPlaceIds, setSavedReviewPlaceIds] = useState<Set<string>>(new Set());
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
 
-  /** 연속 클릭·이중 트리거 시 늦게 도착한 응답이 빈 목록으로 덮는 것 방지 */
   const analyzeGenRef = useRef(0);
   const analyzeAbortRef = useRef<AbortController | null>(null);
 
- const loadSavedPlaces = async () => {
-  try {
-    const [rankRes, reviewRes] = await Promise.all([
-      fetch("/api/place-list", {
-        cache: "no-store",
-        credentials: "include",
-      }),
-      fetch("/api/place-review-list", {
-        cache: "no-store",
-        credentials: "include",
-      }),
-    ]);
+  // --- 디자인 통일용 호버 상태값 ---
+  const [isAnalyzeHovered, setIsAnalyzeHovered] = useState(false);
+  const [analyzeMousePos, setAnalyzeMousePos] = useState({ x: 0, y: 0 });
 
-    const rankSet = new Set<string>();
-    const reviewSet = new Set<string>();
+  const [reviewRegHover, setReviewRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
+  const [rankRegHover, setRankRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
 
-    if (rankRes.ok) {
-      const rankData = await rankRes.json();
-      const rankPlaces: SavedPlaceItem[] = Array.isArray(rankData?.places)
-        ? rankData.places
-        : [];
+  const loadSavedPlaces = async () => {
+    try {
+      const [rankRes, reviewRes] = await Promise.all([
+        fetch("/api/place-list", {
+          cache: "no-store",
+          credentials: "include",
+        }),
+        fetch("/api/place-review-list", {
+          cache: "no-store",
+          credentials: "include",
+        }),
+      ]);
 
-      for (const place of rankPlaces) {
-        const publicPlaceId = extractPublicPlaceId(place.placeUrl);
-        if (publicPlaceId) rankSet.add(publicPlaceId);
+      const rankSet = new Set<string>();
+      const reviewSet = new Set<string>();
+
+      if (rankRes.ok) {
+        const rankData = await rankRes.json();
+        const rankPlaces: SavedPlaceItem[] = Array.isArray(rankData?.places)
+          ? rankData.places
+          : [];
+
+        for (const place of rankPlaces) {
+          const publicPlaceId = extractPublicPlaceId(place.placeUrl);
+          if (publicPlaceId) rankSet.add(publicPlaceId);
+        }
       }
-    }
 
-    if (reviewRes.ok) {
-      const reviewData = await reviewRes.json();
-      const reviewPlaces: SavedPlaceItem[] = Array.isArray(reviewData?.places)
-        ? reviewData.places
-        : [];
+      if (reviewRes.ok) {
+        const reviewData = await reviewRes.json();
+        const reviewPlaces: SavedPlaceItem[] = Array.isArray(reviewData?.places)
+          ? reviewData.places
+          : [];
 
-      for (const place of reviewPlaces) {
-        const publicPlaceId = extractPublicPlaceId(place.placeUrl);
-        if (publicPlaceId) reviewSet.add(publicPlaceId);
+        for (const place of reviewPlaces) {
+          const publicPlaceId = extractPublicPlaceId(place.placeUrl);
+          if (publicPlaceId) reviewSet.add(publicPlaceId);
+        }
       }
-    }
 
-    setSavedRankPlaceIds(rankSet);
-    setSavedReviewPlaceIds(reviewSet);
-  } catch (e) {
-    console.error("saved places load error:", e);
-  }
-};
+      setSavedRankPlaceIds(rankSet);
+      setSavedReviewPlaceIds(reviewSet);
+    } catch (e) {
+      console.error("saved places load error:", e);
+    }
+  };
 
   useEffect(() => {
     loadSavedPlaces();
@@ -286,7 +282,6 @@ export default function PlaceAnalysisPage() {
         | { tokenSent: boolean; apiOk?: boolean; apiCode?: string }
         | undefined;
 
-      /* GraphQL 배치(businesses+adBusinesses)가 지도 왼쪽 목록과 가장 잘 맞으므로 프록시·브라우저를 allSearch보다 먼저 시도 */
       try {
         const proxyRes = await fetch("/api/pcmap-businesses-batch", {
           method: "POST",
@@ -523,98 +518,94 @@ export default function PlaceAnalysisPage() {
   };
 
   const handleRegisterPlace = async (
-  item: RankPlaceItem,
-  mode: "review" | "rank"
-) => {
-  const placeId = String(item.placeId || "").trim();
-  const key = `${mode}-${placeId || item.name}`;
+    item: RankPlaceItem,
+    mode: "review" | "rank"
+  ) => {
+    const placeId = String(item.placeId || "").trim();
+    const key = `${mode}-${placeId || item.name}`;
 
-  if (!placeId) {
-    alert("placeId가 없어 등록할 수 없습니다.");
-    return;
-  }
-
-  try {
-    setRegisteringKey(key);
-
-    const endpoint =
-      mode === "review" ? "/api/place-review-save" : "/api/place-save";
-
-    const saveRes = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: item.name,
-        category: item.category || "",
-        address: item.address || "",
-        jibunAddress: item.address || "",
-        placeUrl: buildMobilePlaceLink(placeId),
-        imageUrl: item.imageUrl || "",
-        x: null,
-        y: null,
-      }),
-    });
-
-    const saveData = await saveRes.json();
-
-    if (!saveRes.ok) {
-      alert(saveData?.error || saveData?.message || "매장 등록 실패");
+    if (!placeId) {
+      alert("placeId가 없어 등록할 수 없습니다.");
       return;
     }
 
-   if (mode === "review") {
-  const createdPlaceId = String(
-    saveData?.place?.id || saveData?.data?.id || ""
-  ).trim();
-
-  if (createdPlaceId) {
     try {
-      await fetch("/api/place-review-track", {
+      setRegisteringKey(key);
+
+      const endpoint =
+        mode === "review" ? "/api/place-review-save" : "/api/place-save";
+
+      const saveRes = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          placeId: createdPlaceId,
+          name: item.name,
+          category: item.category || "",
+          address: item.address || "",
+          jibunAddress: item.address || "",
+          placeUrl: buildMobilePlaceLink(placeId),
+          imageUrl: item.imageUrl || "",
+          x: null,
+          y: null,
         }),
       });
+
+      const saveData = await saveRes.json();
+
+      if (!saveRes.ok) {
+        alert(saveData?.error || saveData?.message || "매장 등록 실패");
+        return;
+      }
+
+      if (mode === "review") {
+        const createdPlaceId = String(
+          saveData?.place?.id || saveData?.data?.id || ""
+        ).trim();
+
+        if (createdPlaceId) {
+          try {
+            await fetch("/api/place-review-track", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                placeId: createdPlaceId,
+              }),
+            });
+          } catch (e) {
+            console.error("review track init error:", e);
+          }
+        }
+
+        setSavedReviewPlaceIds((prev) => {
+          const next = new Set(prev);
+          next.add(placeId);
+          return next;
+        });
+
+        alert("리뷰추적 등록 완료");
+        await loadSavedPlaces();
+        return;
+      }
+
+      setSavedRankPlaceIds((prev) => {
+        const next = new Set(prev);
+        next.add(placeId);
+        return next;
+      });
+
+      alert("순위추적 등록 완료");
+      await loadSavedPlaces();
     } catch (e) {
-      console.error("review track init error:", e);
+      console.error(e);
+      alert("등록 중 오류가 발생했습니다.");
+    } finally {
+      setRegisteringKey(null);
     }
-  }
-
-  setSavedReviewPlaceIds((prev) => {
-    const next = new Set(prev);
-    next.add(placeId);
-    return next;
-  });
-
-  alert("리뷰추적 등록 완료");
-  await loadSavedPlaces();
-  return;
-}
-
-setSavedRankPlaceIds((prev) => {
-  const next = new Set(prev);
-  next.add(placeId);
-  return next;
-});
-
-alert("순위추적 등록 완료");
-await loadSavedPlaces();
-
- 
-
-
-  } catch (e) {
-    console.error(e);
-    alert("등록 중 오류가 발생했습니다.");
-  } finally {
-    setRegisteringKey(null);
-  }
-};
+  };
 
   const renderedList = useMemo(() => list, [list]);
 
@@ -622,7 +613,8 @@ await loadSavedPlaces();
     <>
       <TopNav active="place-analysis" />
 
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111] pt-24">
+      {/* 🚨 pt-24를 유지하고 배경색을 f8fafc로 변경 */}
+      <main className="min-h-screen bg-[#f8fafc] text-[#111827] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
             <div className="flex flex-col gap-4">
@@ -634,11 +626,8 @@ await loadSavedPlaces();
                 </div>
 
                 <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
-                  검색한 키워드 기준으로 네이버 플레이스 순위와 리뷰 지표를
-                  확인합니다.
+                  검색한 키워드 기준으로 네이버 플레이스 순위와 리뷰 지표를 확인합니다.
                 </p>
-
-              
               </div>
 
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -654,7 +643,7 @@ await loadSavedPlaces();
                       }
                     }}
                     placeholder="예: 한남동 맛집"
-                    className="h-[54px] w-full rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                    className="h-[54px] w-full rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
                   />
 
                   {keyword ? (
@@ -668,18 +657,55 @@ await loadSavedPlaces();
                   ) : null}
                 </div>
 
+                {/* 🎨 분석 버튼 디자인 통일 */}
                 <button
                   type="button"
                   onClick={handleAnalyze}
                   disabled={loading}
-                  className={`h-[54px] rounded-[16px] bg-[#b91c1c] px-7 text-[15px] font-bold text-white transition hover:bg-[#991b1b] ${
+                  onMouseEnter={() => setIsAnalyzeHovered(true)}
+                  onMouseLeave={() => setIsAnalyzeHovered(false)}
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setAnalyzeMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }}
+                  className={`relative inline-flex h-[54px] min-w-[100px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-7 text-[15px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
                     loading ? "opacity-60" : ""
                   }`}
                 >
-                  {loading ? "분석 중..." : "분석"}
+                  <span className="relative z-30 pointer-events-none">
+                    {loading ? "분석 중..." : "분석"}
+                  </span>
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                    style={{
+                      transformOrigin: "left",
+                      transform: isAnalyzeHovered ? "scaleX(1)" : "scaleX(0)",
+                      transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                      backgroundColor: "#2563EB",
+                    }}
+                  />
+                  <div
+                    className={`
+                      absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                      transition-opacity duration-200 ease-out
+                      ${isAnalyzeHovered ? "opacity-100" : "opacity-0"}
+                    `}
+                    style={{
+                      left: `${analyzeMousePos.x}px`,
+                      top: `${analyzeMousePos.y}px`,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage:
+                        "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter:
+                        "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                    }}
+                  />
                 </button>
               </div>
 
+              {/* 🎨 연관검색어 활성화 컬러 통일 */}
               {relatedKeywords.length > 0 && (
                 <div className="pt-1">
                   <div className="mb-3 text-[13px] font-bold text-[#4b5563]">
@@ -694,11 +720,11 @@ await loadSavedPlaces();
                         onClick={() => setKeyword(item.keyword)}
                         className={`rounded-[14px] border px-4 py-3 text-left transition ${
                           item.keyword === searchedKeyword
-                            ? "border-[#b91c1c] bg-[#fef2f2]"
+                            ? "border-[#2563EB] bg-[#eff6ff]"
                             : "border-[#e5e7eb] bg-white hover:bg-[#fafafa]"
                         }`}
                       >
-                        <div className="text-[13px] font-bold text-[#111827]">
+                        <div className={`text-[13px] font-bold ${item.keyword === searchedKeyword ? "text-[#2563EB]" : "text-[#111827]"}`}>
                           {item.keyword}
                         </div>
                         <div className="mt-1 text-[12px] text-[#6b7280]">
@@ -831,7 +857,7 @@ await loadSavedPlaces();
                     renderedList.map((item, idx) => {
                       const placeId = String(item.placeId || "").trim();
                       const isReviewRegistered = savedReviewPlaceIds.has(placeId);
-const isRankRegistered = savedRankPlaceIds.has(placeId);
+                      const isRankRegistered = savedRankPlaceIds.has(placeId);
                       const reviewKey = `review-${placeId || item.name}`;
                       const rankKey = `rank-${placeId || item.name}`;
 
@@ -900,6 +926,7 @@ const isRankRegistered = savedRankPlaceIds.has(placeId);
                             {formatCount(item.review?.save)}
                           </td>
 
+                          {/* 🎨 표 내부 액션 버튼 디자인 적용 */}
                           <td className="px-5 py-5 text-center">
                             {isReviewRegistered ? (
                               <button
@@ -910,19 +937,48 @@ const isRankRegistered = savedRankPlaceIds.has(placeId);
                               </button>
                             ) : (
                               <button
-                                onClick={() =>
-                                  handleRegisterPlace(item, "review")
-                                }
+                                onClick={() => handleRegisterPlace(item, "review")}
                                 disabled={registeringKey === reviewKey}
-                                className={`h-[42px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] ${
-                                  registeringKey === reviewKey
-                                    ? "opacity-60"
-                                    : ""
+                                onMouseEnter={() => setReviewRegHover({ id: reviewKey, x: reviewRegHover.x, y: reviewRegHover.y })}
+                                onMouseLeave={() => setReviewRegHover((prev) => prev.id === reviewKey ? { ...prev, id: null } : prev)}
+                                onMouseMove={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setReviewRegHover({ id: reviewKey, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                                }}
+                                className={`relative inline-flex h-[42px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
+                                  registeringKey === reviewKey ? "opacity-60" : ""
                                 }`}
                               >
-                                {registeringKey === reviewKey
-                                  ? "등록 중..."
-                                  : "등록"}
+                                <span className="relative z-30 pointer-events-none">
+                                  {registeringKey === reviewKey ? "등록 중..." : "등록"}
+                                </span>
+                                <div
+                                  className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                                  style={{
+                                    transformOrigin: "left",
+                                    transform: reviewRegHover.id === reviewKey ? "scaleX(1)" : "scaleX(0)",
+                                    transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                                    backgroundColor: "#2563EB",
+                                  }}
+                                />
+                                <div
+                                  className={`
+                                    absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                                    transition-opacity duration-200 ease-out
+                                    ${reviewRegHover.id === reviewKey ? "opacity-100" : "opacity-0"}
+                                  `}
+                                  style={{
+                                    left: `${reviewRegHover.x}px`,
+                                    top: `${reviewRegHover.y}px`,
+                                    pointerEvents: "none",
+                                    zIndex: 25,
+                                    backgroundImage:
+                                      "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                                    mixBlendMode: "soft-light",
+                                    filter:
+                                      "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                                  }}
+                                />
                               </button>
                             )}
                           </td>
@@ -939,13 +995,46 @@ const isRankRegistered = savedRankPlaceIds.has(placeId);
                               <button
                                 onClick={() => handleRegisterPlace(item, "rank")}
                                 disabled={registeringKey === rankKey}
-                                className={`h-[42px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] ${
+                                onMouseEnter={() => setRankRegHover({ id: rankKey, x: rankRegHover.x, y: rankRegHover.y })}
+                                onMouseLeave={() => setRankRegHover((prev) => prev.id === rankKey ? { ...prev, id: null } : prev)}
+                                onMouseMove={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setRankRegHover({ id: rankKey, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                                }}
+                                className={`relative inline-flex h-[42px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
                                   registeringKey === rankKey ? "opacity-60" : ""
                                 }`}
                               >
-                                {registeringKey === rankKey
-                                  ? "등록 중..."
-                                  : "등록"}
+                                <span className="relative z-30 pointer-events-none">
+                                  {registeringKey === rankKey ? "등록 중..." : "등록"}
+                                </span>
+                                <div
+                                  className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                                  style={{
+                                    transformOrigin: "left",
+                                    transform: rankRegHover.id === rankKey ? "scaleX(1)" : "scaleX(0)",
+                                    transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                                    backgroundColor: "#2563EB",
+                                  }}
+                                />
+                                <div
+                                  className={`
+                                    absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                                    transition-opacity duration-200 ease-out
+                                    ${rankRegHover.id === rankKey ? "opacity-100" : "opacity-0"}
+                                  `}
+                                  style={{
+                                    left: `${rankRegHover.x}px`,
+                                    top: `${rankRegHover.y}px`,
+                                    pointerEvents: "none",
+                                    zIndex: 25,
+                                    backgroundImage:
+                                      "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                                    mixBlendMode: "soft-light",
+                                    filter:
+                                      "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                                  }}
+                                />
                               </button>
                             )}
                           </td>

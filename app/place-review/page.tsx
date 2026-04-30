@@ -30,7 +30,6 @@ type ReviewHistoryRow = {
   saveCount: string;
   saveCountDiff?: number | null;
   keywords: string[];
-  
 };
 
 type ApiReviewHistory = {
@@ -41,7 +40,6 @@ type ApiReviewHistory = {
   saveCount: string;
   keywords: string[];
   createdAt: string;
-  /** 같은 날 upsert 시 createdAt은 그대로이고 updatedAt만 바뀜 — 최근 업데이트 표시에 사용 */
   updatedAt?: string;
 };
 
@@ -64,8 +62,8 @@ type ApiPlace = {
   reviewHistory: ApiReviewHistory[];
   reviewPinned?: boolean;
   placeMonthlyVolume?: number | null;
-placeMobileVolume?: number | null;
-placePcVolume?: number | null;
+  placeMobileVolume?: number | null;
+  placePcVolume?: number | null;
 };
 
 type StoreItem = {
@@ -184,22 +182,22 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
 
   const keywordList = place.keywords || [];
 
-const fallbackMobileVolume = keywordList.reduce(
-  (sum, item) => sum + (item.mobileVolume || 0),
-  0
-);
-const fallbackPcVolume = keywordList.reduce(
-  (sum, item) => sum + (item.pcVolume || 0),
-  0
-);
-const fallbackTotalVolume = keywordList.reduce(
-  (sum, item) => sum + (item.totalVolume || 0),
-  0
-);
+  const fallbackMobileVolume = keywordList.reduce(
+    (sum, item) => sum + (item.mobileVolume || 0),
+    0
+  );
+  const fallbackPcVolume = keywordList.reduce(
+    (sum, item) => sum + (item.pcVolume || 0),
+    0
+  );
+  const fallbackTotalVolume = keywordList.reduce(
+    (sum, item) => sum + (item.totalVolume || 0),
+    0
+  );
 
-const mobileVolume = place.placeMobileVolume ?? fallbackMobileVolume;
-const pcVolume = place.placePcVolume ?? fallbackPcVolume;
-const totalVolume = place.placeMonthlyVolume ?? fallbackTotalVolume;
+  const mobileVolume = place.placeMobileVolume ?? fallbackMobileVolume;
+  const pcVolume = place.placePcVolume ?? fallbackPcVolume;
+  const totalVolume = place.placeMonthlyVolume ?? fallbackTotalVolume;
 
   const latestCreatedAt =
     sortedHistory.length > 0
@@ -265,6 +263,48 @@ export default function PlaceReviewPage() {
   const [registerSearchError, setRegisterSearchError] = useState("");
   const [registeringName, setRegisteringName] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // --- 디자인 통일용 호버 상태값 ---
+  const [isAddHovered, setIsAddHovered] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  const [updateHover, setUpdateHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const [viewChangesHover, setViewChangesHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const [trackingHover, setTrackingHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+
+  const [modalSearchHovered, setModalSearchHovered] = useState(false);
+  const [modalSearchMousePos, setModalSearchMousePos] = useState({ x: 0, y: 0 });
+  const [registerHover, setRegisterHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleUpdateMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setUpdateHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleViewChangesMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setViewChangesHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleTrackingMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTrackingHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleModalSearchMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setModalSearchMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  const handleRegisterMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setRegisterHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
 
   async function fetchPlaces() {
     try {
@@ -512,35 +552,34 @@ export default function PlaceReviewPage() {
   }
 
   async function handleTogglePin(storeId: string) {
-  try {
-    const res = await fetch("/api/place-review-pin", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ placeId: storeId }),
-    });
+    try {
+      const res = await fetch("/api/place-review-pin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ placeId: storeId }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok || !data.ok) {
-      alert(data?.message || "핀 변경 실패");
-      return;
+      if (!res.ok || !data.ok) {
+        alert(data?.message || "핀 변경 실패");
+        return;
+      }
+
+      await fetchPlaces();
+    } catch (error) {
+      console.error("pin error:", error);
+      alert("오류 발생");
     }
-
-    // 다시 리스트 불러오기 (핵심)
-    await fetchPlaces();
-  } catch (error) {
-    console.error("pin error:", error);
-    alert("오류 발생");
   }
-}
 
   return (
     <>
       <TopNav active="place-review" />
 
-      <main className="min-h-screen bg-[#f4f4f5] text-[#111111] pt-24">
+      <main className="min-h-screen bg-[#f8fafc] text-[#111111] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -570,7 +609,7 @@ export default function PlaceReviewPage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="등록된 매장 검색"
-                    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
                   />
                   <Search
                     className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7280]"
@@ -579,10 +618,40 @@ export default function PlaceReviewPage() {
                 </div>
 
                 <button
+                  onMouseEnter={() => setIsAddHovered(true)}
+                  onMouseLeave={() => setIsAddHovered(false)}
+                  onMouseMove={handleMouseMove}
                   onClick={() => setOpenRegister(true)}
-                  className="inline-flex h-[44px] min-w-[108px] items-center justify-center rounded-[14px] bg-[#b91c1c] px-4 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b]"
+                  className="relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out"
                 >
-                  매장 등록
+                  <span className="relative z-30 pointer-events-none">매장 등록</span>
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                    style={{
+                      transformOrigin: "left",
+                      transform: isAddHovered ? "scaleX(1)" : "scaleX(0)",
+                      transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                      backgroundColor: "#2563EB",
+                    }}
+                  />
+                  <div
+                    className={`
+                      absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                      transition-opacity duration-200 ease-out
+                      ${isAddHovered ? "opacity-100" : "opacity-0"}
+                    `}
+                    style={{
+                      left: `${mousePos.x}px`,
+                      top: `${mousePos.y}px`,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage:
+                        "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter:
+                        "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                    }}
+                  />
                 </button>
               </div>
             </div>
@@ -741,68 +810,156 @@ export default function PlaceReviewPage() {
                       </div>
 
                       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePin(store.id)}
-                        className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb]`}
-                        aria-label="핀 고정"
-                      >
-                        <Pin
-                          className={`h-[20px] w-[20px] transition ${
-                            store.isPinned
-                              ? "fill-[#b91c1c] stroke-[#b91c1c]"
-                              : "stroke-[#6b7280]"
-                          }`}
-                          strokeWidth={2}
-                        />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePin(store.id)}
+                          className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb]`}
+                          aria-label="핀 고정"
+                        >
+                          <Pin
+                            className={`h-[20px] w-[20px] transition ${
+                              store.isPinned
+                                ? "fill-[#2563EB] stroke-[#2563EB]"
+                                : "stroke-[#6b7280]"
+                            }`}
+                            strokeWidth={2}
+                          />
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => handleUpdateStore(store.id)}
                           disabled={updatingStoreId === store.id}
-                          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60"
+                          onMouseEnter={() => setUpdateHover({ id: store.id, x: updateHover.x, y: updateHover.y })}
+                          onMouseLeave={() => setUpdateHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleUpdateMouseMove(e, store.id)}
+                          className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          {updatingStoreId === store.id ? "업데이트 중..." : "업데이트"}
+                          <span className="relative z-30 pointer-events-none">
+                            {updatingStoreId === store.id ? "업데이트 중..." : "업데이트"}
+                          </span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: updateHover.id === store.id ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${updateHover.id === store.id ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${updateHover.x}px`,
+                              top: `${updateHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
-
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/place-review/${store.id}`)}
-                        className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
-                      >
-                        리뷰변화보기
-                      </button>
 
                         <button
                           type="button"
-                          onClick={() =>
-                            handleToggleAutoTracking(
-                              store.id,
-                              !store.isAutoTracking
-                            )
-                          }
+                          onClick={() => router.push(`/place-review/${store.id}`)}
+                          onMouseEnter={() => setViewChangesHover({ id: store.id, x: viewChangesHover.x, y: viewChangesHover.y })}
+                          onMouseLeave={() => setViewChangesHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleViewChangesMouseMove(e, store.id)}
+                          className={`relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out ${viewChangesHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                        >
+                          <span className="relative z-30 pointer-events-none">리뷰변화보기</span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-0 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: viewChangesHover.id === store.id ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${viewChangesHover.id === store.id ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${viewChangesHover.x}px`,
+                              top: `${viewChangesHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAutoTracking(store.id, !store.isAutoTracking)}
                           disabled={trackingStoreId === store.id}
-                          className={`inline-flex h-[42px] shrink-0 items-center justify-center rounded-[14px] px-4 text-[14px] font-bold transition disabled:opacity-60 ${
+                          onMouseEnter={() => setTrackingHover({ id: store.id, x: trackingHover.x, y: trackingHover.y })}
+                          onMouseLeave={() => setTrackingHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleTrackingMouseMove(e, store.id)}
+                          className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed ${
                             store.isAutoTracking
-                              ? "bg-[#b91c1c] text-white shadow-[0_10px_22px_rgba(185,28,28,0.16)] hover:bg-[#991b1b]"
-                              : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
+                              ? "bg-[#2563EB] text-white"
+                              : trackingHover.id === store.id
+                                ? "bg-transparent border border-[#2563EB] text-white"
+                                : "bg-transparent border border-[#d1d5db] text-[#111827]"
                           }`}
                         >
-                          {trackingStoreId === store.id
-                            ? "변경 중..."
-                            : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
+                          <span className="relative z-30 pointer-events-none">
+                            {trackingStoreId === store.id ? "변경 중..." : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
+                          </span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: trackingHover.id === store.id ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${trackingHover.id === store.id ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${trackingHover.x}px`,
+                              top: `${trackingHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
                         </button>
 
                         <button
                           type="button"
                           onClick={() => handleDeleteStore(store.id, store.name)}
-                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#fef2f2]"
+                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6]"
                           aria-label="삭제"
                         >
-                          <Trash2 className="h-[18px] w-[18px] stroke-[#dc2626]" strokeWidth={2} />
+                          <Trash2 className="h-[18px] w-[18px] stroke-[#111827]" strokeWidth={2} />
                         </button>
-
-                        
                       </div>
                     </div>
                   </div>
@@ -934,15 +1091,50 @@ export default function PlaceReviewPage() {
                   onChange={(e) => setRegisterQuery(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleRegisterSearch(); }}
                   placeholder="예: 뉴오더클럽 한남"
-                  className="h-[50px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[15px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+                  className="h-[50px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[15px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
                 />
+                
+                {/* 모달: 매장 검색 버튼 */}
                 <button
-                  type="button"
+                  onMouseEnter={() => setModalSearchHovered(true)}
+                  onMouseLeave={() => setModalSearchHovered(false)}
+                  onMouseMove={handleModalSearchMouseMove}
                   onClick={handleRegisterSearch}
                   disabled={registerSearchLoading}
-                  className={`h-[50px] rounded-[16px] bg-[#b91c1c] px-5 text-[15px] font-bold text-white shadow-[0_14px_30px_rgba(185,28,28,0.16)] transition hover:bg-[#991b1b] ${registerSearchLoading ? "opacity-60" : ""}`}
+                  className={`relative inline-flex h-[50px] min-w-[100px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[15px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
+                    registerSearchLoading ? "opacity-60" : ""
+                  }`}
                 >
-                  {registerSearchLoading ? "검색 중..." : "매장 검색"}
+                  <span className="relative z-30 pointer-events-none">
+                    {registerSearchLoading ? "검색 중..." : "매장 검색"}
+                  </span>
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                    style={{
+                      transformOrigin: "left",
+                      transform: modalSearchHovered ? "scaleX(1)" : "scaleX(0)",
+                      transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                      backgroundColor: "#2563EB",
+                    }}
+                  />
+                  <div
+                    className={`
+                      absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                      transition-opacity duration-200 ease-out
+                      ${modalSearchHovered ? "opacity-100" : "opacity-0"}
+                    `}
+                    style={{
+                      left: `${modalSearchMousePos.x}px`,
+                      top: `${modalSearchMousePos.y}px`,
+                      pointerEvents: "none",
+                      zIndex: 25,
+                      backgroundImage:
+                        "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                      mixBlendMode: "soft-light",
+                      filter:
+                        "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                    }}
+                  />
                 </button>
               </div>
 
@@ -966,50 +1158,88 @@ export default function PlaceReviewPage() {
                     검색 결과가 없습니다.
                   </div>
                 ) : (
-                  registerResults.map((item, idx) => (
-                    <div
-                      key={`${item.title}-${item.address}-${idx}`}
-                      className="flex flex-col gap-4 rounded-[18px] border border-[#e5e7eb] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.03)] md:flex-row md:items-center md:justify-between"
-                    >
-                      <div className="flex min-w-0 gap-4">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            className="h-[64px] w-[64px] rounded-[14px] object-cover ring-1 ring-[#e5e7eb]"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div className="flex h-[64px] w-[64px] items-center justify-center rounded-[14px] bg-[#f3f4f6] text-[12px] text-[#9ca3af]">
-                            이미지
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <div className="text-[16px] font-black tracking-[-0.02em] text-[#111827]">
-                            {item.title}
-                          </div>
-                          <div className="mt-1 text-[13px] font-semibold text-[#4b5563]">
-                            {item.category}
-                          </div>
-                          <div className="mt-1 text-[13px] text-[#6b7280]">
-                            {item.address}
+                  registerResults.map((item, idx) => {
+                    const itemKey = `${item.title}-${item.address}-${idx}`;
+                    return (
+                      <div
+                        key={itemKey}
+                        className="flex flex-col gap-4 rounded-[18px] border border-[#e5e7eb] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.03)] md:flex-row md:items-center md:justify-between"
+                      >
+                        <div className="flex min-w-0 gap-4">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.title}
+                              className="h-[64px] w-[64px] rounded-[14px] object-cover ring-1 ring-[#e5e7eb]"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div className="flex h-[64px] w-[64px] items-center justify-center rounded-[14px] bg-[#f3f4f6] text-[12px] text-[#9ca3af]">
+                              이미지
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-[16px] font-black tracking-[-0.02em] text-[#111827]">
+                              {item.title}
+                            </div>
+                            <div className="mt-1 text-[13px] font-semibold text-[#4b5563]">
+                              {item.category}
+                            </div>
+                            <div className="mt-1 text-[13px] text-[#6b7280]">
+                              {item.address}
+                            </div>
                           </div>
                         </div>
+
+                        {/* 모달: 이 매장 등록 버튼 */}
+                        <button
+                          onMouseEnter={() => setRegisterHover({ id: itemKey, x: registerHover.x, y: registerHover.y })}
+                          onMouseLeave={() => setRegisterHover((prev) => prev.id === itemKey ? { ...prev, id: null } : prev)}
+                          onMouseMove={(e) => handleRegisterMouseMove(e, itemKey)}
+                          onClick={() => handleRegisterPlace(item)}
+                          disabled={registeringName === item.title}
+                          className={`relative inline-flex h-[42px] shrink-0 min-w-[100px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
+                            registeringName === item.title ? "opacity-60" : ""
+                          }`}
+                        >
+                          <span className="relative z-30 pointer-events-none">
+                            {registeringName === item.title ? "등록 중..." : "이 매장 등록"}
+                          </span>
+                          <div
+                            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                            style={{
+                              transformOrigin: "left",
+                              transform: registerHover.id === itemKey ? "scaleX(1)" : "scaleX(0)",
+                              transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                              backgroundColor: "#2563EB",
+                            }}
+                          />
+                          <div
+                            className={`
+                              absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                              transition-opacity duration-200 ease-out
+                              ${registerHover.id === itemKey ? "opacity-100" : "opacity-0"}
+                            `}
+                            style={{
+                              left: `${registerHover.x}px`,
+                              top: `${registerHover.y}px`,
+                              pointerEvents: "none",
+                              zIndex: 25,
+                              backgroundImage:
+                                "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                              mixBlendMode: "soft-light",
+                              filter:
+                                "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                            }}
+                          />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRegisterPlace(item)}
-                        disabled={registeringName === item.title}
-                        className={`inline-flex h-[42px] items-center justify-center rounded-[14px] bg-[#111827] px-4 text-[14px] font-bold text-white transition hover:bg-[#1f2937] ${registeringName === item.title ? "opacity-60" : ""}`}
-                      >
-                        {registeringName === item.title ? "등록 중..." : "이 매장 등록"}
-                      </button>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1019,4 +1249,3 @@ export default function PlaceReviewPage() {
     </>
   );
 }
-
