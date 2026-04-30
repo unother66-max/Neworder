@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -72,7 +72,7 @@ export default function KakaoPlaceDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [pinning, setPinning] = useState(false);
 
-  // --- 디자인 통일용 상태값 ---
+  // 디자인 통일용 상태값
   const [updateHover, setUpdateHover] = useState(false);
   const [updateMousePos, setUpdateMousePos] = useState({ x: 0, y: 0 });
 
@@ -152,7 +152,7 @@ export default function KakaoPlaceDetailPage() {
   if (!mounted || status === "loading") {
     return (
       <>
-        <TopNav active="kakao-place" />
+        <TopNav active="kakao-place" showBreadcrumb={false} />
         <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
           <div className="text-[15px] text-[#6b7280]">불러오는 중...</div>
         </main>
@@ -163,12 +163,12 @@ export default function KakaoPlaceDetailPage() {
   if (!loading && fetchError) {
     return (
       <>
-        <TopNav active="kakao-place" />
+        <TopNav active="kakao-place" showBreadcrumb={false} />
         <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f8fafc] pt-24">
           <p className="text-[15px] text-[#6b7280]">{fetchError}</p>
           <button type="button" onClick={() => router.back()}
             className="rounded-[14px] border border-[#d1d5db] bg-white px-5 py-2 text-[14px] font-bold text-[#111827] hover:bg-[#f9fafb]">
-            ← 목록으로
+            ← 이전으로
           </button>
         </main>
       </>
@@ -190,15 +190,13 @@ export default function KakaoPlaceDetailPage() {
 
   return (
     <>
-      <TopNav active="kakao-place" />
+      {/* 💡 상단바 목록으로 제거 */}
+      <TopNav active="kakao-place" showBreadcrumb={false} />
+      
       <main className="min-h-screen bg-[#f8fafc] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-6 md:px-6 lg:px-8">
 
-          {/* 뒤로가기 */}
-          <button type="button" onClick={() => router.push("/kakao-place")}
-            className="mb-5 inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#6b7280] transition hover:text-[#111827]">
-            ← 목록으로
-          </button>
+          {/* 💡 본문 목록으로 버튼 코드를 여기서 삭제했습니다 */}
 
           {/* Store card */}
           {place && (
@@ -243,7 +241,6 @@ export default function KakaoPlaceDetailPage() {
                       <Pin className={`h-[18px] w-[18px] ${place.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
                     </button>
                     
-                    {/* 업데이트 버튼: 오로라 테마 적용 */}
                     <button
                       onClick={handleUpdate}
                       disabled={updating}
@@ -300,7 +297,6 @@ export default function KakaoPlaceDetailPage() {
                 </div>
               ) : (
                 <>
-                  {/* Keyword tabs */}
                   <div className="flex gap-2 overflow-x-auto border-b border-[#f3f4f6] px-5 py-3 md:px-6 no-scrollbar">
                     {place.keywords.map((kw) => (
                       <button
@@ -319,7 +315,6 @@ export default function KakaoPlaceDetailPage() {
                     ))}
                   </div>
 
-                  {/* Rank history table */}
                   <div className="overflow-x-auto px-5 pb-5 pt-4 md:px-6">
                     {dedupedHistory.length === 0 ? (
                       <div className="rounded-[14px] border border-dashed border-[#d1d5db] py-10 text-center text-[13px] text-[#9ca3af]">
