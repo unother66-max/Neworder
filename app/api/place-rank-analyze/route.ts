@@ -1416,6 +1416,9 @@ export async function POST(req: Request) {
         let blog = rest.review.blog;
         let total = rest.review.total;
         let save = rest.review.save ?? "0";
+        
+        // 🌟 [추가됨] 키워드(태그)를 담을 변수
+        let keywords: string[] = [];
 
         if (placeId && placeName) {
           let enriched = false;
@@ -1436,6 +1439,12 @@ export async function POST(req: Request) {
               blog = snapshotBlog;
               total = snapshotVisitor + snapshotBlog;
               save = snapshot.saveCountText ?? save;
+              
+              // 🌟 [추가됨] 스냅샷에서 가져온 키워드 리스트 저장
+              if (snapshot.keywordList && snapshot.keywordList.length > 0) {
+                keywords = snapshot.keywordList;
+              }
+              
               enriched = true;
               break;
             } catch {
@@ -1456,6 +1465,7 @@ export async function POST(req: Request) {
           address: rest.address,
           imageUrl: rest.imageUrl,
           isPromotedAd: rest.isPromotedAd,
+          keywords, // 🌟 [추가됨] 프론트엔드로 전송
           review: {
             visitor,
             blog,

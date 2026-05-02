@@ -23,7 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 const MAX_KEYWORDS = 10;
-const NAVER_PRICE_COMPARE_SVG_SRC = encodeURI("/naver_가격비교.svg");
+const NAVER_PRICE_COMPARE_SVG_SRC = encodeURI("/naver_price.svg");
 /** place 카드와 동일한 ‘이미지 없음’ 자리용 */
 const PRODUCT_CARD_PLACEHOLDER_IMG = "/file.svg";
 

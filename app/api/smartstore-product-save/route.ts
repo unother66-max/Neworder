@@ -26,6 +26,7 @@ export const dynamic = "force-dynamic";
  * - productUrl 수신 → productId 추출
  * - 모바일 우회 기반 fetch로 meta 수집
  * - 최종 name/category/imageUrl 저장
+ * - [추가] 유저 티어에 따른 등록 개수 제한 로직 포함
  */
 export async function POST(req: Request) {
   try {
@@ -40,11 +41,22 @@ export async function POST(req: Request) {
       );
     }
 
-    // Ensure the session userId exists in DB (avoid P2003 FK crash)
+    // Ensure the session userId exists in DB and fetch tier/counts
     let user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: { 
+        id: true,
+        tier: true,
+        _count: {
+          select: {
+            smartstoreProducts: true,
+            places: true,
+            smartstoreReviewTargets: true,
+          }
+        }
+      },
     });
+
     if (!user) {
       try {
         user = await prisma.user.create({
@@ -59,20 +71,41 @@ export async function POST(req: Request) {
                 ? session.user.name.trim()
                 : null,
           },
-          select: { id: true },
+          select: { 
+            id: true,
+            tier: true,
+            _count: {
+              select: {
+                smartstoreProducts: true,
+                places: true,
+                smartstoreReviewTargets: true,
+              }
+            }
+          },
         });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
           // race: created by another request
           user = await prisma.user.findUnique({
             where: { id: userId },
-            select: { id: true },
+            select: { 
+              id: true,
+              tier: true,
+              _count: {
+                select: {
+                  smartstoreProducts: true,
+                  places: true,
+                  smartstoreReviewTargets: true,
+                }
+              }
+            },
           });
         } else {
           throw e;
         }
       }
     }
+
     if (!user) {
       return NextResponse.json(
         { error: "세션은 있으나 userId가 DB에 동기화되지 않았습니다" },
@@ -103,10 +136,6 @@ export async function POST(req: Request) {
       ? productUrl
       : `https://${productUrl}`;
 
-    // Scraping-only URL:
-    // - If user pasted mobile host, convert to PC host
-    // - Drop ALL query params / fragments to avoid WAF/captcha triggers (NaPm, nl-*, etc.)
-    // IMPORTANT: we still save the original normalizedUrl into DB (productUrl field).
     const pcUrl = (() => {
       try {
         const u = new URL(normalizedUrl);
@@ -114,7 +143,6 @@ export async function POST(req: Request) {
         if (u.hostname === "m.brand.naver.com") u.hostname = "brand.naver.com";
         return `${u.protocol}//${u.hostname}${u.pathname}`;
       } catch {
-        // fallback: best-effort strip query/hash + m. host
         return normalizedUrl
           .split("#")[0]!
           .split("?")[0]!
@@ -149,6 +177,7 @@ export async function POST(req: Request) {
       return raw === "PLUS_STORE" ? ("PLUS_STORE" as const) : ("NAVER_PRICE" as const);
     })();
 
+    // DB에 이미 있는 상품인지 확인
     const existing = await prisma.smartstoreProduct.findUnique({
       where: {
         userId_productId_space: { userId, productId: naverProductId, space },
@@ -162,6 +191,26 @@ export async function POST(req: Request) {
         mallName: true,
       },
     });
+
+    // =====================================================================
+    // [추가된 로직] 신규 등록일 경우에만 총 등록 개수를 확인하고 티어 제한 방어
+    // =====================================================================
+    if (!existing) {
+      const totalItems = 
+        (user._count?.smartstoreProducts || 0) + 
+        (user._count?.places || 0) + 
+        (user._count?.smartstoreReviewTargets || 0);
+      
+      const MAX_LIMIT = user.tier === "PRO" ? 999 : 10;
+
+      if (totalItems >= MAX_LIMIT) {
+        return NextResponse.json(
+          { error: `모든 항목 통틀어 최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
+          { status: 403 }
+        );
+      }
+    }
+    // =====================================================================
 
     let meta: {
       name: string | null;
@@ -191,7 +240,6 @@ export async function POST(req: Request) {
           .map((v) => (typeof v === "string" ? v.trim() : ""))
           .filter(Boolean);
         if (candidates.length === 0) return null;
-        // 짧은 일반어(예: "침대")라도 매칭에는 도움이 될 수 있어 그대로 둠
         return candidates[0] ?? null;
       } catch {
         return null;
@@ -220,13 +268,8 @@ export async function POST(req: Request) {
         Boolean(meta.imageUrl?.trim()) ||
         Boolean(meta.category?.trim()));
 
-    // 2nd attempt: shopping search API (shop.json) meta boost (0425 fallback)
     if (!skipMetaFetch && !gotServerMeta) {
       const shoppingConfigured = isSmartstoreShoppingSearchConfigured();
-      console.log(`${SMARTSTORE_TRACE_LOG} [save] meta 비어있음 → 쇼핑검색 보강 시도`, {
-        shoppingConfigured,
-        productId: naverProductId,
-      });
       if (shoppingConfigured) {
         try {
           const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
@@ -245,19 +288,8 @@ export async function POST(req: Request) {
               category: meta.category?.trim() ? meta.category : searchMeta.category,
               mallName: searchMeta.mallName,
             };
-            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 보강 성공`, {
-              name: meta.name,
-              imageUrl: meta.imageUrl,
-              category: meta.category,
-              mallName: meta.mallName ?? null,
-            });
-          } else {
-            console.log(`${SMARTSTORE_TRACE_LOG} [save] 쇼핑검색 매칭 실패`, {
-              used: searchMeta.searchApiUsed,
-            });
           }
         } catch (e) {
-          // shop.json 429는 bot-shield에서 SmartstoreNaverRateLimitedError로 올라옴
           if (isSmartstoreNaverRateLimitedError(e)) {
             throw e;
           }
@@ -266,11 +298,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 에러 페이지 제목이 name으로 들어오는 것을 차단
     if (isSuspiciousSmartstoreMetaName(meta.name)) {
-      console.warn(`${SMARTSTORE_TRACE_LOG} [save] suspicious meta.name dropped`, {
-        name: meta.name,
-      });
       meta.name = null;
     }
 
@@ -304,7 +332,6 @@ export async function POST(req: Request) {
         Boolean(meta.imageUrl?.trim()) ||
         Boolean(meta.category?.trim()));
 
-    // Final fail-fast: after HTML + shopping search boost, still no meta.
     if (!skipMetaFetch && !gotFinalMeta) {
       const overrideProvided = Boolean(nameFromOverride) || Boolean(thumbFromOverride);
       if (!overrideProvided) {
@@ -329,46 +356,6 @@ export async function POST(req: Request) {
       productId: naverProductId,
     };
 
-    console.log(`${SMARTSTORE_TRACE_LOG} ⑦ DB 저장 직전`, {
-      skipMetaFetch,
-      name: data.name,
-      thumbnailLink: data.thumbnailLink,
-      imageUrl: data.imageUrl,
-      category: data.category,
-      nameOverride: nameOverride || "(없음)",
-      categoryOverride: categoryOverride || "(없음)",
-      imageOverride: imageOverride || "(없음)",
-      thumbnailOverride: thumbnailOverride || "(없음)",
-      nameFallbackUsed: !nameFromOverride && !nameFromFetcher,
-      fetcherMeta: skipMetaFetch
-        ? "(skipped)"
-        : {
-            name: meta.name,
-            imageUrl: meta.imageUrl,
-            category: meta.category,
-          },
-      metaFetchIncomplete,
-    });
-
-    console.log(`${SMARTSTORE_TRACE_LOG} ⑨ 등록-저장-요약`, {
-      productPageUrl: productPageFetch?.requestUrl ?? normalizedUrl,
-      productId: naverProductId,
-      htmlStatus: productPageFetch?.status ?? "(없음)",
-      htmlResponseUrl: productPageFetch?.responseUrl ?? "(없음)",
-      contentType: productPageFetch?.contentType ?? "(없음)",
-      bodyHeadSample: productPageFetch?.bodyHeadSample ?? "(없음)",
-      skipMetaFetch,
-      metaFetchIncomplete,
-      최종저장: {
-        name: data.name,
-        thumbnailLink: data.thumbnailLink,
-        imageUrl: data.imageUrl,
-        category: data.category,
-      },
-    });
-
-    // space별로 완전히 독립 저장: (userId, productId, space) 기준 upsert
-    // (기존 row가 있으면 갱신, 없으면 생성)
     let product: Awaited<ReturnType<typeof prisma.smartstoreProduct.upsert>>;
     try {
       product = await prisma.smartstoreProduct.upsert({
@@ -397,7 +384,6 @@ export async function POST(req: Request) {
         include: { keywords: true },
       });
     } catch (e) {
-      // DB에 옛 유니크(userId, productId)가 남아있으면 space 분리가 불가능하므로 명확히 안내한다.
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
         return NextResponse.json(
           {
@@ -416,26 +402,6 @@ export async function POST(req: Request) {
       }
       throw e;
     }
-
-    const listShape = await prisma.smartstoreProduct.findUnique({
-      where: { id: product.id },
-      select: {
-        name: true,
-        thumbnailLink: true,
-        imageUrl: true,
-        category: true,
-      },
-    });
-
-    console.log(
-      `${SMARTSTORE_TRACE_LOG} ⑧ list API와 동일 필드 확인(DB 재조회)`,
-      {
-        name: listShape?.name,
-        thumbnailLink: listShape?.thumbnailLink ?? null,
-        imageUrl: listShape?.imageUrl ?? null,
-        category: listShape?.category ?? null,
-      }
-    );
 
     return NextResponse.json({
       ok: true,

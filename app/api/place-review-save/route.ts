@@ -33,7 +33,10 @@ export async function POST(req: Request) {
       );
     }
 
-    await prisma.user.upsert({
+    // =====================================================================
+    // 1. [수정됨] 유저 정보 조회 시 티어(tier)와 현재 등록 개수(_count)를 함께 가져옴
+    // =====================================================================
+    const user = await prisma.user.upsert({
       where: {
         id: userId,
       },
@@ -46,8 +49,19 @@ export async function POST(req: Request) {
         email: userEmail ?? `${userId}@no-email.local`,
         name: userName ?? null,
       },
+      select: {
+        tier: true,
+        _count: {
+          select: {
+            smartstoreProducts: true,
+            places: true,
+            smartstoreReviewTargets: true,
+          }
+        }
+      }
     });
 
+    // 기존 등록 여부 확인
     const alreadyExists = await prisma.place.findFirst({
       where: {
         userId,
@@ -70,6 +84,25 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // =====================================================================
+    // 2. [추가됨] 총 등록 개수 확인 및 티어 제한 방어 (FREE: 10개)
+    // =====================================================================
+    const totalItems = 
+      (user._count?.smartstoreProducts || 0) + 
+      (user._count?.places || 0) + 
+      (user._count?.smartstoreReviewTargets || 0);
+    
+    // PRO는 999개, 그 외(FREE)는 10개로 설정
+    const MAX_LIMIT = user.tier === "PRO" ? 999 : 10;
+
+    if (totalItems >= MAX_LIMIT) {
+      return NextResponse.json(
+        { error: `모든 항목 통틀어 최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
+        { status: 403 }
+      );
+    }
+    // =====================================================================
 
     const place = await prisma.place.create({
       data: {

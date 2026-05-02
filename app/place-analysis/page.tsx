@@ -31,18 +31,13 @@ type RankPlaceItem = {
   address?: string;
   imageUrl?: string;
   isPromotedAd?: boolean;
+  keywords?: string[]; // 👈 백엔드에서 키워드를 받을 수 있도록 타입 추가
   review?: {
     total?: number;
     visitor?: number;
     blog?: number;
     save?: string | number;
   };
-};
-
-type SavedPlaceItem = {
-  id: string;
-  name: string;
-  placeUrl?: string | null;
 };
 
 function formatCount(value?: string | number | null) {
@@ -60,23 +55,6 @@ function formatCount(value?: string | number | null) {
   if (!/^\d+$/.test(onlyNumber)) return String(value);
 
   return Number(onlyNumber).toLocaleString("ko-KR");
-}
-
-function extractPublicPlaceId(placeUrl?: string | null) {
-  if (!placeUrl) return "";
-
-  const matched =
-    placeUrl.match(/restaurant\/(\d+)/) ||
-    placeUrl.match(/place\/(\d+)/) ||
-    placeUrl.match(/placeId=(\d+)/) ||
-    placeUrl.match(/entry\/place\/(\d+)/);
-
-  return matched?.[1] ?? "";
-}
-
-function buildMobilePlaceLink(placeId?: string) {
-  if (!placeId) return "";
-  return `https://m.place.naver.com/restaurant/${placeId}/home`;
 }
 
 type BatchAttempt = {
@@ -182,70 +160,12 @@ export default function PlaceAnalysisPage() {
     compactSummary?: string | null;
   } | null>(null);
 
-  const [savedRankPlaceIds, setSavedRankPlaceIds] = useState<Set<string>>(new Set());
-  const [savedReviewPlaceIds, setSavedReviewPlaceIds] = useState<Set<string>>(new Set());
-  const [registeringKey, setRegisteringKey] = useState<string | null>(null);
-
   const analyzeGenRef = useRef(0);
   const analyzeAbortRef = useRef<AbortController | null>(null);
 
   // --- 디자인 통일용 호버 상태값 ---
   const [isAnalyzeHovered, setIsAnalyzeHovered] = useState(false);
   const [analyzeMousePos, setAnalyzeMousePos] = useState({ x: 0, y: 0 });
-
-  const [reviewRegHover, setReviewRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
-  const [rankRegHover, setRankRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
-
-  const loadSavedPlaces = async () => {
-    try {
-      const [rankRes, reviewRes] = await Promise.all([
-        fetch("/api/place-list", {
-          cache: "no-store",
-          credentials: "include",
-        }),
-        fetch("/api/place-review-list", {
-          cache: "no-store",
-          credentials: "include",
-        }),
-      ]);
-
-      const rankSet = new Set<string>();
-      const reviewSet = new Set<string>();
-
-      if (rankRes.ok) {
-        const rankData = await rankRes.json();
-        const rankPlaces: SavedPlaceItem[] = Array.isArray(rankData?.places)
-          ? rankData.places
-          : [];
-
-        for (const place of rankPlaces) {
-          const publicPlaceId = extractPublicPlaceId(place.placeUrl);
-          if (publicPlaceId) rankSet.add(publicPlaceId);
-        }
-      }
-
-      if (reviewRes.ok) {
-        const reviewData = await reviewRes.json();
-        const reviewPlaces: SavedPlaceItem[] = Array.isArray(reviewData?.places)
-          ? reviewData.places
-          : [];
-
-        for (const place of reviewPlaces) {
-          const publicPlaceId = extractPublicPlaceId(place.placeUrl);
-          if (publicPlaceId) reviewSet.add(publicPlaceId);
-        }
-      }
-
-      setSavedRankPlaceIds(rankSet);
-      setSavedReviewPlaceIds(reviewSet);
-    } catch (e) {
-      console.error("saved places load error:", e);
-    }
-  };
-
-  useEffect(() => {
-    loadSavedPlaces();
-  }, []);
 
   const handleAnalyze = async () => {
     const trimmedRaw = keyword.trim();
@@ -517,103 +437,12 @@ export default function PlaceAnalysisPage() {
     }
   };
 
-  const handleRegisterPlace = async (
-    item: RankPlaceItem,
-    mode: "review" | "rank"
-  ) => {
-    const placeId = String(item.placeId || "").trim();
-    const key = `${mode}-${placeId || item.name}`;
-
-    if (!placeId) {
-      alert("placeId가 없어 등록할 수 없습니다.");
-      return;
-    }
-
-    try {
-      setRegisteringKey(key);
-
-      const endpoint =
-        mode === "review" ? "/api/place-review-save" : "/api/place-save";
-
-      const saveRes = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: item.name,
-          category: item.category || "",
-          address: item.address || "",
-          jibunAddress: item.address || "",
-          placeUrl: buildMobilePlaceLink(placeId),
-          imageUrl: item.imageUrl || "",
-          x: null,
-          y: null,
-        }),
-      });
-
-      const saveData = await saveRes.json();
-
-      if (!saveRes.ok) {
-        alert(saveData?.error || saveData?.message || "매장 등록 실패");
-        return;
-      }
-
-      if (mode === "review") {
-        const createdPlaceId = String(
-          saveData?.place?.id || saveData?.data?.id || ""
-        ).trim();
-
-        if (createdPlaceId) {
-          try {
-            await fetch("/api/place-review-track", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                placeId: createdPlaceId,
-              }),
-            });
-          } catch (e) {
-            console.error("review track init error:", e);
-          }
-        }
-
-        setSavedReviewPlaceIds((prev) => {
-          const next = new Set(prev);
-          next.add(placeId);
-          return next;
-        });
-
-        alert("리뷰추적 등록 완료");
-        await loadSavedPlaces();
-        return;
-      }
-
-      setSavedRankPlaceIds((prev) => {
-        const next = new Set(prev);
-        next.add(placeId);
-        return next;
-      });
-
-      alert("순위추적 등록 완료");
-      await loadSavedPlaces();
-    } catch (e) {
-      console.error(e);
-      alert("등록 중 오류가 발생했습니다.");
-    } finally {
-      setRegisteringKey(null);
-    }
-  };
-
   const renderedList = useMemo(() => list, [list]);
 
   return (
     <>
       <TopNav active="place-analysis" />
 
-      {/* 🚨 pt-24를 유지하고 배경색을 f8fafc로 변경 */}
       <main className="min-h-screen bg-[#f8fafc] text-[#111827] pt-24">
         <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
           <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
@@ -657,7 +486,6 @@ export default function PlaceAnalysisPage() {
                   ) : null}
                 </div>
 
-                {/* 🎨 분석 버튼 디자인 통일 */}
                 <button
                   type="button"
                   onClick={handleAnalyze}
@@ -705,7 +533,6 @@ export default function PlaceAnalysisPage() {
                 </button>
               </div>
 
-              {/* 🎨 연관검색어 활성화 컬러 통일 */}
               {relatedKeywords.length > 0 && (
                 <div className="pt-1">
                   <div className="mb-3 text-[13px] font-bold text-[#4b5563]">
@@ -810,7 +637,7 @@ export default function PlaceAnalysisPage() {
 
           <div className="mt-5 overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="overflow-x-auto">
-              <table className="min-w-[1180px] w-full">
+              <table className="min-w-[1000px] w-full">
                 <thead>
                   <tr className="border-b border-[#f3f4f6] bg-[#fafafa]">
                     <th className="px-5 py-4 text-left text-[13px] font-bold text-[#6b7280]">
@@ -834,11 +661,8 @@ export default function PlaceAnalysisPage() {
                     <th className="px-5 py-4 text-right text-[13px] font-bold text-[#6b7280]">
                       저장수
                     </th>
-                    <th className="px-5 py-4 text-center text-[13px] font-bold text-[#6b7280]">
-                      리뷰추적
-                    </th>
-                    <th className="px-5 py-4 text-center text-[13px] font-bold text-[#6b7280]">
-                      순위추적
+                    <th className="px-5 py-4 text-left text-[13px] font-bold text-[#6b7280]">
+                      특징 키워드
                     </th>
                   </tr>
                 </thead>
@@ -847,200 +671,96 @@ export default function PlaceAnalysisPage() {
                   {renderedList.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={8}
                         className="px-5 py-14 text-center text-[14px] text-[#9ca3af]"
                       >
                         아직 분석 결과가 없습니다.
                       </td>
                     </tr>
                   ) : (
-                    renderedList.map((item, idx) => {
-                      const placeId = String(item.placeId || "").trim();
-                      const isReviewRegistered = savedReviewPlaceIds.has(placeId);
-                      const isRankRegistered = savedRankPlaceIds.has(placeId);
-                      const reviewKey = `review-${placeId || item.name}`;
-                      const rankKey = `rank-${placeId || item.name}`;
+                    renderedList.map((item, idx) => (
+                      <tr
+                        key={`${item.placeId || item.name}-${idx}`}
+                        className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
+                      >
+                        <td className="px-5 py-5 text-[18px] font-black text-[#111827]">
+                          {item.rank}
+                        </td>
 
-                      return (
-                        <tr
-                          key={`${item.placeId || item.name}-${idx}`}
-                          className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
-                        >
-                          <td className="px-5 py-5 text-[18px] font-black text-[#111827]">
-                            {item.rank}
-                          </td>
+                        <td className="px-5 py-5">
+                          <div className="flex items-center gap-3">
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="h-[56px] w-[56px] rounded-[12px] object-cover ring-1 ring-[#e5e7eb]"
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="flex h-[56px] w-[56px] items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[11px] text-[#9ca3af]">
+                                없음
+                              </div>
+                            )}
 
-                          <td className="px-5 py-5">
-                            <div className="flex items-center gap-3">
-                              {item.imageUrl ? (
-                                <img
-                                  src={item.imageUrl}
-                                  alt={item.name}
-                                  className="h-[56px] w-[56px] rounded-[12px] object-cover ring-1 ring-[#e5e7eb]"
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
-                                />
-                              ) : (
-                                <div className="flex h-[56px] w-[56px] items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[11px] text-[#9ca3af]">
-                                  없음
-                                </div>
-                              )}
-
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="text-[15px] font-bold text-[#111827]">
-                                    {item.name}
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[15px] font-bold text-[#111827]">
+                                  {item.name}
+                                </span>
+                                {item.isPromotedAd ? (
+                                  <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                                    광고
                                   </span>
-                                  {item.isPromotedAd ? (
-                                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
-                                      광고
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {item.address ? (
-                                  <div className="mt-1 text-[12px] text-[#9ca3af]">
-                                    {item.address}
-                                  </div>
                                 ) : null}
                               </div>
+                              {item.address ? (
+                                <div className="mt-1 text-[12px] text-[#9ca3af]">
+                                  {item.address}
+                                </div>
+                              ) : null}
                             </div>
-                          </td>
+                          </div>
+                        </td>
 
-                          <td className="px-5 py-5 text-[14px] font-semibold text-[#4b5563]">
-                            {item.category || "-"}
-                          </td>
+                        <td className="px-5 py-5 text-[14px] font-semibold text-[#4b5563]">
+                          {item.category || "-"}
+                        </td>
 
-                          <td className="px-5 py-5 text-right text-[15px] font-bold text-[#111827]">
-                            {formatCount(item.review?.total)}
-                          </td>
+                        <td className="px-5 py-5 text-right text-[15px] font-bold text-[#111827]">
+                          {formatCount(item.review?.total)}
+                        </td>
 
-                          <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
-                            {formatCount(item.review?.visitor)}
-                          </td>
+                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
+                          {formatCount(item.review?.visitor)}
+                        </td>
 
-                          <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
-                            {formatCount(item.review?.blog)}
-                          </td>
+                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
+                          {formatCount(item.review?.blog)}
+                        </td>
 
-                          <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#111827]">
-                            {formatCount(item.review?.save)}
-                          </td>
+                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#111827]">
+                          {formatCount(item.review?.save)}
+                        </td>
 
-                          {/* 🎨 표 내부 액션 버튼 디자인 적용 */}
-                          <td className="px-5 py-5 text-center">
-                            {isReviewRegistered ? (
-                              <button
-                                disabled
-                                className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-[#f9fafb] px-5 text-[14px] font-bold text-[#9ca3af]"
-                              >
-                                등록됨
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleRegisterPlace(item, "review")}
-                                disabled={registeringKey === reviewKey}
-                                onMouseEnter={() => setReviewRegHover({ id: reviewKey, x: reviewRegHover.x, y: reviewRegHover.y })}
-                                onMouseLeave={() => setReviewRegHover((prev) => prev.id === reviewKey ? { ...prev, id: null } : prev)}
-                                onMouseMove={(e) => {
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  setReviewRegHover({ id: reviewKey, x: e.clientX - rect.left, y: e.clientY - rect.top });
-                                }}
-                                className={`relative inline-flex h-[42px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
-                                  registeringKey === reviewKey ? "opacity-60" : ""
-                                }`}
-                              >
-                                <span className="relative z-30 pointer-events-none">
-                                  {registeringKey === reviewKey ? "등록 중..." : "등록"}
+                        <td className="px-5 py-5">
+                          <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                            {item.keywords && item.keywords.length > 0 ? (
+                              item.keywords.map((kw, i) => (
+                                <span
+                                  key={i}
+                                  className="rounded-[6px] bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600 border border-blue-100"
+                                >
+                                  #{kw}
                                 </span>
-                                <div
-                                  className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-                                  style={{
-                                    transformOrigin: "left",
-                                    transform: reviewRegHover.id === reviewKey ? "scaleX(1)" : "scaleX(0)",
-                                    transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
-                                    backgroundColor: "#2563EB",
-                                  }}
-                                />
-                                <div
-                                  className={`
-                                    absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
-                                    transition-opacity duration-200 ease-out
-                                    ${reviewRegHover.id === reviewKey ? "opacity-100" : "opacity-0"}
-                                  `}
-                                  style={{
-                                    left: `${reviewRegHover.x}px`,
-                                    top: `${reviewRegHover.y}px`,
-                                    pointerEvents: "none",
-                                    zIndex: 25,
-                                    backgroundImage:
-                                      "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
-                                    mixBlendMode: "soft-light",
-                                    filter:
-                                      "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
-                                  }}
-                                />
-                              </button>
-                            )}
-                          </td>
-
-                          <td className="px-5 py-5 text-center">
-                            {isRankRegistered ? (
-                              <button
-                                disabled
-                                className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-[#f9fafb] px-5 text-[14px] font-bold text-[#9ca3af]"
-                              >
-                                등록됨
-                              </button>
+                              ))
                             ) : (
-                              <button
-                                onClick={() => handleRegisterPlace(item, "rank")}
-                                disabled={registeringKey === rankKey}
-                                onMouseEnter={() => setRankRegHover({ id: rankKey, x: rankRegHover.x, y: rankRegHover.y })}
-                                onMouseLeave={() => setRankRegHover((prev) => prev.id === rankKey ? { ...prev, id: null } : prev)}
-                                onMouseMove={(e) => {
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  setRankRegHover({ id: rankKey, x: e.clientX - rect.left, y: e.clientY - rect.top });
-                                }}
-                                className={`relative inline-flex h-[42px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
-                                  registeringKey === rankKey ? "opacity-60" : ""
-                                }`}
-                              >
-                                <span className="relative z-30 pointer-events-none">
-                                  {registeringKey === rankKey ? "등록 중..." : "등록"}
-                                </span>
-                                <div
-                                  className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-                                  style={{
-                                    transformOrigin: "left",
-                                    transform: rankRegHover.id === rankKey ? "scaleX(1)" : "scaleX(0)",
-                                    transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
-                                    backgroundColor: "#2563EB",
-                                  }}
-                                />
-                                <div
-                                  className={`
-                                    absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
-                                    transition-opacity duration-200 ease-out
-                                    ${rankRegHover.id === rankKey ? "opacity-100" : "opacity-0"}
-                                  `}
-                                  style={{
-                                    left: `${rankRegHover.x}px`,
-                                    top: `${rankRegHover.y}px`,
-                                    pointerEvents: "none",
-                                    zIndex: 25,
-                                    backgroundImage:
-                                      "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
-                                    mixBlendMode: "soft-light",
-                                    filter:
-                                      "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
-                                  }}
-                                />
-                              </button>
+                              <span className="text-[12px] text-[#9ca3af]">-</span>
                             )}
-                          </td>
-                        </tr>
-                      );
-                    })
+                          </div>
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>

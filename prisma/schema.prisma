@@ -12,14 +12,30 @@ enum SmartstoreSpace {
   PLUS_STORE
 }
 
+// 👇 1. 유저 티어를 구분하기 위한 Enum
+enum UserTier {
+  FREE
+  PRO
+}
+
 model User {
   id                      String                   @id @default(cuid())
   email                   String                   @unique
   name                    String?
+  
+  // 👇 2. User 모델에 tier 필드 추가 (기본값 FREE)
+  tier                    UserTier                 @default(FREE)
+  
   places                  Place[]
   smartstoreProducts      SmartstoreProduct[]
   smartstoreReviewTargets SmartstoreReviewTarget[]
 }
+
+// =========================================================
+// 👇 여기서부터 있는 model Track, model Record 등은 그대로 두시면 됩니다!
+// model Track {
+//   ...
+// }
 
 model Track {
   id        String   @id @default(cuid())

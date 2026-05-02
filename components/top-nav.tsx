@@ -25,6 +25,38 @@ const TopNav = (_props: TopNavProps) => {
   >(null);
   const closeTimerRef = useRef<number | null>(null);
 
+  // =====================================================================
+  // [추가] 유저의 등록 사용량을 담을 state
+  // =====================================================================
+  const [quota, setQuota] = useState<{
+    totalItems: number;
+    maxLimit: number;
+    tier: string;
+  } | null>(null);
+
+  // 컴포넌트 마운트 시 사용량 데이터 불러오기
+  useEffect(() => {
+    const fetchQuota = async () => {
+      try {
+        const res = await fetch("/api/user-quota");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok) {
+            setQuota({
+              totalItems: data.totalItems,
+              maxLimit: data.maxLimit,
+              tier: data.tier,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("사용량 조회 실패:", e);
+      }
+    };
+    fetchQuota();
+  }, [pathname]); // 페이지 이동 시마다 갱신되도록 설정
+  // =====================================================================
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
@@ -136,7 +168,6 @@ const TopNav = (_props: TopNavProps) => {
               스마트스토어
             </Link>
 
-            {/* 활성 인디케이터 */}
             <div
               className={`absolute bottom-0 left-0 right-0 h-[2px] origin-left bg-[#86A9C6] transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                 isSmartStoreActive ? "scale-x-100" : "scale-x-0"
@@ -174,7 +205,7 @@ const TopNav = (_props: TopNavProps) => {
                           N
                         </span>
                         <img
-                          src="/naver_가격비교.svg"
+                          src="/naver_price.svg"
                           alt="가격비교"
                           width={64}
                           height={14}
@@ -209,7 +240,7 @@ const TopNav = (_props: TopNavProps) => {
                           N
                         </span>
                         <img
-                          src="/naver_플러스스토어.svg"
+                          src="/naver_plus.svg"
                           alt="플러스스토어"
                           width={64}
                           height={14}
@@ -498,12 +529,33 @@ const TopNav = (_props: TopNavProps) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        {/* 우측 상단 (사용량 뱃지 + 내정보 + 로그아웃) */}
+        <div className="flex items-center gap-3">
+          
+          {/* ========================================================= */}
+          {/* [추가] 사용량 뱃지 표시 영역 */}
+          {/* ========================================================= */}
+          {quota && (
+            <div className="hidden sm:flex items-center gap-1.5 rounded-full bg-slate-100/80 px-3 py-1.5 text-[12px] font-bold shadow-sm ring-1 ring-slate-200 backdrop-blur-sm">
+              <span className={quota.tier === "PRO" ? "text-[#0051FF]" : "text-emerald-500"}>
+                {quota.tier}
+              </span>
+              <span className="text-slate-300">|</span>
+              <span className="flex items-center gap-0.5">
+                <span className={quota.totalItems >= quota.maxLimit ? "text-red-500" : "text-slate-700"}>
+                  {quota.totalItems}
+                </span>
+                <span className="text-slate-400 font-medium">/ {quota.maxLimit}</span>
+              </span>
+            </div>
+          )}
+          {/* ========================================================= */}
+
           <button
-            onClick={() => router.push("/place")}
-            className="p-2 text-slate-600 hover:text-slate-900"
-            title="내 정보"
-          >
+  onClick={() => router.push("/profile")} // 생성한 /profile 페이지로 이동
+  className="p-2 text-slate-600 hover:text-slate-900 transition-colors"
+  title="내 정보"
+>
             <svg
               className="h-5 w-5"
               fill="none"

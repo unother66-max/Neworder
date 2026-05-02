@@ -50,7 +50,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "name은 필수입니다." }, { status: 400 });
     }
 
-    await prisma.user.upsert({
+    // =====================================================================
+    // 1. 유저 정보 동기화 및 등록된 항목 개수(_count), 티어(tier) 가져오기
+    // =====================================================================
+    const user = await prisma.user.upsert({
       where: { id: userId },
       update: {
         email: userEmail ?? `${userId}@no-email.local`,
@@ -61,12 +64,23 @@ export async function POST(req: Request) {
         email: userEmail ?? `${userId}@no-email.local`,
         name: userName ?? null,
       },
+      select: {
+        tier: true,
+        _count: {
+          select: {
+            smartstoreProducts: true,
+            places: true,
+            smartstoreReviewTargets: true,
+          }
+        }
+      }
     });
 
     const resolvedType = bodyType === "kakao-place" ? "kakao-place" : "kakao-rank";
     const normalizedUrl =
       kakaoUrl !== undefined && kakaoUrl !== null ? String(kakaoUrl).trim() : "";
 
+    // 기존 등록 여부 먼저 확인
     if (normalizedUrl) {
       const existing = await prisma.place.findFirst({
         where: { userId, type: resolvedType, placeUrl: normalizedUrl },
@@ -75,6 +89,24 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, place: existing, alreadyExisted: true });
       }
     }
+
+    // =====================================================================
+    // 2. 총 등록 개수 확인 및 티어 제한 방어
+    // =====================================================================
+    const totalItems = 
+      (user._count?.smartstoreProducts || 0) + 
+      (user._count?.places || 0) + 
+      (user._count?.smartstoreReviewTargets || 0);
+    
+    const MAX_LIMIT = user.tier === "PRO" ? 999 : 10;
+
+    if (totalItems >= MAX_LIMIT) {
+      return NextResponse.json(
+        { error: `모든 항목 통틀어 최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
+        { status: 403 }
+      );
+    }
+    // =====================================================================
 
     const imageUrl = kakaoId ? await fetchKakaoPlaceImage(String(kakaoId)) : null;
 
