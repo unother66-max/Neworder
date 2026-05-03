@@ -36,6 +36,7 @@ model User {
   smartstoreProducts      SmartstoreProduct[]
   smartstoreReviewTargets SmartstoreReviewTarget[]
   posts                   Post[]
+  comments  Comment[]
 }
 
 // --- 🚨 인증 필수 모델 ---
@@ -316,6 +317,8 @@ model Post {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+comments  Comment[]
+
   @@index([userId])
 }
 
@@ -335,4 +338,20 @@ model Record {
   createdAt DateTime @default(now())
   trackId   String
   track     Track    @relation(fields: [trackId], references: [id])
+}
+
+// 🚨 파일 맨 아래에 통째로 추가해 주세요!
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
 }

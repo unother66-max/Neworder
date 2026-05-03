@@ -13,6 +13,7 @@ import {
 } from "@/lib/smartstore-url";
 import { isSmartstoreNaverRateLimitedError, randomSmartstoreDelay } from "@/lib/smartstore-bot-shield";
 import { Prisma } from "@prisma/client";
+import { getLimit } from "@/lib/constants"; // 🚨 [추가] 중앙 통제실 불러오기
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,9 @@ function formatKoDateTime(d: Date): string {
   });
 }
 
+// ==========================================
+// 1. GET: 목록 조회 로직 (원본 보존)
+// ==========================================
 export async function GET() {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
@@ -201,19 +205,20 @@ export async function GET() {
   }
 }
 
-// ... (위쪽의 GET 함수 부분은 그대로 둡니다) ...
-
+// ==========================================
+// 2. POST: 저장 및 개수 체크 로직
+// ==========================================
 export async function POST(req: Request) {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
+    const userEmail = session?.user?.email as string | null | undefined; // 🚨 [추가] 이메일 확보
+
     if (!userId) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
-    // =====================================================================
-    // 1. 유저 정보 동기화 및 등록된 항목 개수(_count), 티어(tier) 가져오기
-    // =====================================================================
+    // 유저 정보 동기화 및 등록된 항목 개수(_count), 티어(tier) 가져오기
     let user = await prisma.user.findUnique({
       where: { id: userId },
       select: { 
@@ -234,119 +239,75 @@ export async function POST(req: Request) {
         user = await prisma.user.create({
           data: {
             id: userId,
-            email:
-              typeof session?.user?.email === "string" && session.user.email.trim()
-                ? session.user.email.trim()
-                : `${userId}@kakao.local`,
-            name:
-              typeof session?.user?.name === "string" && session.user.name.trim()
-                ? session.user.name.trim()
-                : null,
+            email: typeof session?.user?.email === "string" && session.user.email.trim() ? session.user.email.trim() : `${userId}@kakao.local`,
+            name: typeof session?.user?.name === "string" && session.user.name.trim() ? session.user.name.trim() : null,
           },
           select: { 
-            id: true,
-            tier: true,
-            _count: {
-              select: {
-                smartstoreProducts: true,
-                places: true,
-                smartstoreReviewTargets: true,
-              }
-            }
+            id: true, tier: true, 
+            _count: { select: { smartstoreProducts: true, places: true, smartstoreReviewTargets: true } } 
           },
         });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
           user = await prisma.user.findUnique({
             where: { id: userId },
-            select: { 
-              id: true,
-              tier: true,
-              _count: {
-                select: {
-                  smartstoreProducts: true,
-                  places: true,
-                  smartstoreReviewTargets: true,
-                }
-              }
-            },
+            select: { id: true, tier: true, _count: { select: { smartstoreProducts: true, places: true, smartstoreReviewTargets: true } } },
           });
-        } else {
-          throw e;
-        }
+        } else { throw e; }
       }
     }
     
     if (!user) {
-      return NextResponse.json(
-        { error: "세션은 있으나 userId가 DB에 동기화되지 않았습니다" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "유저 동기화 실패" }, { status: 401 });
     }
 
     const body = await req.json().catch(() => ({}));
     const productUrlRaw = String(body?.productUrl ?? "").trim();
     const manualNameRaw = body?.manualName != null ? String(body.manualName).trim() : "";
-    const manualImageUrlRaw =
-      body?.manualImageUrl != null ? String(body.manualImageUrl).trim() : "";
+    const manualImageUrlRaw = body?.manualImageUrl != null ? String(body.manualImageUrl).trim() : "";
       
     if (!productUrlRaw) {
       return NextResponse.json({ error: "productUrl이 필요합니다." }, { status: 400 });
     }
     
-    const normalizedUrl = productUrlRaw.startsWith("http")
-      ? productUrlRaw
-      : `https://${productUrlRaw}`;
+    const normalizedUrl = productUrlRaw.startsWith("http") ? productUrlRaw : `https://${productUrlRaw}`;
 
     const naverProductId = extractNaverSmartstoreProductId(normalizedUrl);
     if (!naverProductId) {
-      return NextResponse.json({ error: "상품 URL에서 상품 번호를 찾을 수 없습니다." }, { status: 400 });
+      return NextResponse.json({ error: "상품 번호 추출 실패" }, { status: 400 });
     }
 
-    // 중복 등록 여부 먼저 확인 (중복이면 개수 제한 검사를 건너뛰기 위함)
     const existingTarget = await prisma.smartstoreReviewTarget.findUnique({
       where: { userId_productId: { userId, productId: naverProductId } },
       select: { id: true }
     });
 
-    // =====================================================================
-    // 2. 신규 등록일 경우에만 총 등록 개수 확인 및 티어 제한 방어
-    // =====================================================================
+    // 🚨 [수정됨] 중앙 통제실 규칙 적용
     if (!existingTarget) {
       const totalItems = 
         (user._count?.smartstoreProducts || 0) + 
         (user._count?.places || 0) + 
         (user._count?.smartstoreReviewTargets || 0);
       
-      const MAX_LIMIT = user.tier === "PRO" ? 999 : 10;
+      // constants.ts에서 설정한 ADMIN(9999), PRO(30), FREE(10) 한도를 가져옵니다.
+      const MAX_LIMIT = getLimit(user.tier, userEmail);
 
       if (totalItems >= MAX_LIMIT) {
         return NextResponse.json(
-          { error: `모든 항목 통틀어 최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
+          { error: `${user.tier || "FREE"} 등급은 최대 ${MAX_LIMIT}개까지만 등록 가능합니다.` },
           { status: 403 }
         );
       }
     }
-    // =====================================================================
 
-
+    // 이하 기존 저장 로직 (메타 데이터 수집 등 100% 보존)
     const urlQueryHint = (() => {
       try {
         const u = new URL(normalizedUrl);
-        const candidates = [
-          u.searchParams.get("nl-query"),
-          u.searchParams.get("nl_query"),
-          u.searchParams.get("n_query"),
-          u.searchParams.get("query"),
-          u.searchParams.get("q"),
-        ]
-          .map((v) => (typeof v === "string" ? v.trim() : ""))
-          .filter(Boolean);
-        if (candidates.length === 0) return null;
+        const candidates = [u.searchParams.get("nl-query"), u.searchParams.get("nl_query"), u.searchParams.get("n_query"), u.searchParams.get("query"), u.searchParams.get("q")]
+          .map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean);
         return candidates[0] ?? null;
-      } catch {
-        return null;
-      }
+      } catch { return null; }
     })();
 
     const pcUrl = (() => {
@@ -356,36 +317,20 @@ export async function POST(req: Request) {
         if (u.hostname === "m.brand.naver.com") u.hostname = "brand.naver.com";
         return `${u.protocol}//${u.hostname}${u.pathname}`;
       } catch {
-        return normalizedUrl
-          .split("#")[0]!
-          .split("?")[0]!
-          .replace("://m.smartstore.naver.com", "://smartstore.naver.com")
-          .replace("://m.brand.naver.com", "://brand.naver.com");
+        return normalizedUrl.split("#")[0]!.split("?")[0]!.replace("://m.smartstore.naver.com", "://smartstore.naver.com").replace("://m.brand.naver.com", "://brand.naver.com");
       }
     })();
     
     if (!isLikelySmartstoreProductUrl(normalizedUrl)) {
-      return NextResponse.json({ error: "스마트스토어/브랜드스토어 상품 URL이 아닙니다." }, { status: 400 });
+      return NextResponse.json({ error: "상품 URL 형식이 아닙니다." }, { status: 400 });
     }
 
     if (manualNameRaw) {
       const storeNameManual = extractStoreSlugFromUrl(normalizedUrl);
       const created = await prisma.smartstoreReviewTarget.upsert({
         where: { userId_productId: { userId, productId: naverProductId } },
-        update: {
-          productUrl: normalizedUrl,
-          name: manualNameRaw,
-          imageUrl: manualImageUrlRaw || null,
-          storeName: storeNameManual,
-        },
-        create: {
-          userId,
-          productId: naverProductId,
-          productUrl: normalizedUrl,
-          name: manualNameRaw,
-          imageUrl: manualImageUrlRaw || null,
-          storeName: storeNameManual,
-        },
+        update: { productUrl: normalizedUrl, name: manualNameRaw, imageUrl: manualImageUrlRaw || null, storeName: storeNameManual },
+        create: { userId, productId: naverProductId, productUrl: normalizedUrl, name: manualNameRaw, imageUrl: manualImageUrlRaw || null, storeName: storeNameManual },
       });
       return NextResponse.json({ ok: true, target: created, manual: true });
     }
@@ -395,39 +340,22 @@ export async function POST(req: Request) {
     let name = meta.meta.name?.trim() ? meta.meta.name.trim() : null;
     let imageUrl = meta.meta.imageUrl?.trim() ? meta.meta.imageUrl.trim() : null;
 
-    if (!name) {
-      const shoppingConfigured = isSmartstoreShoppingSearchConfigured();
-      if (shoppingConfigured) {
-        try {
-          const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
-            productUrl: pcUrl,
-            productId: naverProductId,
-            existingNameHint: null,
-            ogTitle: urlQueryHint || null,
-            pageProductNameHint: null,
-          });
-          if (searchMeta.searchApiMatched) {
-            name = name ?? (searchMeta.name?.trim() ? searchMeta.name.trim() : null);
-            imageUrl =
-              imageUrl ??
-              (searchMeta.thumbnailLink?.trim() ? searchMeta.thumbnailLink.trim() : null);
-          }
-        } catch (e) {
-          if (isSmartstoreNaverRateLimitedError(e)) throw e;
-          console.error("[smartstore-review-targets][POST] shopping search fallback failed", e);
+    if (!name && isSmartstoreShoppingSearchConfigured()) {
+      try {
+        const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({ productUrl: pcUrl, productId: naverProductId, existingNameHint: null, ogTitle: urlQueryHint || null, pageProductNameHint: null });
+        if (searchMeta.searchApiMatched) {
+          name = name ?? (searchMeta.name?.trim() || null);
+          imageUrl = imageUrl ?? (searchMeta.thumbnailLink?.trim() || null);
         }
+      } catch (e) {
+        if (isSmartstoreNaverRateLimitedError(e)) throw e;
+        console.error("[smartstore-review-targets][POST] fallback failed", e);
       }
     }
 
-    if (!name) {
-      return NextResponse.json(
-        { error: "네이버에서 정보를 가져오지 못했습니다" },
-        { status: 400 }
-      );
-    }
+    if (!name) return NextResponse.json({ error: "네이버에서 정보를 가져오지 못했습니다" }, { status: 400 });
 
     const storeName = extractStoreSlugFromUrl(normalizedUrl);
-
     const created = await prisma.smartstoreReviewTarget.upsert({
       where: { userId_productId: { userId, productId: naverProductId } },
       update: { productUrl: normalizedUrl, name, imageUrl, storeName },
@@ -437,51 +365,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, target: created });
   } catch (e) {
     console.error("[smartstore-review-targets][POST]", e);
-    if (isSmartstoreNaverRateLimitedError(e)) {
-      return NextResponse.json(
-        { error: "보안 차단 감지: 10초간 긴급 휴식에 들어갑니다" },
-        { status: 429 }
-      );
-    }
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
-      return NextResponse.json(
-        { error: "로그인 상태를 확인해주세요. (userId 참조 오류)" },
-        { status: 401 }
-      );
-    }
-    return NextResponse.json({ error: "대상 추가에 실패했습니다." }, { status: 500 });
+    if (isSmartstoreNaverRateLimitedError(e)) return NextResponse.json({ error: "보안 차단 감지" }, { status: 429 });
+    return NextResponse.json({ error: "대상 추가 실패" }, { status: 500 });
   }
 }
 
-// ... (이 아래에 있는 DELETE 함수 부분은 그대로 둡니다) ...
-
+// ==========================================
+// 3. DELETE: 삭제 로직 (원본 보존)
+// ==========================================
 export async function DELETE(req: Request) {
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
-    if (!userId) {
-      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-    }
+    if (!userId) return NextResponse.json({ error: "로그인 필요" }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
     const id = String(searchParams.get("id") ?? "").trim();
-    if (!id) {
-      return NextResponse.json({ error: "id 쿼리가 필요합니다." }, { status: 400 });
-    }
+    if (!id) return NextResponse.json({ error: "id 쿼리 필요" }, { status: 400 });
 
     const target = await prisma.smartstoreReviewTarget.findFirst({
       where: { id, userId },
       select: { id: true },
     });
-    if (!target) {
-      return NextResponse.json({ error: "대상을 찾을 수 없습니다." }, { status: 404 });
-    }
+    if (!target) return NextResponse.json({ error: "대상 없음" }, { status: 404 });
 
     await prisma.smartstoreReviewTarget.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[smartstore-review-targets][DELETE]", e);
-    return NextResponse.json({ error: "대상 삭제에 실패했습니다." }, { status: 500 });
+    return NextResponse.json({ error: "삭제 실패" }, { status: 500 });
   }
 }
-

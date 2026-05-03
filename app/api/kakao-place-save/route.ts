@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
+import { getLimit } from "@/lib/constants"; // 🚨 1. 중앙 통제실 불러오기
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,18 +92,19 @@ export async function POST(req: Request) {
     }
 
     // =====================================================================
-    // 2. 총 등록 개수 확인 및 티어 제한 방어
+    // 🚨 2. [수정됨] 중앙 통제실 규칙을 이용한 총 등록 개수 확인
     // =====================================================================
     const totalItems = 
       (user._count?.smartstoreProducts || 0) + 
       (user._count?.places || 0) + 
       (user._count?.smartstoreReviewTargets || 0);
     
-    const MAX_LIMIT = user.tier === "PRO" ? 999 : 10;
+    // 중앙 통제실(getLimit)에서 한도 가져오기 (운영자 9999, PRO 30, FREE 10)
+    const MAX_LIMIT = getLimit(user.tier, userEmail);
 
     if (totalItems >= MAX_LIMIT) {
       return NextResponse.json(
-        { error: `모든 항목 통틀어 최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
+        { error: `${user.tier || "FREE"} 등급은 최대 ${MAX_LIMIT}개까지만 등록 가능합니다.` },
         { status: 403 }
       );
     }

@@ -28,18 +28,17 @@ export default function CommunityPage() {
 
   // 버튼 애니메이션 상태
   const [isSearchHovered, setIsSearchHovered] = useState(false);
-  const [searchMousePos, setSearchMousePos] = useState({ x: 0, y: 0 });
-  
   const [isWriteHovered, setIsWriteHovered] = useState(false);
-  const [writeMousePos, setWriteMousePos] = useState({ x: 0, y: 0 });
 
   const tabs = ["전체", "공지", "질문", "요청", "자유"];
+  
+  // 🚨 관리자 이메일 정의
+  const ADMIN_EMAIL = "natalie0@nate.com";
 
   // 데이터 불러오기
   const fetchPosts = async () => {
     setIsLoading(true);
     try {
-      // 👉 cache: "no-store"를 추가해서 항상 최신 글을 가져오도록 수정했습니다.
       const res = await fetch("/api/community", { cache: "no-store" });
       const data = await res.json();
       if (data.ok) {
@@ -64,6 +63,9 @@ export default function CommunityPage() {
   const filteredPosts = activeTab === "전체" 
     ? posts 
     : posts.filter(post => post.category === activeTab);
+
+  const noticePosts = filteredPosts.filter(post => post.category === "공지");
+  const regularPosts = filteredPosts.filter(post => post.category !== "공지");
 
   return (
     <>
@@ -109,10 +111,6 @@ export default function CommunityPage() {
               <button 
                 onMouseEnter={() => setIsSearchHovered(true)}
                 onMouseLeave={() => setIsSearchHovered(false)}
-                onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setSearchMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                }}
                 className="relative overflow-hidden bg-[#333333] text-white px-6 py-2.5 rounded-[12px] text-[14px] font-bold transition-all shadow-sm"
               >
                 <span className="relative z-30 pointer-events-none">검색하기</span>
@@ -130,10 +128,6 @@ export default function CommunityPage() {
                 onClick={() => router.push("/community/write")} 
                 onMouseEnter={() => setIsWriteHovered(true)}
                 onMouseLeave={() => setIsWriteHovered(false)}
-                onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setWriteMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                }}
                 className="relative overflow-hidden bg-[#333333] text-white px-5 py-2.5 rounded-[12px] text-[14px] font-bold transition-all shadow-sm flex items-center justify-center gap-2"
               >
                 <span className="relative z-30 pointer-events-none flex items-center gap-2">
@@ -170,37 +164,65 @@ export default function CommunityPage() {
                   ) : filteredPosts.length === 0 ? (
                     <tr><td colSpan={6} className="px-6 py-12 text-center text-[14px] text-slate-400 font-medium">게시글이 없습니다.</td></tr>
                   ) : (
-                    filteredPosts.map((post) => {
-                      let badgeColor = "bg-slate-50 text-slate-600 border-slate-200";
-                      if (post.category === "공지") badgeColor = "bg-red-50 text-red-600 border-red-100";
-                      else if (post.category === "질문") badgeColor = "bg-blue-50 text-blue-600 border-blue-100";
-                      else if (post.category === "요청") badgeColor = "bg-emerald-50 text-emerald-600 border-emerald-100";
-                      else if (post.category === "자유") badgeColor = "bg-purple-50 text-purple-600 border-purple-100";
-
-                      return (
+                    <>
+                      {/* 1. 공지사항 렌더링 */}
+                      {noticePosts.map((post) => (
                         <tr 
                           key={post.id} 
                           onClick={() => router.push(`/community/${post.id}`)}
-                          className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
+                          className="bg-slate-50/80 hover:bg-slate-100 transition-colors cursor-pointer group border-b border-slate-200/60"
                         >
                           <td className="px-6 py-4">
-                            <span className={`px-2.5 py-1 rounded-md text-[11px] font-black border ${badgeColor}`}>{post.category}</span>
+                            <span className="px-2.5 py-1 rounded-md text-[11px] font-black bg-slate-800 text-white shadow-sm">공지</span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              <span className={`text-[14px] font-bold group-hover:text-blue-600 transition-colors ${post.category === "공지" ? "text-red-600" : "text-slate-800"}`}>{post.title}</span>
-                              {post.category === "공지" && <span className="text-[10px] bg-red-600 text-white px-1.5 py-0.5 rounded font-bold">HOT</span>}
+                              <span className="text-[14px] font-black text-slate-900 group-hover:text-blue-600 transition-colors">{post.title}</span>
+                              <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded font-bold tracking-wider">필독</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center text-[13px] text-slate-600 font-medium">
-                            {post.author?.name || post.author?.email?.split('@')[0]}
+                          <td className="px-6 py-4 text-center text-[13px] text-slate-800 font-bold">
+                            {/* 🚨 관리자 이메일일 경우 "포스트랩스" 표시 */}
+                            {post.author?.email === ADMIN_EMAIL ? "포스트랩스" : (post.author?.name || post.author?.email?.split('@')[0])}
                           </td>
-                          <td className="px-6 py-4 text-center text-[13px] text-slate-400">{formatDate(post.createdAt)}</td>
-                          <td className="px-6 py-4 text-center text-[13px] text-slate-400">{post.views}</td>
+                          <td className="px-6 py-4 text-center text-[13px] text-slate-500 font-medium">{formatDate(post.createdAt)}</td>
+                          <td className="px-6 py-4 text-center text-[13px] text-slate-500 font-medium">{post.views}</td>
                           <td className="px-6 py-4 text-center text-[13px] font-bold text-blue-500">{post.likes}</td>
                         </tr>
-                      );
-                    })
+                      ))}
+
+                      {/* 2. 일반 게시글 렌더링 */}
+                      {regularPosts.map((post) => {
+                        let badgeColor = "bg-slate-50 text-slate-600 border-slate-200";
+                        if (post.category === "질문") badgeColor = "bg-blue-50 text-blue-600 border-blue-100";
+                        else if (post.category === "요청") badgeColor = "bg-emerald-50 text-emerald-600 border-emerald-100";
+                        else if (post.category === "자유") badgeColor = "bg-purple-50 text-purple-600 border-purple-100";
+
+                        return (
+                          <tr 
+                            key={post.id} 
+                            onClick={() => router.push(`/community/${post.id}`)}
+                            className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
+                          >
+                            <td className="px-6 py-4">
+                              <span className={`px-2.5 py-1 rounded-md text-[11px] font-black border ${badgeColor}`}>{post.category}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[14px] font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{post.title}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center text-[13px] text-slate-600 font-medium">
+                              {/* 🚨 관리자 이메일일 경우 "포스트랩스" 표시 */}
+                              {post.author?.email === ADMIN_EMAIL ? "포스트랩스" : (post.author?.name || post.author?.email?.split('@')[0])}
+                            </td>
+                            <td className="px-6 py-4 text-center text-[13px] text-slate-400">{formatDate(post.createdAt)}</td>
+                            <td className="px-6 py-4 text-center text-[13px] text-slate-400">{post.views}</td>
+                            <td className="px-6 py-4 text-center text-[13px] font-bold text-blue-500">{post.likes}</td>
+                          </tr>
+                        );
+                      })}
+                    </>
                   )}
                 </tbody>
               </table>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
+import { getLimit } from "@/lib/constants"; // 🚨 1. 중앙 통제실 불러오기
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +15,7 @@ export async function POST(req: Request) {
     const userName = session?.user?.name as string | null | undefined;
 
     if (!userId) {
-      return NextResponse.json(
-        { error: "로그인이 필요합니다." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
     const body = await req.json();
@@ -27,12 +25,10 @@ export async function POST(req: Request) {
     const y = body.y ? String(body.y).trim() : null;
 
     if (!name) {
-      return NextResponse.json(
-        { error: "name은 필수입니다." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "매장 이름은 필수입니다." }, { status: 400 });
     }
 
+    // 1. 유저 정보 및 현재 등록 개수 확인
     const user = await prisma.user.upsert({
       where: { id: userId },
       update: {
@@ -44,19 +40,36 @@ export async function POST(req: Request) {
         email: userEmail ?? `${userId}@no-email.local`,
         name: userName ?? null,
       },
-      select: {
-        tier: true,
+      include: {
         _count: {
-          select: {
-            smartstoreProducts: true,
-            places: true,
-            smartstoreReviewTargets: true,
-          }
+          select: { places: true, smartstoreProducts: true, smartstoreReviewTargets: true }
         }
       }
     });
 
-    // ── [수정됨] type을 "rank"로 변경하여 순위 추적용 매장인지 확인 ──
+    // 🚨 2. 중앙 통제실(getLimit)을 이용한 개수 제한 체크
+    // 반드시 user 정보를 가져온 이 시점(함수 내부)에서 실행해야 합니다!
+    const MAX_LIMIT = getLimit(user.tier, userEmail);
+    
+    // 현재 등록된 총 아이템 수 합산
+    const totalItems = 
+      (user._count?.smartstoreProducts || 0) + 
+      (user._count?.places || 0) + 
+      (user._count?.smartstoreReviewTargets || 0);
+
+    if (totalItems >= MAX_LIMIT) {
+      return NextResponse.json(
+        { 
+          error: `${user.tier || "FREE"} 등급은 최대 ${MAX_LIMIT}개까지만 등록 가능합니다.`,
+          limitReached: true,
+          currentTier: user.tier || "FREE",
+          maxLimit: MAX_LIMIT
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. 중복 등록 확인
     const alreadyExists = await prisma.place.findFirst({
       where: {
         userId,
@@ -74,28 +87,10 @@ export async function POST(req: Request) {
     });
 
     if (alreadyExists) {
-      return NextResponse.json(
-        { error: "이미 순위 추적에 등록된 매장입니다." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "이미 순위 추적에 등록된 매장입니다." }, { status: 400 });
     }
 
-    const totalItems = 
-      (user._count?.smartstoreProducts || 0) + 
-      (user._count?.places || 0) + 
-      (user._count?.smartstoreReviewTargets || 0);
-    
-    // 대표님 요청대로 PRO는 사실상 무제한(999)
-    const MAX_LIMIT = user.tier === "PRO" ? 999 : 10;
-
-    if (totalItems >= MAX_LIMIT) {
-      return NextResponse.json(
-        { error: `최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
-        { status: 403 }
-      );
-    }
-
-    // ── [수정됨] type을 "rank"로 저장하여 지도 순위 탭에 나오게 함 ──
+    // 4. 매장 저장
     const place = await prisma.place.create({
       data: {
         userId,
@@ -114,9 +109,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, place });
   } catch (error) {
     console.error("place-save error:", error);
-    return NextResponse.json(
-      { error: "매장 저장 중 오류가 발생했습니다." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "매장 저장 중 오류가 발생했습니다." }, { status: 500 });
   }
 }

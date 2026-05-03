@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { getLimit } from "@/lib/constants"; // 🚨 [추가] 중앙 통제실 불러오기
 import {
   fetchSmartstoreProductMeta,
   SMARTSTORE_TRACE_LOG,
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
     const session = (await getServerSession(authOptions as any)) as any;
     console.log("현재 세션 정보:", session);
     const userId = session?.user?.id as string | undefined;
+    const userEmail = session?.user?.email as string | null | undefined; // 🚨 [추가] 이메일 정보 추출
 
     if (!userId) {
       return NextResponse.json(
@@ -193,7 +195,7 @@ export async function POST(req: Request) {
     });
 
     // =====================================================================
-    // [추가된 로직] 신규 등록일 경우에만 총 등록 개수를 확인하고 티어 제한 방어
+    // 🚨 [수정됨] 중앙 통제실 규칙 적용
     // =====================================================================
     if (!existing) {
       const totalItems = 
@@ -201,11 +203,12 @@ export async function POST(req: Request) {
         (user._count?.places || 0) + 
         (user._count?.smartstoreReviewTargets || 0);
       
-      const MAX_LIMIT = user.tier === "PRO" ? 999 : 10;
+      // constants.ts에서 설정한 운영자(9999), PRO(30), FREE(10) 한도를 가져옵니다.
+      const MAX_LIMIT = getLimit(user.tier, userEmail);
 
       if (totalItems >= MAX_LIMIT) {
         return NextResponse.json(
-          { error: `모든 항목 통틀어 최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
+          { error: `${user.tier || "FREE"} 등급의 최대 등록 개수(${MAX_LIMIT}개)를 초과했습니다.` },
           { status: 403 }
         );
       }
