@@ -1,63 +1,77 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// 🚨 관리자 이메일 설정
+const ADMIN_EMAIL = "natalie0@nate.com";
 
 export async function GET() {
   try {
-    const session = (await getServerSession(authOptions as any)) as any;
-    const userId = session?.user?.id as string | undefined;
-
-    if (!userId) {
-      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    const session = await getServerSession(authOptions as any) as any;
+    
+    // 1. 세션이 없으면 에러를 내지 않고 0으로 초기화된 값을 줍니다 (로그인 튕김 방지)
+    if (!session?.user?.email) {
+      return NextResponse.json({ 
+        ok: true, 
+        totalItems: 0, 
+        maxLimit: 5, 
+        tier: "FREE", 
+        isAdmin: false 
+      });
     }
 
+    const userEmail = session.user.email.trim().toLowerCase();
+    
+    // 2. DB에서 유저 정보 확인
     const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        email: true,
-        name: true,
-        tier: true,
-      },
+      where: { email: session.user.email } 
     });
 
     if (!user) {
-      return NextResponse.json({ error: "유저를 찾을 수 없습니다." }, { status: 404 });
+      return NextResponse.json({ 
+        ok: true, 
+        totalItems: 0, 
+        maxLimit: 5, 
+        tier: "FREE", 
+        isAdmin: false 
+      });
     }
 
-    // 1. 각 항목별 개수 조회 (리뷰 분석 제외)
-    const smartstoreCount = await prisma.smartstoreProduct.count({ where: { userId } });
+    // 3. 사용 중인 개수 세기 (스마트스토어 + 장소)
+    const smartstoreCount = await prisma.smartstoreProduct.count({ where: { userId: user.id } });
+    const placeCount = await prisma.place.count({ where: { userId: user.id } });
+    const totalItems = smartstoreCount + placeCount; 
+
+    // 4. 권한 및 제한(Limit) 결정
+    const isAdmin = userEmail === ADMIN_EMAIL.toLowerCase();
+    let maxLimit = 5; // 기본 FREE 유저는 5개
     
-    const naverMapCount = await prisma.place.count({
-      where: { userId, type: { in: ["rank", "review"] } }
-    });
-
-    const kakaoMapCount = await prisma.place.count({
-      where: { userId, type: { in: ["kakao-place", "kakao-rank"] } }
-    });
-
-    // 2. 전체 합계 계산 (3가지 항목만 합산)
-    const totalItems = smartstoreCount + naverMapCount + kakaoMapCount;
-    const maxLimit = user.tier === "PRO" ? 999 : 10;
+    if (isAdmin) {
+      maxLimit = 9999; // 운영자 무제한
+    } else if (user.tier === "PRO") {
+      maxLimit = 50; // PRO 유저 100개
+    }
 
     return NextResponse.json({
       ok: true,
-      email: user.email,
-      name: user.name,
-      tier: user.tier,
-      counts: {
-        smartstore: smartstoreCount,
-        naverMap: naverMapCount,
-        kakaoMap: kakaoMapCount,
-      },
       totalItems,
       maxLimit,
+      isAdmin,
+      tier: user.tier,
     });
+
   } catch (error) {
-    console.error("user-quota fetch error:", error);
-    return NextResponse.json({ error: "조회 중 오류 발생" }, { status: 500 });
+    console.error("Quota API Error:", error);
+    // 서버 에러 시에도 기본값을 내려주어 UI가 깨지지 않게 합니다.
+    return NextResponse.json({ 
+      ok: true, 
+      totalItems: 0, 
+      maxLimit: 5, 
+      tier: "FREE", 
+      isAdmin: false 
+    });
   }
 }

@@ -7,51 +7,76 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --- 공통 설정 ---
 enum SmartstoreSpace {
   NAVER_PRICE
   PLUS_STORE
 }
 
-// 👇 1. 유저 티어를 구분하기 위한 Enum
 enum UserTier {
   FREE
   PRO
 }
 
+// --- 🚨 사용자 모델 (인증 및 관계 설정) ---
 model User {
   id                      String                   @id @default(cuid())
-  email                   String                   @unique
+  email                   String?                  @unique
   name                    String?
-  
-  // 👇 2. User 모델에 tier 필드 추가 (기본값 FREE)
+  image                   String?
   tier                    UserTier                 @default(FREE)
+  emailVerified           DateTime?
   
+  // 인증 관련 연결
+  accounts                Account[]
+  sessions                Session[]
+  
+  // 기존 기능 연결 (이 모델들이 아래에 정의되어 있어야 에러가 안 납니다)
   places                  Place[]
   smartstoreProducts      SmartstoreProduct[]
   smartstoreReviewTargets SmartstoreReviewTarget[]
+  posts                   Post[]
 }
 
-// =========================================================
-// 👇 여기서부터 있는 model Track, model Record 등은 그대로 두시면 됩니다!
-// model Track {
-//   ...
-// }
+// --- 🚨 인증 필수 모델 ---
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+refresh_token_expires_in Int?
 
-model Track {
-  id        String   @id @default(cuid())
-  keyword   String
-  placeUrl  String
-  createdAt DateTime @default(now())
-  records   Record[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
 }
 
-model Record {
-  id        String   @id @default(cuid())
-  rank      Int
-  createdAt DateTime @default(now())
-  trackId   String
-  track     Track    @relation(fields: [trackId], references: [id])
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- 🚨 기존 기능 모델 (오류 방지를 위해 모두 포함) ---
 
 model Place {
   id                 String               @id @default(cuid())
@@ -147,7 +172,6 @@ model PlaceReviewHistory {
   @@index([trackedDate])
 }
 
-//// 스마트스토어 가격비교 순위 추적 (Place / Kakao와 분리)
 model SmartstoreProduct {
   id            String          @id @default(cuid())
   userId        String
@@ -156,9 +180,7 @@ model SmartstoreProduct {
   productUrl    String
   name          String
   category      String?
-  // 네이버 상품 API: representImage.url · productImages 등에서 추출한 대표 썸네일
   thumbnailLink String?
-  // 목록·카드 UI 호환 (thumbnailLink와 동일 값으로 유지)
   imageUrl      String?
   mallName      String?
   sellerTags    String[]        @default([])
@@ -180,9 +202,6 @@ model SmartstoreProduct {
 model SmartstoreReviewTarget {
   id                    String   @id @default(cuid())
   userId                String
-  /**
-   * 네이버 상품 번호 (URL에서 추출)
-   */
   productId             String
   productUrl            String
   name                  String
@@ -279,9 +298,41 @@ model SmartstoreRankHistory {
   @@index([productId, keyword])
 }
 
-/// 시스템 단일 설정(쿠키 등). row 1개만 쓰는 전제.
 model SystemConfig {
-  id         String  @id
+  id          String   @id
   naverCookie String?
-  updatedAt  DateTime @updatedAt
+  updatedAt   DateTime @updatedAt
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  category  String
+  title     String
+  content   String   @db.Text
+  author    User     @relation(fields: [userId], references: [id])
+  userId    String
+  views     Int      @default(0)
+  likes     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// (기존 코드들 아래에 추가)
+
+model Track {
+  id        String   @id @default(cuid())
+  keyword   String
+  placeUrl  String
+  createdAt DateTime @default(now())
+  records   Record[]
+}
+
+model Record {
+  id        String   @id @default(cuid())
+  rank      Int
+  createdAt DateTime @default(now())
+  trackId   String
+  track     Track    @relation(fields: [trackId], references: [id])
 }

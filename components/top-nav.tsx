@@ -25,16 +25,13 @@ const TopNav = (_props: TopNavProps) => {
   >(null);
   const closeTimerRef = useRef<number | null>(null);
 
-  // =====================================================================
-  // [추가] 유저의 등록 사용량을 담을 state
-  // =====================================================================
   const [quota, setQuota] = useState<{
     totalItems: number;
     maxLimit: number;
     tier: string;
+    isAdmin?: boolean;
   } | null>(null);
 
-  // 컴포넌트 마운트 시 사용량 데이터 불러오기
   useEffect(() => {
     const fetchQuota = async () => {
       try {
@@ -46,6 +43,7 @@ const TopNav = (_props: TopNavProps) => {
               totalItems: data.totalItems,
               maxLimit: data.maxLimit,
               tier: data.tier,
+              isAdmin: data.isAdmin,
             });
           }
         }
@@ -54,8 +52,7 @@ const TopNav = (_props: TopNavProps) => {
       }
     };
     fetchQuota();
-  }, [pathname]); // 페이지 이동 시마다 갱신되도록 설정
-  // =====================================================================
+  }, [pathname]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -74,6 +71,8 @@ const TopNav = (_props: TopNavProps) => {
   };
 
   const isWhiteBg = pathname !== "/" || isScrolled;
+  
+  // 👉 각 메뉴의 활성화 상태 체크
   const isSmartStoreActive = pathname.startsWith("/smartstore");
   const isBlogActive = pathname.startsWith("/top-blog");
   const isPlaceActive = pathname.startsWith("/place");
@@ -81,17 +80,17 @@ const TopNav = (_props: TopNavProps) => {
     pathname.startsWith("/kakao-place") ||
     pathname.startsWith("/kakao-analysis") ||
     pathname.startsWith("/kakao-ranking");
+  
+  // 👉 커뮤니티 메뉴 활성화 상태 체크 추가
+  const isCommunityActive = pathname.startsWith("/community");
 
   const isPlaceRankActive = pathname === "/place" || pathname.startsWith("/place/");
   const isPlaceAnalysisActive = pathname.startsWith("/place-analysis");
   const isPlaceReviewActive = pathname.startsWith("/place-review");
 
-  // 가격비교(루트)만 활성. 하위 페이지는 각각의 메뉴에서 활성 처리.
   const isSmartstorePriceActive = pathname === "/smartstore";
   const isSmartstoreReviewActive = pathname.startsWith("/smartstore/review-track");
-  const isSmartstorePlusActive = pathname.startsWith(
-    "/smartstore/plus-store-ranking-track"
-  );
+  const isSmartstorePlusActive = pathname.startsWith("/smartstore/plus-store-ranking-track");
 
   const isBlogTopActive = pathname.startsWith("/top-blog");
 
@@ -150,7 +149,10 @@ const TopNav = (_props: TopNavProps) => {
         </div>
 
         <div className="hidden sm:flex items-center gap-10 text-base lg:text-lg text-slate-600">
+          
+          {/* ========================================================= */}
           {/* 스마트스토어 */}
+          {/* ========================================================= */}
           <div
             className="group relative flex h-full items-center"
             onMouseEnter={() => openMenu("smartstore")}
@@ -199,7 +201,6 @@ const TopNav = (_props: TopNavProps) => {
                       >
                         순위 추적
                       </span>
-
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-black/5">
                         <span className="text-[11px] font-black leading-none text-[#03c75a]">
                           N
@@ -234,7 +235,6 @@ const TopNav = (_props: TopNavProps) => {
                       >
                         순위 추적
                       </span>
-
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-black/5">
                         <span className="text-[11px] font-black leading-none text-[#03c75a]">
                           N
@@ -277,7 +277,9 @@ const TopNav = (_props: TopNavProps) => {
             </div>
           </div>
 
+          {/* ========================================================= */}
           {/* 네이버 블로그 */}
+          {/* ========================================================= */}
           <div
             className="group relative flex h-full items-center"
             onMouseEnter={() => openMenu("blog")}
@@ -334,7 +336,9 @@ const TopNav = (_props: TopNavProps) => {
             </div>
           </div>
 
+          {/* ========================================================= */}
           {/* 네이버 지도 */}
+          {/* ========================================================= */}
           <div
             className="group relative flex h-full items-center"
             onMouseEnter={() => openMenu("place")}
@@ -431,7 +435,9 @@ const TopNav = (_props: TopNavProps) => {
             </div>
           </div>
 
+          {/* ========================================================= */}
           {/* 카카오맵 */}
+          {/* ========================================================= */}
           <div
             className="group relative flex h-full items-center"
             onMouseEnter={() => openMenu("kakao")}
@@ -527,35 +533,67 @@ const TopNav = (_props: TopNavProps) => {
               </div>
             </div>
           </div>
+
+          {/* ========================================================= */}
+          {/* 👉 [추가] 커뮤니티 메뉴 */}
+          {/* ========================================================= */}
+          <div className="group relative flex h-full items-center">
+          <Link
+              href="/community"
+              aria-current={isCommunityActive ? "page" : undefined}
+              className={`${notoSansKr.className} flex items-center py-2 text-base lg:text-lg tracking-tighter leading-none transition-colors ${
+                isCommunityActive
+                  // 👇 현재 접속 중일 때도 파란 빛이 나도록 [text-shadow:...] 추가!
+                  ? "!text-black font-black [text-shadow:0_6px_18px_rgba(0,41,255,0.22)]"
+                  // 👇 마우스만 올렸을 때 파란 빛이 나는 효과
+                  : "text-slate-500 font-extrabold hover:!text-black hover:font-black hover:[text-shadow:0_6px_18px_rgba(0,41,255,0.22)]"
+              }`}
+            >
+              커뮤니티
+            </Link>
+
+            <div
+              className={`absolute bottom-0 left-0 right-0 h-[2px] origin-left bg-[#86A9C6] transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                isCommunityActive ? "scale-x-100" : "scale-x-0"
+              }`}
+            />
+          </div>
+
         </div>
 
         {/* 우측 상단 (사용량 뱃지 + 내정보 + 로그아웃) */}
         <div className="flex items-center gap-3">
           
-          {/* ========================================================= */}
-          {/* [추가] 사용량 뱃지 표시 영역 */}
-          {/* ========================================================= */}
-          {quota && (
+        {quota && (
             <div className="hidden sm:flex items-center gap-1.5 rounded-full bg-slate-100/80 px-3 py-1.5 text-[12px] font-bold shadow-sm ring-1 ring-slate-200 backdrop-blur-sm">
-              <span className={quota.tier === "PRO" ? "text-[#0051FF]" : "text-emerald-500"}>
-                {quota.tier}
-              </span>
-              <span className="text-slate-300">|</span>
-              <span className="flex items-center gap-0.5">
-                <span className={quota.totalItems >= quota.maxLimit ? "text-red-500" : "text-slate-700"}>
-                  {quota.totalItems}
-                </span>
-                <span className="text-slate-400 font-medium">/ {quota.maxLimit}</span>
-              </span>
+              {quota.isAdmin ? (
+                <>
+                  <span className="text-[#0051FF]">운영자</span>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-slate-800">무제한</span>
+                </>
+              ) : (
+                <>
+                  <span className={quota.tier === "PRO" ? "text-[#0051FF]" : "text-emerald-500"}>
+                    {quota.tier}
+                  </span>
+                  <span className="text-slate-300">|</span>
+                  <span className="flex items-center gap-0.5 text-slate-700">
+                    <span className={quota.totalItems >= quota.maxLimit ? "text-red-500" : ""}>
+                      {quota.totalItems}
+                    </span>
+                    <span className="text-slate-400 font-medium">/ {quota.maxLimit}</span>
+                  </span>
+                </>
+              )}
             </div>
           )}
-          {/* ========================================================= */}
 
           <button
-  onClick={() => router.push("/profile")} // 생성한 /profile 페이지로 이동
-  className="p-2 text-slate-600 hover:text-slate-900 transition-colors"
-  title="내 정보"
->
+            onClick={() => router.push("/profile")}
+            className="p-2 text-slate-600 hover:text-slate-900 transition-colors"
+            title="내 정보"
+          >
             <svg
               className="h-5 w-5"
               fill="none"
@@ -570,6 +608,7 @@ const TopNav = (_props: TopNavProps) => {
               />
             </svg>
           </button>
+          
           <button
             onClick={handleLogout}
             className="p-2 text-slate-600 transition-colors hover:text-red-500"

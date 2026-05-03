@@ -2,23 +2,59 @@
 
 import React, { useEffect, useState } from "react";
 import TopNav from "@/components/top-nav";
-import { User, ShieldCheck, Database, Package, MapPin, Map as MapIcon } from "lucide-react";
+import { User, ShieldCheck, Database, Package, MapPin, Map as MapIcon, RefreshCcw } from "lucide-react";
+import { signOut } from "next-auth/react";
 
 export default function ProfilePage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     fetch("/api/user-quota")
       .then((res) => res.json())
       .then((res) => {
-        if (res.ok) setData(res);
+        if (res.ok) {
+          setData(res);
+        } else if (res.relogin) {
+          // DB 초기화 등으로 세션이 꼬인 경우 강제 로그아웃 처리
+          setErrorMsg(res.error);
+          setTimeout(() => signOut({ callbackUrl: "/login" }), 2000);
+        } else {
+          setErrorMsg("정보를 불러오지 못했습니다.");
+        }
       })
+      .catch(() => setErrorMsg("서버 통신 오류가 발생했습니다."))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-10 text-center">불러오는 중...</div>;
-  if (!data) return <div className="p-10 text-center text-red-500">정보를 불러오지 못했습니다.</div>;
+  if (loading) return (
+    <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
+      <div className="flex flex-col items-center gap-3">
+        <RefreshCcw className="animate-spin text-blue-500" size={32} />
+        <p className="text-sm font-bold text-slate-500">정보를 불러오는 중...</p>
+      </div>
+    </div>
+  );
+
+  // 에러 발생 시 기존 UI 톤 유지하며 안내
+  if (errorMsg || !data) return (
+    <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] px-6">
+      <div className="w-full max-w-[400px] rounded-[24px] bg-white p-8 text-center shadow-sm border border-slate-200">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500">
+          <User size={24} />
+        </div>
+        <h2 className="mb-2 text-lg font-bold text-slate-900">{errorMsg}</h2>
+        <p className="mb-6 text-sm text-slate-500 leading-relaxed">잠시 후 로그인 페이지로 이동합니다.<br/>또는 아래 버튼을 눌러주세요.</p>
+        <button 
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="w-full rounded-xl bg-[#333333] py-3 text-[14px] font-bold text-white transition-all hover:bg-black"
+        >
+          다시 로그인하기
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -28,7 +64,7 @@ export default function ProfilePage() {
           <h1 className="text-[28px] font-black tracking-tight text-[#111827] mb-8">내 정보</h1>
 
           <div className="grid gap-6">
-            {/* 계정 정보 카드 */}
+            {/* 계정 정보 카드 - 기존 디자인 유지 */}
             <div className="rounded-[24px] border border-[#e5e7eb] bg-white p-8 shadow-sm">
               <div className="flex items-center gap-5">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#eff6ff] text-[#2563eb]">
@@ -51,7 +87,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* 전체 등록 현황 카드 */}
+            {/* 전체 등록 현황 카드 - 기존 디자인 유지 */}
             <div className="rounded-[24px] border border-[#e5e7eb] bg-white p-8 shadow-sm">
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-2 text-lg font-bold text-[#111827]">
@@ -64,7 +100,6 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* 진행률 바 */}
               <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100">
                 <div 
                   className={`h-full transition-all duration-500 ${data.totalItems >= data.maxLimit ? "bg-red-500" : "bg-blue-600"}`}
@@ -72,30 +107,26 @@ export default function ProfilePage() {
                 />
               </div>
 
-              {/* 3개 카테고리 상세 내역 */}
               <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* 1. 스마트스토어 */}
                 <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
                   <div className="flex items-center gap-2 text-[13px] font-bold text-slate-500 mb-2">
                     <Package size={16} /> 스마트스토어
                   </div>
-                  <div className="text-2xl font-black text-slate-900">{data.counts.smartstore}개</div>
+                  <div className="text-2xl font-black text-slate-900">{data.counts?.smartstore || 0}개</div>
                 </div>
 
-                {/* 2. 네이버 지도 */}
                 <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
                   <div className="flex items-center gap-2 text-[13px] font-bold text-slate-500 mb-2">
                     <MapPin size={16} /> 네이버 지도
                   </div>
-                  <div className="text-2xl font-black text-slate-900">{data.counts.naverMap}개</div>
+                  <div className="text-2xl font-black text-slate-900">{data.counts?.naverMap || 0}개</div>
                 </div>
 
-                {/* 3. 카카오맵 */}
                 <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
                   <div className="flex items-center gap-2 text-[13px] font-bold text-slate-500 mb-2">
                     <MapIcon size={16} /> 카카오맵
                   </div>
-                  <div className="text-2xl font-black text-slate-900">{data.counts.kakaoMap}개</div>
+                  <div className="text-2xl font-black text-slate-900">{data.counts?.kakaoMap || 0}개</div>
                 </div>
               </div>
             </div>
