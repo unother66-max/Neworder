@@ -440,10 +440,12 @@ export default function Home() {
                       </td>
 
                       <td className="border-b border-[#e5e7eb] px-4 py-4 text-[14px] font-semibold text-[#6b7280]">
-                        {typeof post.searchVolume === "object"
-                          ? (post.searchVolume?.total ? post.searchVolume.total.toLocaleString() : "-")
-                          : (post.searchVolume ? Number(post.searchVolume).toLocaleString() : "-")}
-                      </td>
+  {typeof post.searchVolume === "object"
+    ? (post.searchVolume?.total ? post.searchVolume.total.toLocaleString() : "-")
+    : (post.searchVolume === "-" || post.searchVolume === "NaN" || isNaN(Number(post.searchVolume)) 
+        ? "-" 
+        : Number(post.searchVolume).toLocaleString())}
+</td>
                     </tr>
                   ))}
                 </tbody>

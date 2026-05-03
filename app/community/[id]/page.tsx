@@ -6,7 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, User, Calendar, Eye } from "lucide-react";
 import { useSession } from "next-auth/react"; 
 
-// 🚨 스와이프 버튼 부품을 바깥으로 완전히 분리했습니다! (이제 절대 안 고장납니다)
+// 🚨 스와이프 버튼 부품 (원본 그대로 유지)
 const SwipeButton = ({ children, onClick, defaultBg = "bg-[#333333]", hoverBg = "bg-[#2563eb]", disabled = false, className = "" }: any) => {
   const [isHovered, setIsHovered] = useState(false);
   return (
@@ -165,7 +165,10 @@ export default function CommunityDetailPage() {
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400"><User size={20} /></div>
                 <div>
-                  <div className="text-[14px] font-bold text-slate-800">{post.author?.name || "익명"}</div>
+                  {/* 🚨 [수정] 본문 작성자 표시 (관리자 이메일일 경우 "포스트랩스" 표시) */}
+                  <div className="text-[14px] font-bold text-slate-800">
+                    {post.author?.email === ADMIN_EMAIL ? "포스트랩스" : (post.author?.name || "익명")}
+                  </div>
                   <div className="flex items-center gap-3 text-[12px] text-slate-400 mt-0.5">
                     <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(post.createdAt).toLocaleDateString()}</span>
                     <span className="flex items-center gap-1"><Eye size={14} /> {post.views}</span>
@@ -175,7 +178,6 @@ export default function CommunityDetailPage() {
 
               {canEditOrDelete && (
                 <div className="flex gap-2">
-                  {/* 🚨 글 수정/삭제 버튼 스와이프 */}
                   <SwipeButton defaultBg="bg-slate-400" hoverBg="bg-[#2563eb]" onClick={() => router.push(`/community/${params.id}/edit`)} className="px-4 py-1.5 rounded-full text-[13px]">
                     수정
                   </SwipeButton>
@@ -202,7 +204,6 @@ export default function CommunityDetailPage() {
                 className="w-full h-[80px] bg-transparent text-[14px] outline-none resize-none text-slate-800"
               />
               <div className="flex justify-end mt-2">
-                {/* 🚨 댓글 등록 버튼 스와이프 */}
                 <SwipeButton 
                   disabled={!session || isSubmitting || !commentInput.trim()}
                   onClick={handleCommentSubmit}
@@ -226,7 +227,10 @@ export default function CommunityDetailPage() {
                     <div className="flex flex-col w-full pt-1">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-black text-slate-800">{comment.author?.name || "익명"}</span>
+                          {/* 🚨 [수정] 댓글 작성자 표시 (관리자 이메일일 경우 "포스트랩스" 표시) */}
+                          <span className="text-[13px] font-black text-slate-800">
+                            {comment.author?.email === ADMIN_EMAIL ? "포스트랩스" : (comment.author?.name || "익명")}
+                          </span>
                           <span className="text-[11px] font-medium text-slate-400">{new Date(comment.createdAt).toLocaleDateString()}</span>
                         </div>
                         {canManageComm && editingCommentId !== comment.id && (
@@ -246,7 +250,6 @@ export default function CommunityDetailPage() {
                           />
                           <div className="flex justify-end gap-2 mt-3">
                             <button onClick={() => setEditingCommentId(null)} className="px-4 py-2 bg-slate-100 text-slate-500 text-[12px] font-bold rounded-[8px] hover:bg-slate-200 transition-colors">취소</button>
-                            {/* 🚨 댓글 저장 버튼 스와이프 */}
                             <SwipeButton onClick={() => handleCommentEditSubmit(comment.id)} className="px-5 py-2 rounded-[8px] text-[12px]">
                               저장
                             </SwipeButton>

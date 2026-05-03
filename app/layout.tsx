@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local"; // 🚨 localFont 불러오기
+import localFont from "next/font/local";
 import "./globals.css";
 import ScrollTracker from "./components/ScrollTracker";
 import Providers from "./providers";
+import KakaoChatButton from "@/components/kakao-chat-button";
 
-// 1️⃣ Poppins 폰트 설정 (영문용)
+// 1️⃣ Poppins 폰트 설정
 const poppins = localFont({
-  src: "../public/fonts/Poppins-Medium.woff", // app 폴더 기준 public 폴더 경로
+  src: "../public/fonts/Poppins-Medium.woff",
   variable: "--font-poppins",
   display: "swap",
 });
 
-// 2️⃣ Noto Sans KR 폰트 설정 (국문용)
+// 2️⃣ Noto Sans KR 폰트 설정
 const notoSansKR = localFont({
   src: "../public/fonts/NotoSansKR-Regular.woff",
   variable: "--font-noto-sans-kr",
@@ -29,9 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // 3️⃣ html에 폰트 변수(variable) 주입
     <html lang="ko" suppressHydrationWarning className={`${poppins.variable} ${notoSansKR.variable}`}>
-      {/* 4️⃣ 기존 inter 대신 Noto Sans KR을 기본 클래스로 적용 */}
       <body className={notoSansKR.className} suppressHydrationWarning>
         <ScrollTracker />
 
@@ -39,6 +38,10 @@ export default function RootLayout({
         <Providers>
           <div className="relative z-20">{children}</div>
         </Providers>
+        
+        {/* 🚨 2. 여기에 톡상담 버튼 추가 (모든 페이지 공통 적용) */}
+        <KakaoChatButton />
+        
       </body>
     </html>
   );
