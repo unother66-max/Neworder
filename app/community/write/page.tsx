@@ -11,15 +11,17 @@ export default function CommunityWritePage() {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [content, setContent] = useState("");
+  
+  // 🚨 비밀글 상태 추가
+  const [isSecret, setIsSecret] = useState(false); 
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 🚨 관리자 이메일 설정
   const ADMIN_EMAIL = "natalie0@nate.com";
   
-  // 🚨 마법의 코드 적용: 양쪽 다 소문자로 바꾸고 공백을 없애서 비교합니다.
   const currentUserEmail = session?.user?.email?.trim().toLowerCase() || "";
   const isAdmin = status === "authenticated" && currentUserEmail === ADMIN_EMAIL.toLowerCase();
 
@@ -33,7 +35,8 @@ export default function CommunityWritePage() {
       const res = await fetch("/api/community", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, category, content })
+        // 🚨 서버로 보낼 때 isSecret(비밀글 여부) 데이터도 함께 전송합니다!
+        body: JSON.stringify({ title, category, content, isSecret }) 
       });
       
       const data = await res.json();
@@ -57,7 +60,9 @@ export default function CommunityWritePage() {
       <TopNav />
       <main className="min-h-screen bg-white pt-24 pb-20">
         <div className="mx-auto max-w-[900px] px-6">
-          <h1 className="text-[22px] font-black tracking-tight text-[#111827] mb-8 italic">커뮤니티 글 작성</h1>
+          {/* 🚨 italic 클래스를 제거하여 글씨를 반듯하게 폈습니다 */}
+          <h1 className="text-[22px] font-black tracking-tight text-[#111827] mb-8">커뮤니티 글 작성</h1>
+          
           <form onSubmit={handleSubmit} className="flex flex-col gap-6">
             <div>
                <label className="block text-[14px] font-bold text-slate-800 mb-2">카테고리</label>
@@ -67,17 +72,38 @@ export default function CommunityWritePage() {
                  className="w-full border border-slate-200 rounded-[12px] h-[48px] px-4 text-[14px] outline-none focus:border-blue-500 bg-white cursor-pointer"
                >
                  <option value="">선택</option>
-                 {/* 관리자일 때만 '공지' 옵션을 보여줍니다. */}
                  {isAdmin && <option value="공지">공지</option>}
                  <option value="질문">질문</option>
                  <option value="요청">요청</option>
                  <option value="자유">자유</option>
                </select>
             </div>
+            
             <div>
                <label className="block text-[14px] font-bold text-slate-800 mb-2">제목</label>
                <input value={title} onChange={e => setTitle(e.target.value)} type="text" placeholder="제목 입력" className="w-full border border-slate-200 rounded-[12px] h-[48px] px-4 text-[14px] outline-none focus:border-blue-500" />
+               
+               {/* 🚨 비밀글 설정 체크박스 UI 추가 (포스트랩스 스타일에 맞춘 커스텀 디자인) */}
+               <label className="mt-3 flex items-center gap-2 cursor-pointer w-fit group">
+                 <div className="relative flex items-center">
+                   <input 
+                     type="checkbox" 
+                     checked={isSecret}
+                     onChange={(e) => setIsSecret(e.target.checked)}
+                     className="peer sr-only" 
+                   />
+                   <div className="w-5 h-5 border-2 border-slate-300 rounded-[6px] peer-checked:bg-[#333333] peer-checked:border-[#333333] transition-all flex items-center justify-center group-hover:border-[#333333]">
+                     <svg className={`w-3 h-3 text-white ${isSecret ? 'opacity-100' : 'opacity-0'} transition-opacity`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                     </svg>
+                   </div>
+                 </div>
+                 <span className="text-[14px] font-bold text-slate-700 flex items-center gap-1.5 select-none">
+                   비밀글 설정  <span className="text-[12px] font-medium text-slate-400 font-normal ml-1"></span>
+                 </span>
+               </label>
             </div>
+
             <div>
                <label className="block text-[14px] font-bold text-slate-800 mb-2">내용</label>
                <textarea ref={textareaRef} value={content} onChange={e => setContent(e.target.value)} placeholder="내용을 입력해주세요." className="w-full min-h-[400px] p-5 text-[14px] leading-relaxed border border-slate-200 rounded-[12px] outline-none resize-none focus:border-blue-500" />

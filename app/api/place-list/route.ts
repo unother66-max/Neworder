@@ -5,6 +5,7 @@ import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store"; // 🚨 캐시 완벽 차단!
 
 function formatUpdatedAt(value: unknown) {
   if (!value) return null;
@@ -64,9 +65,12 @@ function normalizeDailyRankHistory(items: RankHistoryItem[]) {
     const dateKey = getDateKey(item.createdAt);
     const key = `${item.keyword}__${dateKey}`;
 
-    // 같은 날짜/같은 키워드가 여러 개면
-    // 마지막(더 이른 시각) 값으로 덮어쓰기
-    map.set(key, item);
+    // 🚨 핵심 수정 부분: 
+    // 기존에는 옛날 데이터로 덮어씌웠지만, 
+    // 이제는 '가장 먼저 읽힌(가장 최신)' 데이터만 Map에 담고 이후 과거 데이터는 무시합니다.
+    if (!map.has(key)) {
+      map.set(key, item);
+    }
   }
 
   return Array.from(map.values()).sort(

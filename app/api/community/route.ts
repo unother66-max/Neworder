@@ -36,7 +36,9 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { title, category, content } = body;
+    
+    // 🚨 프론트엔드에서 보낸 isSecret 값을 추가로 받아옵니다.
+    const { title, category, content, isSecret } = body;
 
     // 🚨 관리자 권한 체크 로직 보강
     if (category === "공지" && userEmail !== ADMIN_EMAIL.toLowerCase()) {
@@ -52,6 +54,7 @@ export async function POST(req: Request) {
         title,
         category,
         content,
+        isSecret: isSecret || false, // 🚨 전달받은 비밀글 여부를 DB에 저장합니다. (없으면 기본값 false)
         userId
       }
     });

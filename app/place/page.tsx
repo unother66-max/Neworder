@@ -578,7 +578,6 @@ export default function PlacePage() {
     setKwManageHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
-  // 모달 마우스 무브 핸들러
   const handleModalSearchMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setModalSearchMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -618,7 +617,7 @@ export default function PlacePage() {
 
       setPlaceLoading(true);
 
-      const res = await fetch("/api/place-list", {
+      const res = await fetch(`/api/place-list?t=${Date.now()}`, {
         cache: "no-store",
         credentials: "include",
       });
@@ -1064,28 +1063,18 @@ export default function PlacePage() {
 
   const handleCheckRanks = async (filteredIndex: number) => {
     const targetStore = filteredStores[filteredIndex];
-
-    const realIndex = stores.findIndex(
-      (item) =>
-        item.name === targetStore.name &&
-        item.address === targetStore.address &&
-        item.dbId === targetStore.dbId
-    );
-
+    const realIndex = stores.findIndex((item) => item.name === targetStore.name && item.address === targetStore.address && item.dbId === targetStore.dbId);
     if (realIndex === -1) return;
 
     const target = stores[realIndex];
-
     if (!target.placeId) {
       alert("placeId가 없어 순위 조회를 할 수 없어요. 매장을 다시 등록해주세요.");
       return;
     }
-
     if (target.keywords.length === 0) {
       alert("먼저 키워드를 등록해주세요.");
       return;
     }
-
     if (target.keywords.length > MAX_KEYWORDS_PER_STORE) {
       alert(`키워드는 매장당 최대 ${MAX_KEYWORDS_PER_STORE}개까지만 순위 조회할 수 있어요.`);
       return;
@@ -1095,39 +1084,56 @@ export default function PlacePage() {
 
     try {
       const batches = chunkArray(target.keywords, RANK_CHECK_BATCH_SIZE);
-
       for (const batch of batches) {
         for (const item of batch) {
           const response = await fetch("/api/check-place-rank", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               keyword: item.keyword,
               targetName: target.name,
               x: target.x,
               y: target.y,
-              ...(item.placeKeywordId
-                ? { placeKeywordId: item.placeKeywordId }
-                : {}),
+              ...(item.placeKeywordId ? { placeKeywordId: item.placeKeywordId } : {}),
             }),
           });
 
           const data = await response.json();
-
           if (!response.ok) {
             console.error("rank check error:", item.keyword, data);
             continue;
           }
 
+          // 🚨 실시간 UI 업데이트 (찾아진 순위 그대로 화면에 적용, '-'면 '-'로 표시)
+          setStores((prevStores) =>
+            prevStores.map((store, sIdx) => {
+              if (sIdx === realIndex) {
+                return {
+                  ...store,
+                  latestUpdatedAtText: formatKST(new Date()),
+                  keywords: store.keywords.map((kw) => {
+                    if (kw.keyword === item.keyword) {
+                      return {
+                        ...kw,
+                        rank: String(data.rank),
+                        currentRank: String(data.rank),
+                        rankChange: getRankChangeValue(kw.previousRank, data.rank),
+                      };
+                    }
+                    return kw;
+                  }),
+                };
+              }
+              return store;
+            })
+          );
+
+          // 🚨 999 삭제 완료! 순위가 제대로 된 '숫자'일 때만 DB에 저장 (순위 밖 '-' 이면 DB 저장 무시)
           if (item.placeKeywordId && data.rank && data.rank !== "-") {
             try {
               await fetch("/api/place-rank-history-save", {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   placeKeywordId: item.placeKeywordId,
                   rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
@@ -1137,10 +1143,11 @@ export default function PlacePage() {
               console.error("rank history save error", historyError);
             }
           }
+
+          // 🚨 [백조의 발차기] 네이버 차단 방지를 위해 키워드 1개 검사 후 2초 휴식! (사람인 척)
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       }
-
-      await fetchPlaces();
     } catch (error) {
       console.error(error);
       alert("순위 조회 중 오류가 났어요.");

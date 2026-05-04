@@ -310,6 +310,7 @@ model Post {
   category  String
   title     String
   content   String   @db.Text
+  isSecret  Boolean  @default(false) // 🚨 비밀글 여부 저장 컬럼 추가! (기본값은 일반글)
   author    User     @relation(fields: [userId], references: [id])
   userId    String
   views     Int      @default(0)
