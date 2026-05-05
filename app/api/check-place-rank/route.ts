@@ -19,9 +19,6 @@ export const maxDuration = 120;
 const DISPLAY = 280;
 const SEARCH_CAP = 280;
 
-// 🚨 [추가] 네이버 API 차단(429 에러) 방지를 위한 딜레이 함수
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 function normalizeText(value: unknown) {
   if (value == null) return "";
   if (typeof value === "object") return "";
@@ -175,30 +172,23 @@ export async function POST(req: Request) {
     });
 
     const relatedCandidates = [keyword, `${keyword} 추천`, `${keyword} 근처`];
+
     const related = [];
 
-    // 🚨 [수정] for...of 문을 사용해 요청 사이에 딜레이(숨 고르기)를 줍니다.
-    for (let i = 0; i < relatedCandidates.length; i++) {
-      const k = relatedCandidates[i];
+    for (const k of relatedCandidates) {
       try {
         const volume = await getKeywordSearchVolume(k);
         related.push({
           keyword: k,
           ...volume,
         });
-      } catch (e) {
-        console.warn(`[check-place-rank] 키워드 검색량 조회 실패 (${k})`);
+      } catch {
         related.push({
           keyword: k,
           total: 0,
           mobile: 0,
           pc: 0,
         });
-      }
-
-      // 마지막 키워드가 아니면 0.5초(500ms) 대기 후 다음 요청 진행
-      if (i < relatedCandidates.length - 1) {
-        await delay(500);
       }
     }
 

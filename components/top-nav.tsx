@@ -74,7 +74,7 @@ const TopNav = (_props: TopNavProps) => {
   
   // 👉 각 메뉴의 활성화 상태 체크
   const isSmartStoreActive = pathname.startsWith("/smartstore");
-  const isBlogActive = pathname.startsWith("/top-blog");
+  const isBlogActive = pathname.startsWith("/top-blog") || pathname.startsWith("/blog-analysis");
   const isPlaceActive = pathname.startsWith("/place");
   const isKakaoActive =
     pathname.startsWith("/kakao-place") ||
@@ -92,8 +92,11 @@ const TopNav = (_props: TopNavProps) => {
   const isSmartstoreReviewActive = pathname.startsWith("/smartstore/review-track");
   const isSmartstorePlusActive = pathname.startsWith("/smartstore/plus-store-ranking-track");
 
-  const isBlogTopActive = pathname.startsWith("/top-blog");
-
+ // 93번 줄 근처에 있을 거예요. 그 밑에 한 줄 추가!
+const isBlogTopActive = pathname.startsWith("/top-blog");
+const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); // <--- 이 줄을 새로 추가하세요
+  
+  
   const isKakaoPlaceActive = pathname.startsWith("/kakao-place");
   const isKakaoAnalysisActive = pathname.startsWith("/kakao-analysis");
   const isKakaoRankingActive = pathname.startsWith("/kakao-ranking");
@@ -331,6 +334,26 @@ const TopNav = (_props: TopNavProps) => {
                       체험단 / 상위 블로그 확인
                     </span>
                   </Link>
+                  <Link
+  href="/blog-analysis"
+  aria-current={isBlogAnalysisActive ? "page" : undefined}
+  className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+    isBlogAnalysisActive ? "bg-blue-50/40 pl-6" : ""
+  }`}
+>
+  <span
+    className={`text-sm font-bold ${
+      isBlogAnalysisActive
+        ? "text-[#0051FF]"
+        : "text-slate-800 group-hover/item:text-[#0051FF]"
+    }`}
+  >
+    블로그 분석
+  </span>
+  <span className="text-[11px] text-slate-400 mt-0.5">
+    내 블로그 지수 및 채널 정밀 분석
+  </span>
+</Link>
                 </div>
               </div>
             </div>
