@@ -19,8 +19,9 @@ export default function LoginPage() {
 
         <h1 className="mt-8 text-[28px] font-black text-black">로그인</h1>
 
+        {/* 🚨 [핵심 수정] 기존 버튼에 { prompt: "login" } 옵션을 추가했습니다. */}
         <button
-          onClick={() => signIn("kakao", { callbackUrl: "/place" })}
+          onClick={() => signIn("kakao", { callbackUrl: "/place" }, { prompt: "login" })}
           className="mt-10 flex h-[62px] w-full items-center justify-center gap-3 rounded-[12px] bg-[#FEE500] text-[18px] font-bold text-black"
         >
           <span className="text-[20px]">💬</span>

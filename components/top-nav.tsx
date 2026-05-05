@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Noto_Sans_KR } from "next/font/google";
+import { useSession, signOut } from "next-auth/react"; 
 
 type TopNavProps = {
   active?: unknown;
@@ -19,6 +20,8 @@ const notoSansKr = Noto_Sans_KR({
 const TopNav = (_props: TopNavProps) => {
   const router = useRouter();
   const pathname = usePathname();
+  const { data: session, status } = useSession(); 
+  
   const [isScrolled, setIsScrolled] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<
     "smartstore" | "blog" | "place" | "kakao" | null
@@ -32,7 +35,23 @@ const TopNav = (_props: TopNavProps) => {
     isAdmin?: boolean;
   } | null>(null);
 
+  // 🚨 [추가] 로그인 버튼 호버 및 마우스 위치 추적 상태
+  const [isLoginHovered, setIsLoginHovered] = useState(false);
+  const [loginMousePos, setLoginMousePos] = useState({ x: 0, y: 0 });
+
+  const handleLoginMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setLoginMousePos({ x, y });
+  };
+
   useEffect(() => {
+    if (!session) {
+      setQuota(null);
+      return;
+    }
+
     const fetchQuota = async () => {
       try {
         const res = await fetch("/api/user-quota");
@@ -52,7 +71,7 @@ const TopNav = (_props: TopNavProps) => {
       }
     };
     fetchQuota();
-  }, [pathname]);
+  }, [pathname, session]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -64,15 +83,14 @@ const TopNav = (_props: TopNavProps) => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm("로그아웃 하시겠습니까?")) {
-      router.push("/login");
+      await signOut({ callbackUrl: "/login" });
     }
   };
 
   const isWhiteBg = pathname !== "/" || isScrolled;
   
-  // 👉 각 메뉴의 활성화 상태 체크
   const isSmartStoreActive = pathname.startsWith("/smartstore");
   const isBlogActive = pathname.startsWith("/top-blog") || pathname.startsWith("/blog-analysis");
   const isPlaceActive = pathname.startsWith("/place");
@@ -81,7 +99,6 @@ const TopNav = (_props: TopNavProps) => {
     pathname.startsWith("/kakao-analysis") ||
     pathname.startsWith("/kakao-ranking");
   
-  // 👉 커뮤니티 메뉴 활성화 상태 체크 추가
   const isCommunityActive = pathname.startsWith("/community");
 
   const isPlaceRankActive = pathname === "/place" || pathname.startsWith("/place/");
@@ -92,10 +109,8 @@ const TopNav = (_props: TopNavProps) => {
   const isSmartstoreReviewActive = pathname.startsWith("/smartstore/review-track");
   const isSmartstorePlusActive = pathname.startsWith("/smartstore/plus-store-ranking-track");
 
- // 93번 줄 근처에 있을 거예요. 그 밑에 한 줄 추가!
-const isBlogTopActive = pathname.startsWith("/top-blog");
-const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); // <--- 이 줄을 새로 추가하세요
-  
+  const isBlogTopActive = pathname.startsWith("/top-blog");
+  const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); 
   
   const isKakaoPlaceActive = pathname.startsWith("/kakao-place");
   const isKakaoAnalysisActive = pathname.startsWith("/kakao-analysis");
@@ -335,25 +350,25 @@ const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); // <--- 이 
                     </span>
                   </Link>
                   <Link
-  href="/blog-analysis"
-  aria-current={isBlogAnalysisActive ? "page" : undefined}
-  className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
-    isBlogAnalysisActive ? "bg-blue-50/40 pl-6" : ""
-  }`}
->
-  <span
-    className={`text-sm font-bold ${
-      isBlogAnalysisActive
-        ? "text-[#0051FF]"
-        : "text-slate-800 group-hover/item:text-[#0051FF]"
-    }`}
-  >
-    블로그 분석
-  </span>
-  <span className="text-[11px] text-slate-400 mt-0.5">
-    내 블로그 지수 및 채널 정밀 분석
-  </span>
-</Link>
+                    href="/blog-analysis"
+                    aria-current={isBlogAnalysisActive ? "page" : undefined}
+                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                      isBlogAnalysisActive ? "bg-blue-50/40 pl-6" : ""
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-bold ${
+                        isBlogAnalysisActive
+                          ? "text-[#0051FF]"
+                          : "text-slate-800 group-hover/item:text-[#0051FF]"
+                      }`}
+                    >
+                      블로그 분석
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                      내 블로그 지수 및 채널 정밀 분석
+                    </span>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -558,17 +573,15 @@ const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); // <--- 이 
           </div>
 
           {/* ========================================================= */}
-          {/* 👉 [추가] 커뮤니티 메뉴 */}
+          {/* 커뮤니티 메뉴 */}
           {/* ========================================================= */}
           <div className="group relative flex h-full items-center">
-          <Link
+            <Link
               href="/community"
               aria-current={isCommunityActive ? "page" : undefined}
               className={`${notoSansKr.className} flex items-center py-2 text-base lg:text-lg tracking-tighter leading-none transition-colors ${
                 isCommunityActive
-                  // 👇 현재 접속 중일 때도 파란 빛이 나도록 [text-shadow:...] 추가!
                   ? "!text-black font-black [text-shadow:0_6px_18px_rgba(0,41,255,0.22)]"
-                  // 👇 마우스만 올렸을 때 파란 빛이 나는 효과
                   : "text-slate-500 font-extrabold hover:!text-black hover:font-black hover:[text-shadow:0_6px_18px_rgba(0,41,255,0.22)]"
               }`}
             >
@@ -584,73 +597,107 @@ const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); // <--- 이 
 
         </div>
 
-        {/* 우측 상단 (사용량 뱃지 + 내정보 + 로그아웃) */}
+        {/* 🚨 우측 상단 (로그인 / 사용자 정보 분기) */}
         <div className="flex items-center gap-3">
-          
-        {quota && (
-            <div className="hidden sm:flex items-center gap-1.5 rounded-full bg-slate-100/80 px-3 py-1.5 text-[12px] font-bold shadow-sm ring-1 ring-slate-200 backdrop-blur-sm">
-              {quota.isAdmin ? (
-                <>
-                  <span className="text-[#0051FF]">운영자</span>
-                  <span className="text-slate-300">|</span>
-                  <span className="text-slate-800">무제한</span>
-                </>
-              ) : (
-                <>
-                  <span className={quota.tier === "PRO" ? "text-[#0051FF]" : "text-emerald-500"}>
-                    {quota.tier}
-                  </span>
-                  <span className="text-slate-300">|</span>
-                  <span className="flex items-center gap-0.5 text-slate-700">
-                    <span className={quota.totalItems >= quota.maxLimit ? "text-red-500" : ""}>
-                      {quota.totalItems}
-                    </span>
-                    <span className="text-slate-400 font-medium">/ {quota.maxLimit}</span>
-                  </span>
-                </>
+          {status === "loading" ? (
+            <div className="h-8 w-8"></div>
+          ) : session ? (
+            // ✅ 로그인 된 상태
+            <>
+              {quota && (
+                <div className="hidden sm:flex items-center gap-1.5 rounded-full bg-slate-100/80 px-3 py-1.5 text-[12px] font-bold shadow-sm ring-1 ring-slate-200 backdrop-blur-sm">
+                  {quota.isAdmin ? (
+                    <>
+                      <span className="text-[#0051FF]">운영자</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-slate-800">무제한</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={quota.tier === "PRO" ? "text-[#0051FF]" : "text-emerald-500"}>
+                        {quota.tier}
+                      </span>
+                      <span className="text-slate-300">|</span>
+                      <span className="flex items-center gap-0.5 text-slate-700">
+                        <span className={quota.totalItems >= quota.maxLimit ? "text-red-500" : ""}>
+                          {quota.totalItems}
+                        </span>
+                        <span className="text-slate-400 font-medium">/ {quota.maxLimit}</span>
+                      </span>
+                    </>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          <button
-            onClick={() => router.push("/profile")}
-            className="p-2 text-slate-600 hover:text-slate-900 transition-colors"
-            title="내 정보"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-              />
-            </svg>
-          </button>
-          
-          <button
-            onClick={handleLogout}
-            className="p-2 text-slate-600 transition-colors hover:text-red-500"
-            title="로그아웃"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-          </button>
+              <button
+                onClick={() => router.push("/profile")}
+                className="p-2 text-slate-600 hover:text-slate-900 transition-colors"
+                title="내 정보"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="p-2 text-slate-600 transition-colors hover:text-red-500"
+                title="로그아웃"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </>
+          ) : (
+           // 🚨 [여기를 교체해주세요] 파란색 스와이프 로그인 버튼
+           <button
+           onClick={() => router.push("/login")}
+           onMouseEnter={() => setIsLoginHovered(true)}
+           onMouseLeave={() => setIsLoginHovered(false)}
+           onMouseMove={handleLoginMouseMove}
+           className={`
+             relative isolate z-20 inline-flex items-center px-6 py-2 rounded-full font-bold text-[13px] tracking-wide 
+             bg-transparent border-2 transition-colors duration-300 ease-in-out overflow-hidden
+             ${isLoginHovered ? 'border-[#2563EB]' : 'border-black'}
+           `}
+         >
+           {/* 글씨 (호버 시 흰색) */}
+           <span className="relative z-30 transition-colors duration-300" style={{ color: isLoginHovered ? "#FFFFFF" : "#000000" }}>
+             로그인
+           </span>
+
+           {/* 🌊 파란색 스와이프 배경 (#2563EB) */}
+           <div
+             className="pointer-events-none absolute inset-0 w-full h-full z-0"
+             style={{
+               transformOrigin: "left",
+               transform: isLoginHovered ? "scaleX(1)" : "scaleX(0)",
+               transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+               backgroundColor: "#2563EB",
+             }}
+           />
+
+           {/* ✨ 무료로 시작하기 버튼과 100% 동일한 빛 효과 */}
+           <div
+             className={`
+               absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+               transition-opacity duration-200 ease-out
+               ${isLoginHovered ? "opacity-100" : "opacity-0"}
+             `}
+             style={{
+               left: `${loginMousePos.x}px`,
+               top: `${loginMousePos.y}px`,
+               pointerEvents: "none",
+               zIndex: 25,
+               backgroundImage:
+                 "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+               mixBlendMode: "soft-light",
+               filter: "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.15))",
+             }}
+           />
+         </button>
+          )}
         </div>
       </div>
     </nav>
