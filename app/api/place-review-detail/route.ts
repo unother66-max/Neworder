@@ -48,7 +48,7 @@ export async function GET(req: Request) {
         },
         reviewHistory: {
           orderBy: { createdAt: "desc" },
-          take: 1,
+          take: 30,
         },
       },
     });

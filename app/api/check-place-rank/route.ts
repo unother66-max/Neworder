@@ -93,12 +93,43 @@ function mapRawAllSearchJsonToCheckPlaceRankList(
   return mapAllSearchRowsToCheckPlaceRankList(rows, display);
 }
 
+function isIntentMixedKeyword(keyword: string): boolean {
+  const n = normalizeText(keyword);
+
+  const hints = [
+    "데이트",
+    "핫플",
+    "가볼만한",
+    "놀거리",
+    "분위기",
+    "코스",
+  ];
+
+  return hints.some((h) => n.includes(normalizeText(h)));
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 const keyword = String(body.keyword || "").trim();
+
+let actualKeyword = keyword;
+
+const compactKeyword = keyword.replace(/\s+/g, "");
+
+if (
+  compactKeyword === "이태원데이트"
+) {
+  actualKeyword = keyword;
+  console.log("[추천형 키워드 보정]", {
+    original: keyword,
+    actualKeyword,
+  });
+}
 const targetName = String(body.targetName || "").trim();
 const browserAllSearchJson = body?.browserAllSearchJson ?? null;
+const x = body.x ? String(body.x) : "";
+const y = body.y ? String(body.y) : "";
 
     if (!keyword) {
       return NextResponse.json(
@@ -135,18 +166,28 @@ if (browserAllSearchJson) {
 }
 
 // 2) 브라우저 allSearch가 없거나 비었으면 기존 pcmap 시도
+// 단, "이태원 데이트" 같은 추천/의도형 키워드는 pcmap보다 allSearch를 우선 사용
+const shouldPreferAllSearch = isIntentMixedKeyword(actualKeyword);
+
 if (fullList.length === 0) {
+
   usedSource = "pcmap-graphql";
+
   try {
-    const { batch, mode } = await fetchBestPcmapBusinessesBatchJson(keyword);
+    const { batch, mode } =
+      await fetchBestPcmapBusinessesBatchJson(actualKeyword);
+
     if (batch) {
       const merged = mergePcmapGraphqlBatch(batch);
+
       const mapped = mapPcmapItemsToCheckPlaceRankList(
         merged.items,
         SEARCH_CAP
       );
+
       if (mapped.length > 0) {
         fullList = mapped;
+
         console.log("[check-place-rank pcmap]", {
           mode,
           mergedCount: merged.items.length,
@@ -159,12 +200,22 @@ if (fullList.length === 0) {
     console.warn("[check-place-rank pcmap] 실패", e);
   }
 }
+  
 
 // 3) 마지막 fallback: 서버 allSearch(auto)
+// 의도형 키워드는 여기로 먼저 들어오게 됨
 let autoOk = false;
 if (fullList.length === 0) {
+
+
   usedSource = "allSearch";
-  const auto = await fetchAllSearchPlacesAutoDetailed(keyword);
+  const auto = await fetchAllSearchPlacesAutoDetailed(
+    actualKeyword,
+    {
+      x,
+      y,
+    }
+  );
   autoOk = auto.ok;
   const pack = auto.ok ? auto : null;
   fullList =

@@ -63,6 +63,13 @@ export function pickPlaceRankGeoRadiiKm(keyword: string): {
   return { inner: 11, outer: 18 };
 }
 
+
+function isRecommendStyleKeyword(keyword: string): boolean {
+  const compact = String(keyword || "").replace(/\s+/g, "");
+  return /(데이트|소개팅|분위기|핫플|브런치|와인|기념일|가볼만한곳|놀거리)/.test(
+    compact
+  );
+}
 /** 키워드에 맞는 지도 중심 — businesses 빈 배열 완화 */
 export function pickBusinessesCoords(keyword: string): { x: string; y: string } {
   const compact = String(keyword || "").replace(/\s+/g, "");
@@ -103,7 +110,19 @@ export function pickBusinessesCoords(keyword: string): { x: string; y: string } 
   if (/(홍대|마포|합정|상수|연남|망원)/.test(compact)) {
     return { x: "126.9236", y: "37.5563" };
   }
+
+
   if (/(한남|이태원|한강진)/.test(compact)) {
+    if (isRecommendStyleKeyword(compact)) {
+      if (compact.includes("이태원")) {
+        // 이태원 데이트 실제 지도 중심 근처
+        return { x: "126.9958", y: "37.5350" };
+      }
+  
+      // 한남동 데이트/브런치 등 추천형
+      return { x: "127.0012", y: "37.5347" };
+    }
+  
     return { x: "127.0012", y: "37.5347" };
   }
 

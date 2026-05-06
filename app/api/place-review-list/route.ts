@@ -39,7 +39,7 @@ export async function GET() {
       where: {
         userId,
         type: "review",
-      },
+      }, 
       orderBy: [{ reviewPinned: "desc" }, { createdAt: "desc" }],
       include: {
         keywords: {
@@ -52,7 +52,7 @@ export async function GET() {
         },
         reviewHistory: {
           orderBy: { createdAt: "desc" },
-          take: 1,
+          take: 3,
         },
       },
     });

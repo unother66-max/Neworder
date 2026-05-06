@@ -94,14 +94,40 @@ export function getAllSearchPlaceBlock(json: unknown): AllSearchPlaceBlock {
 }
 
 /** 무토큰 allSearch URL — 검색어에 맞는 중심좌표(서울역·강남 등) */
-export function buildAllSearchUrlCheckPlaceRankStyle(keyword: string): string {
+export function buildAllSearchUrlCheckPlaceRankStyle(
+  keyword: string,
+  coords?: {
+    x?: string;
+    y?: string;
+  }
+): string {
   const trimmed = String(keyword || "").trim();
   const q = encodeURIComponent(trimmed);
-  const { x, y } = pickBusinessesCoords(trimmed);
-  const sc = `${x};${y}`;
-  const boundary = `${x};${y};${x};${y}`;
-  return `${NAVER_MAP_ALL_SEARCH_URL}?query=${q}&type=all&searchCoord=${sc}&boundary=${boundary}&sscode=svc.mapv5.search`;
+
+  const picked = pickBusinessesCoords(trimmed);
+
+  const searchX = coords?.x || picked.x;
+  const searchY = coords?.y || picked.y;
+
+  const boundary = [
+    Number(searchX) - 0.02,
+    Number(searchY) - 0.02,
+    Number(searchX) + 0.02,
+    Number(searchY) + 0.02,
+  ].join(";");
+
+  return (
+    `${NAVER_MAP_ALL_SEARCH_URL}` +
+    `?query=${q}` +
+    `&type=all` +
+  `&searchCoord=${searchX};${searchY}` +
+    `&boundary=${boundary}` +
+    `&displayCount=70` +
+    `&sscode=svc.mapv5.search`
+  );
 }
+
+ 
 
 export function buildAllSearchRefererCheckPlaceRankStyle(keyword: string): string {
   return `https://map.naver.com/p/search/${encodeURIComponent(
@@ -112,32 +138,59 @@ export function buildAllSearchRefererCheckPlaceRankStyle(keyword: string): strin
 /**
  * 토큰 allSearch URL 공통 — 검색어 기준 좌표(`pickBusinessesCoords`).
  */
-export function buildNaverMapAllSearchParams(keyword: string): {
+export function buildNaverMapAllSearchParams(
+  keyword: string,
+  coords?: {
+    x?: string;
+    y?: string;
+  }
+): {
   query: string;
   searchCoord: string;
   boundary: string;
 } {
   const trimmed = String(keyword || "").trim();
-  const { x, y } = pickBusinessesCoords(trimmed);
+
+  const picked = pickBusinessesCoords(trimmed);
+
+  const searchX = coords?.x || picked.x;
+  const searchY = coords?.y || picked.y;
+
+  const boundary = [
+    Number(searchX) - 0.02,
+    Number(searchY) - 0.02,
+    Number(searchX) + 0.02,
+    Number(searchY) + 0.02,
+  ].join(";");
+
   return {
     query: trimmed,
-    searchCoord: `${x};${y}`,
-    boundary: `${x};${y};${x};${y}`,
+    searchCoord: `${searchX};${searchY}`,
+    boundary,
   };
 }
 
 export function buildNaverMapAllSearchUrl(
   keyword: string,
-  token: string
+  token: string,
+  coords?: {
+    x?: string;
+    y?: string;
+  }
 ): string {
-  const { query, searchCoord, boundary } = buildNaverMapAllSearchParams(keyword);
+  const { query, searchCoord, boundary } =
+    buildNaverMapAllSearchParams(keyword, coords);
+
   const u = new URL(NAVER_MAP_ALL_SEARCH_URL);
+
   u.searchParams.set("query", query);
   u.searchParams.set("type", "all");
   u.searchParams.set("searchCoord", searchCoord);
   u.searchParams.set("boundary", boundary);
+  u.searchParams.set("displayCount", "70");
   u.searchParams.set("sscode", "svc.mapv5.search");
   u.searchParams.set("token", token);
+
   return u.toString();
 }
 
@@ -292,8 +345,14 @@ export function userMessageForAllSearchFailure(
  * 서버 무토큰 allSearch — 성공/실패와 사용자용 메시지까지 반환.
  */
 export async function fetchAllSearchPlacesCheckPlaceRankStyleDetailed(
-  keyword: string
-): Promise<FetchAllSearchCheckPlaceDetailedResult> {
+  keyword: string,
+  coords?: {
+    x?: string;
+    y?: string;
+  }
+)
+
+: Promise<FetchAllSearchCheckPlaceDetailedResult> {
   const trimmed = String(keyword || "").trim();
   if (!trimmed) {
     return {
@@ -303,7 +362,11 @@ export async function fetchAllSearchPlacesCheckPlaceRankStyleDetailed(
     };
   }
 
-  const url = buildAllSearchUrlCheckPlaceRankStyle(trimmed);
+  const url = buildAllSearchUrlCheckPlaceRankStyle(
+    trimmed,
+    coords
+  );
+
   let res: Response;
   try {
     res = await fetch(url, {
@@ -588,8 +651,14 @@ function detailedFromAllSearchJson(
  */
 export async function fetchAllSearchPlacesWithTokenDetailed(
   keyword: string,
-  token: string
+  token: string,
+  coords?: {
+    x?: string;
+    y?: string;
+  }
 ): Promise<FetchAllSearchCheckPlaceDetailedResult> {
+
+
   const trimmed = String(keyword || "").trim();
   const tok = String(token || "").trim();
   if (!trimmed) {
@@ -607,7 +676,12 @@ export async function fetchAllSearchPlacesWithTokenDetailed(
     };
   }
 
-  const url = buildNaverMapAllSearchUrl(trimmed, tok);
+  const url = buildNaverMapAllSearchUrl(
+    trimmed,
+    tok,
+    coords
+  );
+
   const fetched = await fetchAllSearchJsonWithHeaders(url, trimmed);
   if (!fetched.ok) {
     return {

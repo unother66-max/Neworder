@@ -67,10 +67,26 @@ async function fetchRawBatchOnce(
       : String(coordAnchorKeyword).trim() || undefined;
 
   const coords = resolveBusinessesCoords(q, anchor);
+
+  const compactKeyword = q.replace(/\s+/g, "");
+  const isItaewonRecommend =
+    /(이태원|한남|한강진)/.test(compactKeyword) &&
+    /(데이트|소개팅|분위기|핫플|브런치|와인|기념일|가볼만한곳|놀거리)/.test(
+      compactKeyword
+    );
+  
+  const tunedCoords = isItaewonRecommend
+    ? { x: "127.0012", y: "37.5347" }
+    : coords;
+  
+  const tunedBoundary = isItaewonRecommend
+    ? "126.9875;37.5399;127.0095;37.5288"
+    : null;
+
   const pageCount = opts?.mapReferer ? 1 : Math.max(1, opts?.pages ?? 10);
   const headers = opts?.mapReferer
-    ? buildGetPlacesListFetchHeaders(q)
-    : buildGetPlacesListFetchHeadersForServer(q, coords);
+  ? buildGetPlacesListFetchHeaders(q)
+  : buildGetPlacesListFetchHeadersForServer(q, tunedCoords);
 
   const finalBatch: unknown[] = [];
 
@@ -79,7 +95,7 @@ async function fetchRawBatchOnce(
     let successPart: unknown | null = null;
 
     for (let attempt = 1; attempt <= 5; attempt++) {
-      const batchBody = buildGetPlacesListPagedBatch(q, coords, 1, 30);
+      const batchBody = buildGetPlacesListPagedBatch(q, tunedCoords, 1, 30);
 
       const placesPayload = batchBody[0] as any;
       if (placesPayload?.variables?.placesInput) {

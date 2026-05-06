@@ -50,6 +50,18 @@ function formatDateLabel(value: string) {
   return `${mm}/${dd}`;
 }
 
+function formatDateTimeLabel(value: string) {
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function formatNumber(value?: number | string | null) {
   if (value === null || value === undefined || value === "" || value === "-") return "-";
   const n = Number(String(value).replace(/,/g, "").replace(/[^\d.-]/g, ""));
@@ -115,38 +127,33 @@ export default function PlaceReviewDetailPage() {
 
   const chartData = useMemo(() => {
     if (!place) return [];
-    const rows = [...(place.reviewHistory || [])].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-    const dailyMap = new Map<
-      string,
-      { label: string; shortLabel: string; value: number; fullDate: string }
-    >();
-    for (const r of rows) {
-      const key = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Seoul",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date(r.createdAt));
-      const value =
-        metric === "total"
-          ? r.totalReviewCount
-          : metric === "visitor"
-            ? r.visitorReviewCount
-            : metric === "blog"
-              ? r.blogReviewCount
-              : parseSaveCount(r.saveCount);
-      dailyMap.set(key, {
-        label: formatDateLabel(r.createdAt),
-        shortLabel: formatDateLabel(r.createdAt),
-        value,
-        fullDate: r.createdAt,
+  
+    return [...(place.reviewHistory || [])]
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+      .map((r, index) => {
+        const dateValue = r.updatedAt || r.createdAt;
+  
+        const value =
+          metric === "total"
+            ? r.totalReviewCount
+            : metric === "visitor"
+              ? r.visitorReviewCount
+              : metric === "blog"
+                ? r.blogReviewCount
+                : parseSaveCount(r.saveCount);
+  
+        return {
+          id: r.id,
+          label: formatDateTimeLabel(dateValue),
+          shortLabel: formatDateTimeLabel(dateValue),
+          value,
+          fullDate: dateValue,
+          index: index + 1,
+        };
       });
-    }
-    return Array.from(dailyMap.values()).sort(
-      (a, b) => new Date(a.fullDate).getTime() - new Date(b.fullDate).getTime()
-    );
   }, [place, metric]);
 
   const valueLabel =
@@ -161,6 +168,19 @@ export default function PlaceReviewDetailPage() {
   const values = chartData.map((d) => d.value);
   const yMin = values.length ? Math.max(0, Math.min(...values) - 3) : 0;
   const yMax = values.length ? Math.max(...values) + 3 : 10;
+
+
+  const recentUpdatedAt = useMemo(() => {
+    if (!place?.reviewHistory?.length) return null;
+  
+    const latest = [...place.reviewHistory].sort(
+      (a, b) =>
+        new Date(b.updatedAt || b.createdAt).getTime() -
+        new Date(a.updatedAt || a.createdAt).getTime()
+    )[0];
+  
+    return latest?.updatedAt || latest?.createdAt || null;
+  }, [place]);
 
   return (
     <>
@@ -460,9 +480,17 @@ export default function PlaceReviewDetailPage() {
                           isAnimationActive={false}
                         />
                       </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
+                      </ResponsiveContainer>
+{recentUpdatedAt ? (
+  <div className="mt-3 text-right text-[12px] font-semibold text-[#9ca3af]">
+    최근 업데이트: {formatDateTimeLabel(recentUpdatedAt)}
+  </div>
+) : null}
+</div>
+
+  
+) : (
+
                   <div className="flex h-[220px] items-center justify-center rounded-[16px] border border-dashed border-[#d1d5db] bg-[#fafafa] text-[13px] text-[#9ca3af]">
                     아직 저장된 리뷰 이력이 없습니다.
                   </div>

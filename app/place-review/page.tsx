@@ -1002,7 +1002,7 @@ export default function PlaceReviewPage() {
                                 </td>
                               </tr>
                             ) : (
-                              store.history.map((row) => (
+                              store.history.slice(0, 3).map((row) => (
                                 <tr
                                   key={row.id}
                                   className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"

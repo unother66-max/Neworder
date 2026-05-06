@@ -56,6 +56,25 @@ function normalizeText(value: string) {
  */
 function isRestaurantKeyword(keyword: string) {
   const n = normalizeText(keyword);
+
+  // 의도형 키워드는 restaurant 강제 사용 금지
+  const intentHints = [
+    "데이트",
+    "핫플",
+    "가볼만한",
+    "놀거리",
+    "분위기",
+    "코스",
+  ];
+
+  const isIntentKeyword = intentHints.some((h) =>
+    n.includes(normalizeText(h))
+  );
+
+  if (isIntentKeyword) {
+    return false;
+  }
+
   const hints = [
     "맛집",
     "식당",
@@ -85,6 +104,22 @@ function isRestaurantKeyword(keyword: string) {
     "뷔페",
     "이자카야",
   ];
+
+  return hints.some((h) => n.includes(normalizeText(h)));
+}
+
+function isIntentMixedKeyword(keyword: string): boolean {
+  const n = normalizeText(keyword);
+
+  const hints = [
+    "데이트",
+    "핫플",
+    "가볼만한",
+    "놀거리",
+    "분위기",
+    "코스",
+  ];
+
   return hints.some((h) => n.includes(normalizeText(h)));
 }
 
@@ -1236,7 +1271,7 @@ export async function POST(req: Request) {
     let usedClientBusinessesBatch = false;
 
     /** pcmap GraphQL 배치가 지도 왼쪽 목록과 일치 — allSearch(별도 랭킹)보다 우선 */
-    if (clientBatch) {
+    if (clientBatch && !isIntentMixedKeyword(keyword)) {
       console.log("[place-rank-analyze businesses client-batch]", {
         keyword,
         batchLength: clientBatch.length,
@@ -1251,7 +1286,7 @@ export async function POST(req: Request) {
       }
     }
 
-    if (!usedClientBusinessesBatch && mapAllRaw) {
+    if ((!usedClientBusinessesBatch || isIntentMixedKeyword(keyword)) && mapAllRaw) {
       const converted = graphqlItemsFromMapAllSearchPlaces(mapAllRaw);
       if (converted.length > 0) {
         items = converted;
@@ -1267,9 +1302,40 @@ export async function POST(req: Request) {
     }
 
     if (items.length === 0) {
+      const intentMixed = isIntentMixedKeyword(keyword);
       const food = isRestaurantKeyword(keyword);
-
-      if (food) {
+    
+      if (intentMixed) {
+        const fromAll = await loadItemsFromCheckPlaceStyleAllSearch(keyword);
+    
+        if (fromAll.ok) {
+          items = fromAll.items;
+          apiTotal = fromAll.total;
+          source = "mapAllSearch";
+          usedMapAllSearchPlaces = true;
+    
+          console.log("[place-rank-analyze intentMixed allSearch first]", {
+            keyword,
+            count: items.length,
+            total: apiTotal,
+          });
+        } else {
+          serverTokenlessAllSearchFailed = true;
+          diagnostics.failureCode = mapAllSearchFailureToDiagnosticsCode(
+            fromAll.failureCode
+          );
+          diagnostics.hints.push(fromAll.userMessage);
+    
+          const b = await fetchPlacesListBusinesses(keyword);
+          graphqlErrors.push(...b.graphqlErrors);
+    
+          if (b.items.length > 0) {
+            items = b.items;
+            apiTotal = b.total;
+            source = "businesses";
+          }
+        }
+      } else if (food) {
         /** 맛집 축은 restaurant 우선이나, 동시에 businesses를 받아 두면 restaurant 공백·지연 시에도 목록 유지 */
         const [r, b] = await Promise.all([
           fetchRestaurantList(keyword),

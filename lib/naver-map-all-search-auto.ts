@@ -49,8 +49,14 @@ function envToken(): string {
  * place-rank-analyze 등에서 사용 — 가능한 한 자동으로 place 목록 확보.
  */
 export async function fetchAllSearchPlacesAutoDetailed(
-  keyword: string
-): Promise<FetchAllSearchCheckPlaceDetailedResult> {
+  keyword: string,
+  coords?: {
+    x?: string;
+    y?: string;
+  }
+)
+
+: Promise<FetchAllSearchCheckPlaceDetailedResult> {
   const trimmed = String(keyword || "").trim();
   if (!trimmed) {
     return fetchAllSearchPlacesCheckPlaceRankStyleDetailed(trimmed);
