@@ -449,6 +449,10 @@ function mapPlaceToStore(place: PlaceItem): Store {
     pcPlaceLink: links.pcPlaceLink,
     image: place.imageUrl ? getProxyImageUrl(place.imageUrl) : "",
 
+// 🔥여기에 x와 y 매핑이 누락되어 있었습니다! 이 두 줄을 똑같이 넣어주세요.
+x: (place as any).x ? String((place as any).x) : undefined,
+y: (place as any).y ? String((place as any).y) : undefined,
+
     placeMonthlyVolume: (place as any).placeMonthlyVolume ?? 0,
     placeMobileVolume: (place as any).placeMobileVolume ?? 0,
     placePcVolume: (place as any).placePcVolume ?? 0,
@@ -537,6 +541,8 @@ export default function PlacePage() {
     null
   );
 
+ // 🔥 등록 후 즉시 순위 조회를 실행할 대상을 기억하는 상태값 추가 (새 키워드 포함)
+ const [autoCheckData, setAutoCheckData] = useState<{ storeId: string; keywords: string[] } | null>(null);
   // --- 디자인 통일용 호버 상태값 ---
   const [isAddHovered, setIsAddHovered] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -672,6 +678,17 @@ export default function PlacePage() {
     return getDefaultRecommendedKeywords(selectedStore);
   }, [selectedStore]);
 
+// 🔥 자동 순위 조회 감지 로직 (새 키워드만 필터링해서 넘겨줌)
+useEffect(() => {
+  if (autoCheckData && !placeLoading) {
+    const index = filteredStores.findIndex(s => s.dbId === autoCheckData.storeId);
+    if (index !== -1) {
+      // 특정 키워드 목록을 두 번째 파라미터로 넘겨줍니다.
+      handleCheckRanks(index, autoCheckData.keywords); 
+    }
+    setAutoCheckData(null);
+  }
+}, [autoCheckData, placeLoading, filteredStores]);
   if (!mounted || status === "loading") {
     return (
       <>
@@ -1050,6 +1067,14 @@ export default function PlacePage() {
 
       await fetchPlaces();
       closeKeywordModal();
+      
+      // 🔥 [변경됨] '새로 추가된 키워드'만 자동 조회하도록 매장 ID와 키워드 목록을 함께 저장
+      if (keywordsToCreate.length > 0) {
+        setAutoCheckData({
+          storeId: targetStore.dbId,
+          keywords: keywordsToCreate,
+        });
+      }
     } catch (error) {
       console.error(error);
       alert(
@@ -1062,8 +1087,9 @@ export default function PlacePage() {
     }
   };
 
-  const handleCheckRanks = async (filteredIndex: number) => {
-    const targetStore = filteredStores[filteredIndex];
+ // 두 번째 파라미터로 specificKeywords 를 받을 수 있게 추가
+ const handleCheckRanks = async (filteredIndex: number, specificKeywords?: string[]) => {
+  const targetStore = filteredStores[filteredIndex];
 
     const realIndex = stores.findIndex(
       (item) =>
@@ -1091,12 +1117,20 @@ export default function PlacePage() {
       return;
     }
 
+    // 🔥 특정 키워드 목록이 넘어왔다면, 그 키워드들만 골라냅니다.
+    let keywordsToProcess = target.keywords;
+    if (specificKeywords && specificKeywords.length > 0) {
+      keywordsToProcess = target.keywords.filter((k) => specificKeywords.includes(k.keyword));
+    }
+
     setCheckingStoreIndex(realIndex);
 
     try {
-      const batches = chunkArray(target.keywords, RANK_CHECK_BATCH_SIZE);
+      // 🔥 전체 키워드(target.keywords) 대신 필터링된(keywordsToProcess) 키워드만 조회합니다.
+      const batches = chunkArray(keywordsToProcess, RANK_CHECK_BATCH_SIZE);
 
       for (const batch of batches) {
+        
         for (const item of batch) {
           const response = await fetch("/api/check-place-rank", {
             method: "POST",
@@ -1106,6 +1140,7 @@ export default function PlacePage() {
             body: JSON.stringify({
               keyword: item.keyword,
               targetName: target.name,
+              placeId: target.placeId,
               x: target.x,
               y: target.y,
               ...(item.placeKeywordId
@@ -1299,6 +1334,10 @@ export default function PlacePage() {
     }
   };
 
+  // 🔽 스크롤을 여기까지 쭈욱 내리신 다음, 여기에 코드를 넣으세요! 🔽
+ 
+
+  // 이 return문이 파일 전체에서 거의 마지막에 있는 메인 return문입니다!
   return (
     <>
       <TopNav active="place" />
