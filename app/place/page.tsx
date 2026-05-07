@@ -1343,9 +1343,9 @@ useEffect(() => {
       <TopNav active="place" />
 
       <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
-        <section className="mx-auto max-w-[1240px] px-3 py-3 md:px-6 md:py-5 lg:px-8">
-          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-4 py-3 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-col gap-3 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
@@ -1356,7 +1356,7 @@ useEffect(() => {
                   </span>
                 </div>
 
-                <p className="mt-1 text-[11px] leading-5 text-[#4b5563] md:text-[13px]">
+                <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px]">
                   등록된 플레이스의 검색량, 키워드, 순위를 한 화면에서 관리합니다.
                 </p>
               </div>
@@ -1414,7 +1414,7 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#f3f4f6] pt-3">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:mt-3 md:gap-2 md:pt-3">
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-[15px] font-black tracking-[-0.02em] text-[#111827] md:text-[17px]">
@@ -1425,7 +1425,7 @@ useEffect(() => {
                   </span>
                 </div>
 
-                <p className="mt-1.5 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
+                <p className="mt-1 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
                   {placeLoading ? "📍 매장 목록 불러오는 중..." : "📍 기준 순위 조회중"}
                 </p>
               </div>
@@ -1436,7 +1436,7 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
+          <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
             {filteredStores.length === 0 ? (
               <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
                 <p className="text-[15px] font-bold text-[#111827] md:text-[18px]">
@@ -1527,15 +1527,15 @@ useEffect(() => {
                                 <button
                                   onClick={() => handleDeleteStore(store)}
                                   disabled={isDeleting}
-                                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#d1d5db] bg-white text-[#111827] transition hover:bg-[#f3f4f6] ${
+                                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3] ${
                                     isDeleting ? "opacity-60" : ""
                                   }`}
                                   aria-label="삭제"
                                 >
                                   {isDeleting ? (
-                                    <span className="text-[11px] text-[#111827]">...</span>
+                                    <span className="text-[11px] text-[#dc2626]">...</span>
                                   ) : (
-                                    <Trash2 className="h-4 w-4 stroke-[#111827]" strokeWidth={2} />
+                                    <Trash2 className="h-4 w-4 stroke-[#dc2626]" strokeWidth={2} />
                                   )}
                                 </button>
                               </div>
@@ -1573,7 +1573,30 @@ useEffect(() => {
                                 </div>
                               </div>
 
-                              <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleTrackingByStore(store)}
+                                disabled={isTrackingLoading}
+                                className={`flex h-10 min-w-0 flex-col justify-center rounded-[10px] border px-1.5 text-left transition active:scale-[0.98] md:hidden ${
+                                  trackingLabel === "ON"
+                                    ? "border-[#2563EB] bg-[#2563EB] text-white"
+                                    : "border-[#e5e7eb] bg-[#f3f4f6] text-[#374151]"
+                                } ${isTrackingLoading ? "opacity-60" : ""}`}
+                                aria-label={`자동 추적 ${trackingLabel}`}
+                              >
+                                <div className={`truncate text-[10px] font-semibold leading-none ${
+                                  trackingLabel === "ON" ? "text-white/85" : "text-[#4b5563]"
+                                }`}>
+                                  자동 추적
+                                </div>
+                                <div className={`mt-1 truncate text-sm font-semibold leading-none ${
+                                  trackingLabel === "ON" ? "text-white" : "text-[#111827]"
+                                }`}>
+                                  {trackingLabel}
+                                </div>
+                              </button>
+
+                              <div className="hidden h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:flex md:h-auto md:rounded-[12px] md:px-3 md:py-2">
                                 <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
                                   자동 추적
                                 </div>
@@ -1617,7 +1640,7 @@ useEffect(() => {
                           </div>
                         </div>
 
-                        <div className="-ml-2 flex w-[calc(100%+0.5rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-2 xl:overflow-visible">
+                        <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-2 xl:overflow-visible">
                           {/* 핀 */}
                           <button
                             type="button"
@@ -1641,7 +1664,7 @@ useEffect(() => {
                             onMouseEnter={() => setUpdateHover({ id: rowId, x: updateHover.x, y: updateHover.y })}
                             onMouseLeave={() => setUpdateHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleUpdateMouseMove(e, rowId)}
-                            className={`relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-sm font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]`}
+                            className={`relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]`}
                           >
                             <span className="relative z-30 pointer-events-none">
                               {isChecking ? "업데이트 중..." : "업데이트"}
@@ -1680,7 +1703,7 @@ useEffect(() => {
                             onMouseEnter={() => setRankChangeHover({ id: rowId, x: rankChangeHover.x, y: rankChangeHover.y })}
                             onMouseLeave={() => setRankChangeHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleRankChangeMouseMove(e, rowId)}
-                            className={`relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border px-3 text-sm font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${rankChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                            className={`relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px] ${rankChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                           >
                             <span className="relative z-30 pointer-events-none md:hidden">순위변화</span>
                             <span className="relative z-30 pointer-events-none hidden md:inline">순위변화보기</span>
@@ -1719,7 +1742,7 @@ useEffect(() => {
                             onMouseEnter={() => setTrackingHover({ id: rowId, x: trackingHover.x, y: trackingHover.y })}
                             onMouseLeave={() => setTrackingHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleTrackingMouseMove(e, rowId)}
-                            className={`relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${
+                            className={`relative hidden h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:inline-flex md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${
                               trackingLabel === "ON"
                                 ? "bg-[#2563EB] text-white"
                                 : trackingHover.id === rowId
@@ -1764,9 +1787,9 @@ useEffect(() => {
                             onMouseEnter={() => setKwManageHover({ id: rowId, x: kwManageHover.x, y: kwManageHover.y })}
                             onMouseLeave={() => setKwManageHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleKwManageMouseMove(e, rowId)}
-                            className="relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-sm font-bold text-white transition-all duration-300 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]"
+                            className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]"
                           >
-                            <span className="relative z-30 pointer-events-none md:hidden">키워드</span>
+                            <span className="relative z-30 pointer-events-none md:hidden">키워드 관리</span>
                             <span className="relative z-30 pointer-events-none hidden md:inline">키워드 관리</span>
                             <div
                               className="pointer-events-none absolute inset-0 z-10 h-full w-full"

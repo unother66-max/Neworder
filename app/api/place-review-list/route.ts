@@ -91,6 +91,7 @@ export async function GET() {
       return {
         id: place.id,
         name: place.name,
+        category: place.category,
         address: place.address,
         jibunAddress: place.jibunAddress,
         imageUrl: place.imageUrl,

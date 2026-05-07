@@ -429,36 +429,36 @@ export default function KakaoPlacePage() {
   return (
     <>
       <TopNav active="kakao-place" />
-      <main className="min-h-screen bg-[#f8fafc] text-[#111111] pt-24">
-        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
+      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
 
           {/* Page header */}
-          <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
                     카카오맵 순위 추적
                   </h1>
-                  <span className="rounded-full bg-[#eff6ff] px-2 py-1 text-[11px] font-bold text-[#2563eb]">
+                  <span className="rounded-full bg-[#eff6ff] px-2 py-0.5 text-[10px] font-bold text-[#2563eb] md:py-1 md:text-[11px]">
                     KAKAO
                   </span>
                 </div>
-                <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
+                <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">
                   카카오맵에 등록된 가게의 키워드별 순위를 확인할 수 있습니다.
                 </p>
               </div>
 
-              <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-center">
+              <div className="flex w-full flex-col gap-2 sm:flex-row md:gap-3 lg:w-auto lg:items-center">
                 <div className="relative w-full sm:w-[320px]">
                   <input
                     type="text"
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     placeholder="등록된 매장 검색"
-                    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white"
+                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white md:h-[44px] md:rounded-[14px] md:px-4 md:pr-11 md:text-[13px]"
                   />
-                  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280]">
+                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#6b7280] md:right-4 md:text-[14px]">
                     🔍
                   </div>
                 </div>
@@ -467,7 +467,7 @@ export default function KakaoPlacePage() {
                   onMouseLeave={() => setIsAddHovered(false)}
                   onMouseMove={handleMouseMove}
                   onClick={() => setRegisterOpen(true)}
-                  className="relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out"
+                  className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]"
                 >
                   <span className="relative z-30 pointer-events-none">매장 등록</span>
                   <div
@@ -496,70 +496,112 @@ export default function KakaoPlacePage() {
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#f3f4f6] pt-3">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:mt-3 md:gap-2 md:pt-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
+                  <h2 className="text-[15px] font-black tracking-[-0.02em] text-[#111827] md:text-[17px]">
                     등록된 매장
                   </h2>
-                  <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
+                  <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:px-2.5 md:py-1 md:text-[11px]">
                     {filteredStores.length}개
                   </span>
                 </div>
-                <p className="mt-2 text-[12px] text-[#6b7280]">
+                <p className="mt-1 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
                   {storeLoading ? "📍 매장 목록 불러오는 중..." : "📍 카카오맵 순위 추적 중"}
                 </p>
               </div>
-              <div className="text-[11px] text-[#9ca3af]">
+              <div className="text-[10px] leading-4 text-[#6b7280] md:text-[11px] md:text-[#9ca3af]">
                 * 검색 순위는 키워드 검색 시 카카오맵 결과 기준입니다. (최대 45위)
               </div>
             </div>
           </div>
 
           {/* Store list */}
-          <div className="mt-5 space-y-4">
+          <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
             {storeLoading ? (
-              <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-14 text-center text-[14px] text-[#9ca3af]">불러오는 중...</div>
+              <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-4 py-10 text-center text-[13px] text-[#9ca3af] md:rounded-[22px] md:px-6 md:py-14 md:text-[14px]">불러오는 중...</div>
             ) : filteredStores.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
-                <p className="text-[18px] font-bold text-[#111827]">아직 등록된 매장이 없어요</p>
-                <p className="mt-2 text-[14px] text-[#9ca3af]">상단의 매장 등록 버튼으로 첫 매장을 추가해보세요.</p>
+              <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+                <p className="text-[15px] font-bold text-[#111827] md:text-[18px]">아직 등록된 매장이 없어요</p>
+                <p className="mt-2 text-[12px] text-[#9ca3af] md:text-[14px]">상단의 매장 등록 버튼으로 첫 매장을 추가해보세요.</p>
               </div>
             ) : (
               filteredStores.map((store) => (
                 <div
                   key={store.id}
-                  className="overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+                  className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="px-5 py-4 md:px-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="px-3 py-2.5 md:px-6 md:py-4">
+                    <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
 
                       {/* Info */}
-                      <div className="flex min-w-0 gap-4">
+                      <div className="flex min-w-0 gap-2.5 md:gap-4">
                         {store.imageUrl ? (
                           <img
                             src={store.imageUrl} alt={store.name}
-                            className="h-[70px] w-[70px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
+                            className="h-12 w-12 shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]"
                             loading="lazy" referrerPolicy="no-referrer"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                           />
                         ) : (
-                          <div className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">이미지</div>
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] md:text-[12px]">이미지</div>
                         )}
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-[20px] font-black tracking-[-0.03em] text-[#111827]">{store.name}</h3>
-                            {store.category && (
-                              <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">{store.category}</span>
-                            )}
+                          <div className="flex min-w-0 items-start justify-between gap-2">
+                            <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-wrap md:gap-2">
+                              <h3 className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:text-[20px]">{store.name}</h3>
+                              {store.category && (
+                                <span className="max-w-[88px] shrink-0 truncate rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:max-w-none md:px-2.5 md:py-1 md:text-[11px]">{store.category}</span>
+                              )}
+                            </div>
+
+                            <div className="flex shrink-0 items-center gap-1 md:hidden">
+                              {store.kakaoUrl ? (
+                                <a href={store.kakaoUrl} target="_blank" rel="noreferrer"
+                                  className="inline-flex h-6 items-center rounded-full border border-[#d1d5db] bg-white px-2 text-[10px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">
+                                  카카오맵
+                                </a>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(store.id)}
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3]"
+                                aria-label="삭제"
+                              >
+                                <Trash2 className="h-4 w-4 stroke-[#dc2626]" strokeWidth={2} />
+                              </button>
+                            </div>
                           </div>
-                          <p className="mt-1 text-[13px] text-[#6b7280]">{store.address || "-"}</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+                          <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">{store.address || "-"}</p>
+                          <div className="mt-1.5 flex justify-end md:hidden">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleTracking(store)}
+                              disabled={trackingLoadingId === store.id}
+                              className={`flex h-10 min-w-0 flex-col justify-center rounded-[10px] border px-1.5 text-left transition active:scale-[0.98] ${
+                                store.isAutoTracking
+                                  ? "border-[#2563EB] bg-[#2563EB] text-white"
+                                  : "border-[#e5e7eb] bg-[#f3f4f6] text-[#374151]"
+                              } ${trackingLoadingId === store.id ? "opacity-60" : ""}`}
+                            >
+                              <span className={`truncate text-[10px] font-semibold leading-none ${
+                                store.isAutoTracking ? "text-white/85" : "text-[#4b5563]"
+                              }`}>
+                                자동 추적
+                              </span>
+                              <span className={`mt-1 truncate text-sm font-semibold leading-none ${
+                                store.isAutoTracking ? "text-white" : "text-[#111827]"
+                              }`}>
+                                {trackingLoadingId === store.id ? "처리 중" : store.isAutoTracking ? "ON" : "OFF"}
+                              </span>
+                            </button>
+                          </div>
+                          <div className="mt-1 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-2 md:flex md:gap-2 md:text-[12px]">
                             <span className="font-semibold text-[#6b7280]">바로가기</span>
                             {store.kakaoUrl ? (
                               <a href={store.kakaoUrl} target="_blank" rel="noreferrer"
-                                className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]">
+                                className="inline-flex h-6 items-center rounded-full border border-[#d1d5db] bg-white px-2 text-[10px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:h-auto md:px-3 md:py-1.5 md:text-[12px]">
                                 카카오맵
                               </a>
                             ) : (
@@ -570,14 +612,14 @@ export default function KakaoPlacePage() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
+                      <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-2 xl:overflow-visible">
                         <button
                           type="button"
                           onClick={() => handleTogglePin(store)}
-                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb]"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f9fafb] md:h-[42px] md:w-[42px] md:rounded-[14px]"
                           aria-label="핀 고정"
                         >
-                          <Pin className={`h-[20px] w-[20px] transition ${store.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
+                          <Pin className={`h-4 w-4 transition md:h-[20px] md:w-[20px] ${store.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
                         </button>
 
                         <button
@@ -586,7 +628,7 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setUpdateHover({ id: store.id, x: updateHover.x, y: updateHover.y })}
                           onMouseLeave={() => setUpdateHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleUpdateMouseMove(e, store.id)}
-                          className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4"
                         >
                           <span className="relative z-30 pointer-events-none">
                             {updatingId === store.id ? "업데이트 중..." : "업데이트"}
@@ -620,9 +662,10 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setRankChangeHover({ id: store.id, x: rankChangeHover.x, y: rankChangeHover.y })}
                           onMouseLeave={() => setRankChangeHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleRankChangeMouseMove(e, store.id)}
-                          className={`relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out ${rankChangeHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                          className={`relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px] ${rankChangeHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                         >
-                          <span className="relative z-30 pointer-events-none">순위변화보기</span>
+                          <span className="relative z-30 pointer-events-none md:hidden">순위변화</span>
+                          <span className="relative z-30 pointer-events-none hidden md:inline">순위변화보기</span>
                           <div
                             className="pointer-events-none absolute inset-0 z-0 h-full w-full"
                             style={{
@@ -653,7 +696,7 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setTrackingHover({ id: store.id, x: trackingHover.x, y: trackingHover.y })}
                           onMouseLeave={() => setTrackingHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleTrackingMouseMove(e, store.id)}
-                          className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:opacity-60 ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === store.id ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
+                          className={`relative hidden h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-all duration-300 ease-in-out disabled:opacity-60 md:inline-flex md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === store.id ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
                         >
                           <span className="relative z-30 pointer-events-none">
                             {trackingLoadingId === store.id ? "처리 중" : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
@@ -687,7 +730,7 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setKwManageHover({ id: store.id, x: kwManageHover.x, y: kwManageHover.y })}
                           onMouseLeave={() => setKwManageHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleKwManageMouseMove(e, store.id)}
-                          className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
+                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]"
                         >
                           <span className="relative z-30 pointer-events-none">키워드 관리</span>
                           <div
@@ -717,32 +760,39 @@ export default function KakaoPlacePage() {
                         <button
                           type="button"
                           onClick={() => handleDelete(store.id)}
-                          className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6]"
+                          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3] md:inline-flex md:h-[42px] md:w-[42px] md:rounded-[14px] md:border-transparent md:bg-white md:text-[#111827] md:hover:bg-[#f3f4f6]"
                         >
-                          <Trash2 className="h-[18px] w-[18px] stroke-[#111827]" strokeWidth={2} />
+                          <Trash2 className="h-4 w-4 stroke-[#dc2626] md:h-[18px] md:w-[18px] md:stroke-[#111827]" strokeWidth={2} />
                         </button>
                       </div>
                     </div>
                   </div>
 
                   {/* Keyword table */}
-                  <div className="border-t border-[#f3f4f6] px-5 pb-4 md:px-6">
-                    <div className="mb-2 mt-3">
+                  <div className="border-t border-[#f3f4f6] px-3 pb-3 md:px-6 md:pb-4">
+                    <div className="mb-2 mt-2.5 md:mt-3">
                       <p className="text-[11px] font-semibold text-[#6b7280]">키워드 검색 순위</p>
                     </div>
-                    <div className="overflow-x-auto rounded-[14px] border border-[#e5e7eb]">
-                      <table className="min-w-full border-collapse">
+                    <div className="overflow-x-auto rounded-[12px] border border-[#e5e7eb] overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:rounded-[14px]">
+                      <table className="w-full table-fixed border-collapse md:min-w-full md:table-auto">
+                        <colgroup>
+                          <col className="w-[31%] md:w-auto" />
+                          <col className="w-[17%] md:w-auto" />
+                          <col className="w-[16%] md:w-auto" />
+                          <col className="w-[13%] md:w-auto" />
+                          <col className="w-[23%] md:w-auto" />
+                        </colgroup>
                         <thead className="bg-[#f9fafb]">
                           <tr>
                             {["키워드", "월 검색량", "모바일", "PC", "검색 순위"].map((h) => (
-                              <th key={h} className="border-b border-[#e5e7eb] px-4 py-2.5 text-center text-[11px] font-extrabold text-[#6b7280] first:text-left">{h}</th>
+                              <th key={h} className="border-b border-[#e5e7eb] px-1 py-2 text-center text-[10px] font-extrabold text-[#6b7280] first:text-left md:px-4 md:py-2.5 md:text-[11px]">{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {store.keywords.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="px-4 py-6 text-center text-[12px] text-[#9ca3af]">
+                              <td colSpan={5} className="px-3 py-5 text-center text-[12px] text-[#9ca3af] md:px-4 md:py-6">
                                 지금 키워드를 등록하고, 내 매장의 키워드 별 순위를 확인해보세요.<br />
                                 <span className="font-semibold">[키워드 관리]</span> 버튼을 눌러 시작할 수 있어요.
                               </td>
@@ -750,12 +800,12 @@ export default function KakaoPlacePage() {
                           ) : (
                             store.keywords.map((kw) => (
                               <tr key={kw.id} className="border-t border-[#f3f4f6] bg-white hover:bg-[#fafafa] transition-colors">
-                                <td className="px-4 py-3 text-[13px] font-semibold text-[#111827]">{kw.keyword}</td>
-                                <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">{fmtVolume(kw.totalVolume)}</td>
-                                <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">{fmtVolume(kw.mobileVolume)}</td>
-                                <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">{fmtVolume(kw.pcVolume)}</td>
-                                <td className="px-4 py-3 text-center">
-                                  <span className={`text-[13px] font-bold ${kw.latestRank && kw.latestRank > 0 ? "text-[#111827]" : "text-[#9ca3af]"}`}>
+                                <td className="truncate px-1 py-2.5 text-[12px] font-semibold text-[#111827] md:px-4 md:py-3 md:text-[13px]">{kw.keyword}</td>
+                                <td className="px-1 py-2.5 text-center text-[12px] text-[#6b7280] md:px-4 md:py-3 md:text-[13px]">{fmtVolume(kw.totalVolume)}</td>
+                                <td className="px-1 py-2.5 text-center text-[12px] text-[#6b7280] md:px-4 md:py-3 md:text-[13px]">{fmtVolume(kw.mobileVolume)}</td>
+                                <td className="px-1 py-2.5 text-center text-[12px] text-[#6b7280] md:px-4 md:py-3 md:text-[13px]">{fmtVolume(kw.pcVolume)}</td>
+                                <td className="px-1 py-2.5 text-center md:px-4 md:py-3">
+                                  <span className={`text-[12px] font-bold md:text-[13px] ${kw.latestRank && kw.latestRank > 0 ? "text-[#111827]" : "text-[#9ca3af]"}`}>
                                     {fmtRank(kw.latestRank)}
                                   </span>
                                   {kw.latestRankDate && <p className="text-[10px] text-[#9ca3af]">{kw.latestRankDate}</p>}
@@ -766,7 +816,7 @@ export default function KakaoPlacePage() {
                         </tbody>
                       </table>
                     </div>
-                    <p className="mt-2 text-right text-[11px] text-[#9ca3af]">
+                    <p className="mt-1.5 text-right text-[10px] text-[#9ca3af] md:mt-2 md:text-[11px]">
                       마지막 업데이트: <span className="font-semibold text-[#6b7280]">{store.latestUpdatedAt || "-"}</span>
                     </p>
                   </div>

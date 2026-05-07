@@ -443,23 +443,23 @@ export default function PlaceAnalysisPage() {
     <>
       <TopNav active="place-analysis" />
 
-      <main className="min-h-screen bg-[#f8fafc] text-[#111827] pt-24">
-        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
-          <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-            <div className="flex flex-col gap-4">
+      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111827] md:pt-24">
+        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2.5 md:gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
                     플레이스 키워드 분석
                   </h1>
                 </div>
 
-                <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
+                <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">
                   검색한 키워드 기준으로 네이버 플레이스 순위와 리뷰 지표를 확인합니다.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="flex flex-col gap-2 md:gap-3 lg:flex-row lg:items-center">
                 <div className="relative flex-1">
                   <input
                     type="text"
@@ -472,14 +472,14 @@ export default function PlaceAnalysisPage() {
                       }
                     }}
                     placeholder="예: 한남동 맛집"
-                    className="h-[54px] w-full rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[15px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
+                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white md:h-[54px] md:rounded-[16px] md:px-4 md:pr-11 md:text-[15px]"
                   />
 
                   {keyword ? (
                     <button
                       type="button"
                       onClick={() => setKeyword("")}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[22px] text-[#6b7280]"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[18px] text-[#6b7280] md:right-4 md:text-[22px]"
                     >
                       ×
                     </button>
@@ -496,7 +496,7 @@ export default function PlaceAnalysisPage() {
                     const rect = e.currentTarget.getBoundingClientRect();
                     setAnalyzeMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                   }}
-                  className={`relative inline-flex h-[54px] min-w-[100px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-7 text-[15px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
+                  className={`relative inline-flex h-[40px] min-w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[54px] md:min-w-[100px] md:rounded-[16px] md:px-7 md:text-[15px] ${
                     loading ? "opacity-60" : ""
                   }`}
                 >
@@ -514,7 +514,7 @@ export default function PlaceAnalysisPage() {
                   />
                   <div
                     className={`
-                      absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                      absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
                       transition-opacity duration-200 ease-out
                       ${isAnalyzeHovered ? "opacity-100" : "opacity-0"}
                     `}
@@ -535,26 +535,26 @@ export default function PlaceAnalysisPage() {
 
               {relatedKeywords.length > 0 && (
                 <div className="pt-1">
-                  <div className="mb-3 text-[13px] font-bold text-[#4b5563]">
+                  <div className="mb-2 text-[12px] font-bold text-[#4b5563] md:mb-3 md:text-[13px]">
                     연관 검색어
                   </div>
 
-                  <div className="flex flex-wrap gap-2.5">
+                  <div className="flex flex-wrap gap-1.5 md:gap-2.5">
                     {relatedKeywords.map((item, idx) => (
                       <button
                         key={`${item.keyword}-${idx}`}
                         type="button"
                         onClick={() => setKeyword(item.keyword)}
-                        className={`rounded-[14px] border px-4 py-3 text-left transition ${
+                        className={`rounded-[12px] border px-3 py-2 text-left transition md:rounded-[14px] md:px-4 md:py-3 ${
                           item.keyword === searchedKeyword
                             ? "border-[#2563EB] bg-[#eff6ff]"
                             : "border-[#e5e7eb] bg-white hover:bg-[#fafafa]"
                         }`}
                       >
-                        <div className={`text-[13px] font-bold ${item.keyword === searchedKeyword ? "text-[#2563EB]" : "text-[#111827]"}`}>
+                        <div className={`text-[12px] font-bold md:text-[13px] ${item.keyword === searchedKeyword ? "text-[#2563EB]" : "text-[#111827]"}`}>
                           {item.keyword}
                         </div>
-                        <div className="mt-1 text-[12px] text-[#6b7280]">
+                        <div className="mt-0.5 text-[11px] text-[#6b7280] md:mt-1 md:text-[12px]">
                           전체 {formatCount(item.total)} · 모바일{" "}
                           {formatCount(item.mobile)} · PC{" "}
                           {formatCount(item.pc)}
@@ -565,14 +565,14 @@ export default function PlaceAnalysisPage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-between border-t border-[#f3f4f6] pt-4">
-                <div className="text-[14px] font-semibold text-[#4b5563]">
+              <div className="flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:gap-2 md:pt-4">
+                <div className="text-[12px] font-semibold text-[#4b5563] md:text-[14px]">
                   {searchedKeyword
                     ? `“${searchedKeyword}” 분석 결과`
                     : "분석 결과가 여기에 표시됩니다."}
                 </div>
 
-                <div className="text-[12px] text-[#9ca3af]">
+                <div className="text-[10px] leading-4 text-[#6b7280] md:text-[12px] md:text-[#9ca3af]">
                   IP, 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
                 </div>
               </div>
@@ -580,13 +580,13 @@ export default function PlaceAnalysisPage() {
           </div>
 
           {error ? (
-            <div className="mt-5 rounded-[18px] border border-[#fecaca] bg-white px-5 py-4 text-[14px] text-[#dc2626]">
+            <div className="mt-3 rounded-[14px] border border-[#fecaca] bg-white px-3 py-2.5 text-[12px] text-[#dc2626] md:mt-5 md:rounded-[18px] md:px-5 md:py-4 md:text-[14px]">
               {error}
             </div>
           ) : null}
 
           {naverMapDataSource === "allSearch" ? (
-            <div className="mt-4 rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900">
+            <div className="mt-3 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] leading-relaxed text-emerald-900 md:mt-4 md:px-4 md:py-3 md:text-[13px]">
               네이버 지도 통합검색(allSearch) 목록 순서를 반영했습니다.
               token은 map.naver.com 검색 후 Network → allSearch → Query String
               token을 복사해 sessionStorage 키{" "}
@@ -598,20 +598,20 @@ export default function PlaceAnalysisPage() {
           ) : null}
          
           {placeSearchHint ? (
-            <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
+            <div className="mt-3 rounded-[14px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-950 md:mt-4 md:px-4 md:py-3 md:text-[13px]">
               {placeSearchHint}
             </div>
           ) : null}
 
           {analysisDiagnostics?.compactSummary ? (
-            <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
+            <div className="mt-3 rounded-[14px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-950 md:mt-4 md:px-4 md:py-3 md:text-[13px]">
               {analysisDiagnostics.compactSummary}
             </div>
           ) : analysisDiagnostics &&
             (analysisDiagnostics.hints.length > 0 ||
               analysisDiagnostics.dataSourceHint ||
               analysisDiagnostics.failureCode) ? (
-            <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
+            <div className="mt-3 rounded-[14px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-950 md:mt-4 md:px-4 md:py-3 md:text-[13px]">
               {analysisDiagnostics.failureCode ? (
                 <div className="mb-2 text-[11px] font-medium text-amber-900/90">
                   진단 코드: {analysisDiagnostics.failureCode}
@@ -635,33 +635,33 @@ export default function PlaceAnalysisPage() {
             </div>
           ) : null}
 
-          <div className="mt-5 overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="overflow-x-auto">
-              <table className="min-w-[1000px] w-full">
+          <div className="mt-3 overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:mt-5 md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <table className="w-full table-fixed md:table-auto md:min-w-[1000px]">
                 <thead>
                   <tr className="border-b border-[#f3f4f6] bg-[#fafafa]">
-                    <th className="px-5 py-4 text-left text-[13px] font-bold text-[#6b7280]">
+                    <th className="w-[6%] px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       순위
                     </th>
-                    <th className="px-5 py-4 text-left text-[13px] font-bold text-[#6b7280]">
+                    <th className="w-[37%] px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       매장명
                     </th>
-                    <th className="px-5 py-4 text-left text-[13px] font-bold text-[#6b7280]">
+                    <th className="w-[13%] px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       카테고리
                     </th>
-                    <th className="px-5 py-4 text-right text-[13px] font-bold text-[#6b7280]">
+                    <th className="w-[12%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       전체 리뷰
                     </th>
-                    <th className="px-5 py-4 text-right text-[13px] font-bold text-[#6b7280]">
+                    <th className="w-[10%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       방문자
                     </th>
-                    <th className="px-5 py-4 text-right text-[13px] font-bold text-[#6b7280]">
+                    <th className="w-[10%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       블로그
                     </th>
-                    <th className="px-5 py-4 text-right text-[13px] font-bold text-[#6b7280]">
+                    <th className="w-[12%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       저장수
                     </th>
-                    <th className="px-5 py-4 text-left text-[13px] font-bold text-[#6b7280]">
+                    <th className="hidden px-2 py-2.5 text-left text-[11px] font-bold text-[#6b7280] md:table-cell md:px-5 md:py-4 md:text-[13px]">
                       특징 키워드
                     </th>
                   </tr>
@@ -672,7 +672,7 @@ export default function PlaceAnalysisPage() {
                     <tr>
                       <td
                         colSpan={8}
-                        className="px-5 py-14 text-center text-[14px] text-[#9ca3af]"
+                        className="px-3 py-10 text-center text-[12px] text-[#9ca3af] md:px-5 md:py-14 md:text-[14px]"
                       >
                         아직 분석 결과가 없습니다.
                       </td>
@@ -683,79 +683,96 @@ export default function PlaceAnalysisPage() {
                         key={`${item.placeId || item.name}-${idx}`}
                         className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
                       >
-                        <td className="px-5 py-5 text-[18px] font-black text-[#111827]">
+                        <td className="px-1 py-3 text-[15px] font-black text-[#111827] md:px-5 md:py-5 md:text-[18px]">
                           {item.rank}
                         </td>
 
-                        <td className="px-5 py-5">
-                          <div className="flex items-center gap-3">
+                        <td className="px-1 py-3 md:px-5 md:py-5">
+                          <div className="flex items-center gap-1.5 md:gap-3">
                             {item.imageUrl ? (
                               <img
                                 src={item.imageUrl}
                                 alt={item.name}
-                                className="h-[56px] w-[56px] rounded-[12px] object-cover ring-1 ring-[#e5e7eb]"
+                                className="h-9 w-9 shrink-0 rounded-[9px] object-cover ring-1 ring-[#e5e7eb] md:h-[56px] md:w-[56px] md:rounded-[12px]"
                                 loading="lazy"
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="flex h-[56px] w-[56px] items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[11px] text-[#9ca3af]">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-[#f3f4f6] text-[10px] text-[#9ca3af] md:h-[56px] md:w-[56px] md:rounded-[12px] md:text-[11px]">
                                 없음
                               </div>
                             )}
 
                             <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-[15px] font-bold text-[#111827]">
+                              <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+                                <span className="max-w-[120px] truncate text-[12px] font-bold text-[#111827] md:max-w-none md:text-[15px]">
                                   {item.name}
                                 </span>
                                 {item.isPromotedAd ? (
-                                  <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                                  <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 md:px-2 md:text-[11px]">
                                     광고
                                   </span>
                                 ) : null}
                               </div>
                               {item.address ? (
-                                <div className="mt-1 text-[12px] text-[#9ca3af]">
+                                <div className="mt-0.5 max-w-[135px] truncate text-[10px] text-[#6b7280] md:mt-1 md:max-w-none md:text-[12px] md:text-[#9ca3af]">
                                   {item.address}
                                 </div>
                               ) : null}
+
+                              <div className="mt-1 flex max-w-[155px] flex-wrap gap-1 overflow-visible md:hidden">
+                                {item.keywords && item.keywords.length > 0 ? (
+                                  item.keywords.map((kw, i) => (
+                                    <span
+                                      key={i}
+                                      className="inline-flex shrink-0 whitespace-nowrap rounded-[6px] border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold leading-5 text-blue-600"
+                                    >
+                                      #{kw}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-[11px] text-[#9ca3af]">-</span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
 
-                        <td className="px-5 py-5 text-[14px] font-semibold text-[#4b5563]">
-                          {item.category || "-"}
+                        <td className="px-1 py-3 text-[11px] font-semibold text-[#4b5563] md:px-5 md:py-5 md:text-[14px]">
+                          <span className="block truncate md:inline md:whitespace-normal">
+                            {item.category || "-"}
+                          </span>
                         </td>
 
-                        <td className="px-5 py-5 text-right text-[15px] font-bold text-[#111827]">
+                        <td className="whitespace-nowrap px-1 py-3 text-right text-[12px] font-bold tabular-nums text-[#111827] md:px-5 md:py-5 md:text-[15px]">
                           {formatCount(item.review?.total)}
                         </td>
 
-                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
+                        <td className="whitespace-nowrap px-1 py-3 text-right text-[12px] font-semibold tabular-nums text-[#6b7280] md:px-5 md:py-5 md:text-[15px]">
                           {formatCount(item.review?.visitor)}
                         </td>
 
-                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#6b7280]">
+                        <td className="whitespace-nowrap px-1 py-3 text-right text-[12px] font-semibold tabular-nums text-[#6b7280] md:px-5 md:py-5 md:text-[15px]">
                           {formatCount(item.review?.blog)}
                         </td>
 
-                        <td className="px-5 py-5 text-right text-[15px] font-semibold text-[#111827]">
+                        <td className="whitespace-nowrap px-1 py-3 text-right text-[12px] font-semibold tabular-nums text-[#111827] md:px-5 md:py-5 md:text-[15px]">
                           {formatCount(item.review?.save)}
                         </td>
 
-                        <td className="px-5 py-5">
-                          <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                        <td className="hidden px-2 py-3 md:table-cell md:px-5 md:py-5">
+                          <div className="flex max-w-[160px] flex-wrap gap-1 md:max-w-[200px] md:gap-1.5">
                             {item.keywords && item.keywords.length > 0 ? (
                               item.keywords.map((kw, i) => (
                                 <span
                                   key={i}
-                                  className="rounded-[6px] bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600 border border-blue-100"
+                                  className="rounded-[6px] border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 md:px-2 md:py-1 md:text-[11px]"
                                 >
                                   #{kw}
                                 </span>
                               ))
                             ) : (
-                              <span className="text-[12px] text-[#9ca3af]">-</span>
+                              <span className="text-[11px] text-[#9ca3af] md:text-[12px]">-</span>
                             )}
                           </div>
                         </td>

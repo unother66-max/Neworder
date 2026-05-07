@@ -11,10 +11,10 @@ export default function KakaoChatButton() {
       target="_blank"
       rel="noopener noreferrer"
       // 🚨 배경색을 bg-black에서 bg-[#333333]으로 변경했습니다.
-      className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[9999] flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-[#333333] px-3.5 py-2.5 text-xs font-black !text-white shadow-[0_4px_12px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg active:scale-95 sm:bottom-8 sm:right-8 sm:gap-2 sm:px-5 sm:py-3.5 sm:text-[15px]"
+      className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-[max(0.75rem,env(safe-area-inset-right))] z-[9999] flex min-h-9 items-center justify-center gap-1 rounded-full bg-[#333333] px-3 py-2 text-[11px] font-black !text-white shadow-[0_4px_12px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg active:scale-95 sm:bottom-8 sm:right-8 sm:min-h-10 sm:gap-2 sm:px-5 sm:py-3.5 sm:text-[15px]"
     >
       <svg
-        className="h-4 w-4 sm:h-5 sm:w-5"
+        className="h-3.5 w-3.5 sm:h-5 sm:w-5"
         viewBox="0 0 24 24"
         fill="white"
         xmlns="http://www.w3.org/2000/svg"
