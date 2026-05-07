@@ -66,7 +66,7 @@ export async function fetchAllSearchPlacesAutoDetailed(
     label: string,
     token: string
   ): Promise<FetchAllSearchCheckPlaceDetailedResult | null> => {
-    const r = await fetchAllSearchPlacesWithTokenDetailed(trimmed, token);
+    const r = await fetchAllSearchPlacesWithTokenDetailed(trimmed, token, coords);
     if (r.ok) {
       console.log(`${LOG_PREFIX} ok`, { label, places: r.places.length });
       return r;
@@ -94,7 +94,10 @@ export async function fetchAllSearchPlacesAutoDetailed(
     forgetToken();
   }
 
-  const tokenless = await fetchAllSearchPlacesCheckPlaceRankStyleDetailed(trimmed);
+  const tokenless = await fetchAllSearchPlacesCheckPlaceRankStyleDetailed(
+    trimmed,
+    coords
+  );
   if (tokenless.ok) return tokenless;
 
   const needPlaywright =

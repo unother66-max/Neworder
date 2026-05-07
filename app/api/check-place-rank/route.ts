@@ -168,6 +168,24 @@ if (browserAllSearchJson) {
 // 2) 브라우저 allSearch가 없거나 비었으면 기존 pcmap 시도
 // 단, "이태원 데이트" 같은 추천/의도형 키워드는 pcmap보다 allSearch를 우선 사용
 const shouldPreferAllSearch = isIntentMixedKeyword(actualKeyword);
+let autoOk = false;
+
+if (fullList.length === 0 && shouldPreferAllSearch) {
+  usedSource = "allSearch";
+  const auto = await fetchAllSearchPlacesAutoDetailed(
+    actualKeyword,
+    {
+      x,
+      y,
+    }
+  );
+  autoOk = auto.ok;
+  const pack = auto.ok ? auto : null;
+  fullList =
+    pack && pack.places.length > 0
+      ? mapAllSearchRowsToCheckPlaceRankList(pack.places, SEARCH_CAP)
+      : [];
+}
 
 if (fullList.length === 0) {
 
@@ -203,9 +221,8 @@ if (fullList.length === 0) {
   
 
 // 3) 마지막 fallback: 서버 allSearch(auto)
-// 의도형 키워드는 여기로 먼저 들어오게 됨
-let autoOk = false;
-if (fullList.length === 0) {
+// 의도형 키워드는 위에서 먼저 시도했으므로 여기서는 반복 호출하지 않음
+if (fullList.length === 0 && !shouldPreferAllSearch) {
 
 
   usedSource = "allSearch";
