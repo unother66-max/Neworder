@@ -86,11 +86,11 @@ function ProductCardThumb({
   const src = imageUrl?.trim();
   if (!src || broken) {
     return (
-      <div className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] ring-1 ring-[#e5e7eb]">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]">
         <img
           src={PRODUCT_CARD_PLACEHOLDER_IMG}
           alt=""
-          className="h-9 w-9 opacity-[0.35]"
+          className="h-7 w-7 opacity-[0.35] md:h-9 md:w-9"
           width={36}
           height={36}
           aria-hidden
@@ -102,7 +102,7 @@ function ProductCardThumb({
     <img
       src={src}
       alt={alt}
-      className="h-[70px] w-[70px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
+      className="h-12 w-12 shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]"
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setBroken(true)}
@@ -754,13 +754,13 @@ export default function SmartstoreRankPage() {
   return (
     <>
       <TopNav activeSmartstoreSub="rank-naver-price" />
-      <main className="min-h-screen bg-[#f8fafc] text-[#111111] pt-24">
-        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
-          <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+        <section className="mx-auto max-w-[1240px] px-3 py-3 md:px-6 md:py-5 lg:px-8">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-3 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-3 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  <h1 className="text-[20px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
                     상품 순위 추적
                   </h1>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f3f4f6] px-2 py-1">
@@ -774,20 +774,20 @@ export default function SmartstoreRankPage() {
                     />
                   </span>
                 </div>
-                <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
+                <p className="mt-1 text-[12px] leading-5 text-[#4b5563] md:text-[13px] md:text-[#6b7280]">
                   스마트스토어 상품의 가격비교 키워드 순위를 추적합니다. 키워드 등록 시 월 검색량을
                   조회하고, 검색 순위 수집은 추후 연동됩니다.
                 </p>
               </div>
 
-              <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-center">
+              <div className="flex w-full flex-col gap-2 md:gap-3 sm:flex-row lg:w-auto lg:items-center">
              <div className="relative w-full sm:w-[320px]">
   <input
     type="text"
     value={searchText}
     onChange={(e) => setSearchText(e.target.value)}
     placeholder="상품명, 상품 ID, 키워드 검색"
-    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
+    className="h-10 w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-10 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white md:h-[44px] md:rounded-[14px] md:px-4 md:pr-11 md:text-[13px]"
   />
   <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280]">
     🔍
@@ -796,9 +796,10 @@ export default function SmartstoreRankPage() {
                 <button
                   type="button"
                   className={`
-                    relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px]
-                    bg-[#333333] px-4 text-[13px] font-bold tracking-wide text-white font-sans
+                    relative inline-flex h-10 min-w-[96px] items-center justify-center overflow-hidden rounded-[12px]
+                    bg-[#333333] px-3 text-[12px] font-bold tracking-wide text-white font-sans
                     transition-all duration-300 ease-in-out
+                    md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]
                   `}
                   onMouseEnter={() => setIsAddHovered(true)}
                   onMouseLeave={() => setIsAddHovered(false)}
@@ -860,7 +861,7 @@ export default function SmartstoreRankPage() {
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#f3f4f6] pt-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
+                  <h2 className="text-[16px] font-black tracking-[-0.02em] text-[#111827] md:text-[17px]">
                     등록된 상품
                   </h2>
                   <span className="rounded-full border border-[#e5e7eb] bg-[#fafafa] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
@@ -870,7 +871,7 @@ export default function SmartstoreRankPage() {
                     {filteredProducts.length}개
                   </span>
                 </div>
-                <p className="mt-2 text-[12px] text-[#6b7280]">
+                <p className="mt-1.5 text-[12px] text-[#6b7280] md:mt-2">
                   {listLoading ? "상품 목록 불러오는 중..." : "가격비교 키워드 순위 추적"}
                 </p>
               </div>
@@ -896,7 +897,7 @@ export default function SmartstoreRankPage() {
             </div>
           ) : null}
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
             {listLoading ? (
               <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-14 text-center text-[14px] text-[#9ca3af]">
                 불러오는 중...
@@ -909,36 +910,149 @@ export default function SmartstoreRankPage() {
                 </p>
               </div>
             ) : (
-              filteredProducts.map((p) => (
+              filteredProducts.map((p) => {
+                const trackingLabel = p.isAutoTracking ? "ON" : "OFF";
+                const productMonthly = p.keywords.reduce(
+                  (sum, kw) => sum + (kw.totalVolume ?? 0),
+                  0
+                );
+                const productMobile = p.keywords.reduce(
+                  (sum, kw) => sum + (kw.mobileVolume ?? 0),
+                  0
+                );
+                const productPc = p.keywords.reduce(
+                  (sum, kw) => sum + (kw.pcVolume ?? 0),
+                  0
+                );
+
+                return (
                 <div
                   key={p.id}
-                  className="overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+                  className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-5 py-4 md:px-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="flex min-w-0 gap-4">
+                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-6 md:py-4">
+                    <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="flex min-w-0 gap-2.5 md:gap-4">
                         <ProductCardThumb
                           imageUrl={p.imageUrl}
                           alt={cardProductTitle(p)}
                         />
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {p.isPinned && (
-                              <Pin className="h-[14px] w-[14px] fill-[#b91c1c] stroke-[#b91c1c]" />
-                            )}
-                            <h3 className="text-[14px] font-bold leading-snug tracking-[-0.02em] text-[#111827] md:text-[15px]">
-                              {cardProductTitle(p)}
-                            </h3>
+                          <div className="flex min-w-0 items-start justify-between gap-2">
+                            <div className="flex min-w-0 flex-1 items-start gap-1.5 md:flex-wrap md:items-center md:gap-2">
+                              {p.isPinned && (
+                                <Pin className="mt-0.5 h-[13px] w-[13px] shrink-0 fill-[#b91c1c] stroke-[#b91c1c] md:mt-0 md:h-[14px] md:w-[14px]" />
+                              )}
+                              <h3 className="min-w-0 overflow-hidden text-[15px] font-black leading-snug tracking-[-0.03em] text-[#111827] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] md:text-[15px] md:font-bold md:tracking-[-0.02em]">
+                                {cardProductTitle(p)}
+                              </h3>
+
+                              {p.category?.trim() ? (
+                                <span className="mt-0.5 max-w-[92px] shrink-0 truncate rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:hidden">
+                                  {p.category.trim()}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="flex shrink-0 items-center gap-1 md:hidden">
+                              {p.productUrl ? (
+                                <a
+                                  href={p.productUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex h-6 items-center rounded-full border border-[#d1d5db] bg-white px-2 text-[10px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                                >
+                                  스마트스토어
+                                </a>
+                              ) : null}
+
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(p.id)}
+                                disabled={deletingId === p.id}
+                                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3] ${
+                                  deletingId === p.id ? "opacity-60" : ""
+                                }`}
+                                aria-label="삭제"
+                              >
+                                {deletingId === p.id ? (
+                                  <span className="text-[11px] text-[#dc2626]">...</span>
+                                ) : (
+                                  <Trash2 className="h-4 w-4 stroke-[#dc2626]" strokeWidth={2} />
+                                )}
+                              </button>
+                            </div>
                           </div>
 
                           {p.category?.trim() ? (
-                            <p className="mt-1 text-[12px] font-semibold leading-snug text-[#9ca3af] break-words">
+                            <p className="mt-1 hidden text-[12px] font-semibold leading-snug text-[#9ca3af] break-words md:block">
                               {p.category.trim()}
                             </p>
                           ) : null}
 
-                          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+                          <div className="mt-1.5 grid grid-cols-4 gap-1.5 md:mt-3 md:flex md:flex-wrap md:gap-2">
+                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                              <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
+                                월 검색량
+                              </div>
+                              <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[15px] md:font-black">
+                                {p.keywords.length > 0 ? fmtVolume(productMonthly) : "-"}
+                              </div>
+                            </div>
+
+                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                              <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
+                                모바일
+                              </div>
+                              <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-extrabold">
+                                {p.keywords.length > 0 ? fmtVolume(productMobile) : "-"}
+                              </div>
+                            </div>
+
+                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                              <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
+                                PC
+                              </div>
+                              <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-extrabold">
+                                {p.keywords.length > 0 ? fmtVolume(productPc) : "-"}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleTracking(p)}
+                              disabled={trackingLoadingId === p.id}
+                              className={`flex h-10 min-w-0 flex-col justify-center rounded-[10px] border px-1.5 text-left transition active:scale-[0.98] md:hidden ${
+                                p.isAutoTracking
+                                  ? "border-[#2563EB] bg-[#2563EB] text-white"
+                                  : "border-[#e5e7eb] bg-[#f3f4f6] text-[#374151]"
+                              } ${trackingLoadingId === p.id ? "opacity-60" : ""}`}
+                              aria-label={`자동 추적 ${trackingLabel}`}
+                            >
+                              <div className={`truncate text-[10px] font-semibold leading-none ${
+                                p.isAutoTracking ? "text-white/85" : "text-[#4b5563]"
+                              }`}>
+                                자동 추적
+                              </div>
+                              <div className={`mt-1 truncate text-sm font-semibold leading-none ${
+                                p.isAutoTracking ? "text-white" : "text-[#111827]"
+                              }`}>
+                                {trackingLabel}
+                              </div>
+                            </button>
+
+                            <div className="hidden h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:flex md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                              <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
+                                자동 추적
+                              </div>
+                              <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-black">
+                                {trackingLabel}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 hidden flex-wrap items-center gap-2 text-[12px] md:flex">
                             <span className="font-semibold text-[#6b7280]">바로가기</span>
                             {p.productUrl ? (
                               <a
@@ -956,16 +1070,16 @@ export default function SmartstoreRankPage() {
                         </div>
                       </div>
 
-                      <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:justify-end">
+                      <div className="ml-[58px] flex w-[calc(100%-58px)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:flex-wrap md:gap-2 md:overflow-visible md:whitespace-normal xl:flex-nowrap xl:justify-end">
                         <button
                           type="button"
                           onClick={() => handleTogglePin(p)}
                           disabled={pinningId === p.id}
-                          className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb] ${pinningId === p.id ? "opacity-60" : ""}`}
+                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f9fafb] md:h-[42px] md:w-[42px] md:rounded-[14px] ${pinningId === p.id ? "opacity-60" : ""}`}
                           aria-label="상단 고정"
                         >
                           <Pin
-                            className={`h-[20px] w-[20px] transition ${
+                            className={`h-4 w-4 transition md:h-[20px] md:w-[20px] ${
                               p.isPinned
                                 ? "fill-[#b91c1c] stroke-[#b91c1c]"
                                 : "stroke-[#6b7280]"
@@ -990,9 +1104,12 @@ export default function SmartstoreRankPage() {
                             )
                           }
                           onMouseMove={(e) => handleUpdateMouseMove(e, p.id)}
-                          className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60`}
+                          className={`relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]`}
                         >
-                          <span className="relative z-30 pointer-events-none">
+                          <span className="relative z-30 pointer-events-none md:hidden">
+                            {updatingId === p.id ? "업데이트 중..." : "업데이트"}
+                          </span>
+                          <span className="relative z-30 pointer-events-none hidden md:inline">
                             {updatingId === p.id
                               ? p.keywords.length > 0
                                 ? "업데이트·순위 조회 중..."
@@ -1048,12 +1165,15 @@ export default function SmartstoreRankPage() {
                           }
                           onMouseMove={(e) => handleRankChangeMouseMove(e, p.id)}
                           className={`
-                            relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px]
-                            border-1 px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out
-                            ${rankChangeHover.id === p.id ? "border-[#2563EB] text-white" : "border-black text-black"}
+                            relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px]
+                            border px-3 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]
+                            ${rankChangeHover.id === p.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827] md:border-black md:text-black"}
                           `}
                         >
-                          <span className="relative z-30 pointer-events-none">
+                          <span className="relative z-30 pointer-events-none md:hidden">
+                            순위변화
+                          </span>
+                          <span className="relative z-30 pointer-events-none hidden md:inline">
                             순위 변화 보기
                           </span>
 
@@ -1108,7 +1228,7 @@ export default function SmartstoreRankPage() {
                             )
                           }
                           onMouseMove={(e) => handleTrackingMouseMove(e, p.id)}
-                          className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold font-sans transition-colors duration-0 ease-in-out disabled:cursor-not-allowed ${
+                          className={`relative hidden h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold font-sans transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:inline-flex md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${
                             p.isAutoTracking
                               ? "bg-[#2563EB] text-white"
                               : trackingHover.id === p.id
@@ -1165,7 +1285,7 @@ export default function SmartstoreRankPage() {
                             )
                           }
                           onMouseMove={(e) => handleKwManageMouseMove(e, p.id)}
-                          className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white font-sans transition-all duration-300 ease-in-out"
+                          className="relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]"
                         >
                           <span className="relative z-30 pointer-events-none">
                             키워드 관리
@@ -1206,7 +1326,7 @@ export default function SmartstoreRankPage() {
   type="button"
   onClick={() => handleDelete(p.id)}
   disabled={deletingId === p.id}
-  className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6] ${deletingId === p.id ? "opacity-60" : ""}`}
+  className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f3f4f6] md:inline-flex md:h-[42px] md:w-[42px] md:rounded-[14px] ${deletingId === p.id ? "opacity-60" : ""}`}
   aria-label="삭제"
 >
   {deletingId === p.id ? (
@@ -1219,18 +1339,26 @@ export default function SmartstoreRankPage() {
                     </div>
                   </div>
 
-                  <div className="border-t border-[#f3f4f6] px-5 pb-4 md:px-6">
+                  <div className="border-t border-[#f3f4f6] px-3 pb-3 md:px-6 md:pb-4">
                     <div className="mb-2 mt-3">
                       <p className="text-[11px] font-semibold text-[#6b7280]">키워드별 순위</p>
                     </div>
-                    <div className="overflow-x-auto rounded-[14px] border border-[#e5e7eb]">
-                      <table className="min-w-full border-collapse">
+                    <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb]">
+                      <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <table className="w-full table-fixed border-collapse md:min-w-full md:table-auto">
+                        <colgroup>
+                          <col className="w-[31%] md:w-auto" />
+                          <col className="w-[16%] md:w-auto" />
+                          <col className="w-[15%] md:w-auto" />
+                          <col className="w-[13%] md:w-auto" />
+                          <col className="w-[25%] md:w-auto" />
+                        </colgroup>
                         <thead className="bg-[#f9fafb]">
                           <tr>
                             {["키워드", "월 검색량", "모바일", "PC", "검색 순위"].map((h) => (
                               <th
                                 key={h}
-                                className="border-b border-[#e5e7eb] px-4 py-2.5 text-center text-[11px] font-extrabold text-[#6b7280] first:text-left"
+                                className="border-b border-[#e5e7eb] px-1 py-2 text-right text-[10px] font-extrabold text-[#6b7280] first:px-1.5 first:text-left last:px-1.5 md:px-4 md:py-2.5 md:text-center md:text-[11px] md:first:text-left"
                               >
                                 {h}
                               </th>
@@ -1240,7 +1368,7 @@ export default function SmartstoreRankPage() {
                         <tbody>
                           {p.keywords.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="px-4 py-6 text-center text-[12px] text-[#9ca3af]">
+                              <td colSpan={5} className="px-2 py-7 text-center text-[12px] text-[#9ca3af] md:px-4 md:py-6">
                                 키워드를 등록한 뒤 상단 「업데이트」로 순위를 갱신하면 네이버 쇼핑 검색 기준 순위가
                                 표시돼요.
                                 <br />
@@ -1253,21 +1381,21 @@ export default function SmartstoreRankPage() {
                                 key={kw.id}
                                 className="border-t border-[#f3f4f6] bg-white hover:bg-[#fafafa]"
                               >
-                                <td className="px-4 py-3 text-[13px] font-semibold text-[#111827]">
-                                  {kw.keyword}
+                                <td className="min-w-0 px-1.5 py-2.5 text-[11px] font-bold text-[#111827] md:px-4 md:py-3 md:text-[13px] md:font-semibold">
+                                  <div className="truncate">{kw.keyword}</div>
                                 </td>
-                                <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">
+                                <td className="px-1 py-2.5 text-right text-[11px] font-semibold text-[#111827] md:px-4 md:py-3 md:text-center md:text-[13px] md:font-normal md:text-[#6b7280]">
                                   {fmtVolume(kw.totalVolume)}
                                 </td>
-                                <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">
+                                <td className="px-1 py-2.5 text-right text-[11px] font-semibold text-[#6b7280] md:px-4 md:py-3 md:text-center md:text-[13px] md:font-normal">
                                   {fmtVolume(kw.mobileVolume)}
                                 </td>
-                                <td className="px-4 py-3 text-center text-[13px] text-[#6b7280]">
+                                <td className="px-1 py-2.5 text-right text-[11px] font-semibold text-[#6b7280] md:px-4 md:py-3 md:text-center md:text-[13px] md:font-normal">
                                   {fmtVolume(kw.pcVolume)}
                                 </td>
-                                <td className="px-4 py-3 text-center">
+                                <td className="px-1.5 py-2.5 text-right md:px-4 md:py-3 md:text-center">
                                   <span
-                                    className={`text-[13px] ${
+                                    className={`text-xs md:text-[13px] ${
                                       kw.latestRankLabel === "-"
                                         ? "font-bold text-[#9ca3af]"
                                         : kw.latestRankLabel === "1000위 밖" ||
@@ -1279,7 +1407,7 @@ export default function SmartstoreRankPage() {
                                     {kw.latestRankLabel}
                                   </span>
                                   {kw.latestRankAt && (
-                                    <p className="text-[10px] text-[#9ca3af]">
+                                    <p className="mt-0.5 hidden text-[10px] text-[#9ca3af] md:block">
                                       {new Date(kw.latestRankAt).toLocaleString("ko-KR")}
                                     </p>
                                   )}
@@ -1289,6 +1417,7 @@ export default function SmartstoreRankPage() {
                           )}
                         </tbody>
                       </table>
+                      </div>
                     </div>
                     <p className="mt-2 text-right text-[11px] text-[#9ca3af]">
                       최근 업데이트:{" "}
@@ -1296,7 +1425,8 @@ export default function SmartstoreRankPage() {
                     </p>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
