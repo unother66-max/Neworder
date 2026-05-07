@@ -385,24 +385,42 @@ export default function KakaoRankingPage() {
                     <div className="mt-2.5 border-t border-[#f3f4f6] pb-1 pt-2.5 md:mt-4 md:pb-0 md:pt-3">
                       <div className="mb-2 text-[11px] font-semibold text-[#6b7280]">해당 지역에서의 랭킹변화</div>
                       <div className="overflow-x-auto rounded-[12px] border border-[#e5e7eb] overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:rounded-[14px]">
-                        <table className="min-w-[720px] border-collapse md:min-w-full">
+                        <table className="w-full table-fixed border-collapse md:min-w-full md:table-auto">
+                          <colgroup>
+                            <col className="w-[15%] md:w-auto" />
+                            {RANK_GROUPS.flatMap((g) => [
+                              <col key={`${g.label}-all`} className="w-[10.625%] md:w-auto" />,
+                              <col key={`${g.label}-cat`} className="w-[10.625%] md:w-auto" />,
+                            ])}
+                          </colgroup>
                           <thead className="bg-[#f9fafb]">
                             <tr>
-                              <th rowSpan={2} className="border-b border-r border-[#e5e7eb] px-2 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-2.5 md:text-[11px]">날짜</th>
-                              {RANK_GROUPS.map((g, i) => <th key={g.label} colSpan={2} className={`border-b border-[#e5e7eb] px-2 py-2 text-center text-[10px] font-extrabold text-[#6b7280] md:px-3 md:text-[11px] ${i < 3 ? "border-r" : ""}`}><Tooltip content={g.tooltip}><span>{g.label} 랭킹</span></Tooltip></th>)}
+                              <th rowSpan={2} className="border-b border-r border-[#e5e7eb] px-1 py-2 text-left text-[9px] font-extrabold text-[#6b7280] md:px-4 md:py-2.5 md:text-[11px]">날짜</th>
+                              {RANK_GROUPS.map((g, i) => (
+                                <th
+                                  key={g.label}
+                                  colSpan={2}
+                                  className={`border-b border-[#e5e7eb] px-1 py-2 text-center text-[9px] font-extrabold text-[#6b7280] md:px-3 md:text-[11px] ${i < 3 ? "border-r" : ""}`}
+                                >
+                                  <Tooltip content={g.tooltip}>
+                                    <span className="md:hidden">{g.label === "친구공유" ? "공유" : g.label}</span>
+                                    <span className="hidden md:inline">{g.label} 랭킹</span>
+                                  </Tooltip>
+                                </th>
+                              ))}
                             </tr>
                             <tr>
-                              {RANK_GROUPS.map((g, gi) => (["전체", store.category || "업종"] as const).map((label, li) => <th key={`${gi}-${label}`} className={`border-b border-[#e5e7eb] px-2 py-1.5 text-center text-[10px] font-semibold text-[#9ca3af] md:px-3 ${li === 1 && gi < 3 ? "border-r" : ""}`}>{label}</th>))}
+                              {RANK_GROUPS.map((g, gi) => (["전체", store.category || "업종"] as const).map((label, li) => <th key={`${gi}-${label}`} className={`truncate border-b border-[#e5e7eb] px-0.5 py-1.5 text-center text-[9px] font-semibold text-[#9ca3af] md:px-3 md:text-[10px] ${li === 1 && gi < 3 ? "border-r" : ""}`}>{label}</th>))}
                             </tr>
                           </thead>
                           <tbody>
                             {latestRow ? (
                               <tr className="bg-white">
-                                <td className="border-r border-[#f3f4f6] px-2 py-2.5 text-[10px] font-semibold text-[#6b7280] md:px-4 md:py-3 md:text-[11px]">{latestRow.date}</td>
+                                <td className="break-keep border-r border-[#f3f4f6] px-1 py-2 text-[9px] font-semibold leading-tight text-[#6b7280] md:px-4 md:py-3 md:text-[11px]">{latestRow.date}</td>
                                 {RANK_GROUPS.map((g, gi) => (
                                   <React.Fragment key={gi}>
-                                    <td className="px-2 py-2.5 text-center text-[11px] font-bold text-[#6b7280] md:px-3 md:py-3 md:text-[12px]">{latestRow[g.allKey] || "-"}</td>
-                                    <td className={`px-2 py-2.5 text-center text-[11px] font-bold md:px-3 md:py-3 md:text-[12px] ${gi < 3 ? "border-r border-[#f3f4f6]" : ""} ${latestRow[g.catKey] && latestRow[g.catKey] !== "-" && latestRow[g.catKey] !== "100위 밖" ? "text-[#2563EB]" : "text-[#d1d5db]"}`}>{latestRow[g.catKey] || "-"}</td>
+                                    <td className="px-0.5 py-2 text-center text-[10px] font-bold leading-tight text-[#6b7280] md:px-3 md:py-3 md:text-[12px]">{latestRow[g.allKey] || "-"}</td>
+                                    <td className={`px-0.5 py-2 text-center text-[10px] font-bold leading-tight md:px-3 md:py-3 md:text-[12px] ${gi < 3 ? "border-r border-[#f3f4f6]" : ""} ${latestRow[g.catKey] && latestRow[g.catKey] !== "-" && latestRow[g.catKey] !== "100위 밖" ? "text-[#2563EB]" : "text-[#d1d5db]"}`}>{latestRow[g.catKey] || "-"}</td>
                                   </React.Fragment>
                                 ))}
                               </tr>

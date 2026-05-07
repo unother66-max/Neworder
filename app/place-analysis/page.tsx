@@ -643,22 +643,22 @@ export default function PlaceAnalysisPage() {
                     <th className="w-[6%] px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       순위
                     </th>
-                    <th className="w-[37%] px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
+                    <th className="w-[40%] px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       매장명
                     </th>
-                    <th className="w-[13%] px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
+                    <th className="hidden px-1 py-2.5 text-left text-[10px] font-bold text-[#6b7280] md:table-cell md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       카테고리
                     </th>
-                    <th className="w-[12%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
+                    <th className="w-[14%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       전체 리뷰
                     </th>
-                    <th className="w-[10%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
+                    <th className="w-[12%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       방문자
                     </th>
-                    <th className="w-[10%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
+                    <th className="w-[12%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       블로그
                     </th>
-                    <th className="w-[12%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
+                    <th className="w-[16%] px-1 py-2.5 text-right text-[10px] font-bold text-[#6b7280] md:w-auto md:px-5 md:py-4 md:text-[13px]">
                       저장수
                     </th>
                     <th className="hidden px-2 py-2.5 text-left text-[11px] font-bold text-[#6b7280] md:table-cell md:px-5 md:py-4 md:text-[13px]">
@@ -715,10 +715,14 @@ export default function PlaceAnalysisPage() {
                                 ) : null}
                               </div>
                               {item.address ? (
-                                <div className="mt-0.5 max-w-[135px] truncate text-[10px] text-[#6b7280] md:mt-1 md:max-w-none md:text-[12px] md:text-[#9ca3af]">
+                                <div className="mt-1 hidden text-[12px] text-[#9ca3af] md:block">
                                   {item.address}
                                 </div>
                               ) : null}
+
+                              <div className="mt-0.5 max-w-[140px] truncate text-[10px] font-semibold text-[#6b7280] md:hidden">
+                                {item.category || "-"}
+                              </div>
 
                               <div className="mt-1 flex max-w-[155px] flex-wrap gap-1 overflow-visible md:hidden">
                                 {item.keywords && item.keywords.length > 0 ? (
@@ -738,7 +742,7 @@ export default function PlaceAnalysisPage() {
                           </div>
                         </td>
 
-                        <td className="px-1 py-3 text-[11px] font-semibold text-[#4b5563] md:px-5 md:py-5 md:text-[14px]">
+                        <td className="hidden px-1 py-3 text-[11px] font-semibold text-[#4b5563] md:table-cell md:px-5 md:py-5 md:text-[14px]">
                           <span className="block truncate md:inline md:whitespace-normal">
                             {item.category || "-"}
                           </span>
