@@ -1070,7 +1070,7 @@ export default function SmartstoreRankPage() {
                         </div>
                       </div>
 
-                      <div className="ml-[58px] flex w-[calc(100%-58px)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:flex-wrap md:gap-2 md:overflow-visible md:whitespace-normal xl:flex-nowrap xl:justify-end">
+                      <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:flex-wrap md:gap-2 md:overflow-visible md:whitespace-normal xl:flex-nowrap xl:justify-end">
                         <button
                           type="button"
                           onClick={() => handleTogglePin(p)}
@@ -1104,7 +1104,7 @@ export default function SmartstoreRankPage() {
                             )
                           }
                           onMouseMove={(e) => handleUpdateMouseMove(e, p.id)}
-                          className={`relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]`}
+                          className={`relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]`}
                         >
                           <span className="relative z-30 pointer-events-none md:hidden">
                             {updatingId === p.id ? "업데이트 중..." : "업데이트"}
@@ -1165,8 +1165,8 @@ export default function SmartstoreRankPage() {
                           }
                           onMouseMove={(e) => handleRankChangeMouseMove(e, p.id)}
                           className={`
-                            relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px]
-                            border px-3 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]
+                            relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px]
+                            border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]
                             ${rankChangeHover.id === p.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827] md:border-black md:text-black"}
                           `}
                         >
@@ -1285,7 +1285,7 @@ export default function SmartstoreRankPage() {
                             )
                           }
                           onMouseMove={(e) => handleKwManageMouseMove(e, p.id)}
-                          className="relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]"
+                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]"
                         >
                           <span className="relative z-30 pointer-events-none">
                             키워드 관리
