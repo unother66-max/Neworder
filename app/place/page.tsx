@@ -1342,35 +1342,35 @@ useEffect(() => {
     <>
       <TopNav active="place" />
 
-      <main className="min-h-screen bg-[#f8fafc] text-[#111111] pt-24">
-        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
-          <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+        <section className="mx-auto max-w-[1240px] px-3 py-3 md:px-6 md:py-5 lg:px-8">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-4 py-3 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-3 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
                     플레이스 순위 추적
                   </h1>
-                  <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[11px] font-bold text-[#4b5563]">
+                  <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:py-1 md:text-[11px]">
                     PLACE
                   </span>
                 </div>
 
-                <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
+                <p className="mt-1 text-[11px] leading-5 text-[#4b5563] md:text-[13px]">
                   등록된 플레이스의 검색량, 키워드, 순위를 한 화면에서 관리합니다.
                 </p>
               </div>
 
-              <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-center">
+              <div className="flex w-full flex-col gap-2 sm:flex-row md:gap-3 lg:w-auto lg:items-center">
                 <div className="relative w-full sm:w-[320px]">
                   <input
                     type="text"
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     placeholder="등록된 매장 검색"
-                    className="h-[44px] w-full rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
+                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white md:h-[44px] md:rounded-[14px] md:px-4 md:pr-11 md:text-[13px]"
                   />
-                  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280]">
+                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#6b7280] md:right-4 md:text-[14px]">
                     🔍
                   </div>
                 </div>
@@ -1380,7 +1380,7 @@ useEffect(() => {
                   onMouseLeave={() => setIsAddHovered(false)}
                   onMouseMove={handleMouseMove}
                   onClick={openRegisterModal}
-                  className="relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out"
+                  className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]"
                 >
                   <span className="relative z-30 pointer-events-none">매장 등록</span>
                   <div
@@ -1394,7 +1394,7 @@ useEffect(() => {
                   />
                   <div
                     className={`
-                      absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                      absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
                       transition-opacity duration-200 ease-out
                       ${isAddHovered ? "opacity-100" : "opacity-0"}
                     `}
@@ -1417,32 +1417,32 @@ useEffect(() => {
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#f3f4f6] pt-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
+                  <h2 className="text-[15px] font-black tracking-[-0.02em] text-[#111827] md:text-[17px]">
                     등록된 매장
                   </h2>
-                  <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
+                  <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:px-2.5 md:py-1 md:text-[11px]">
                     {filteredStores.length}개
                   </span>
                 </div>
 
-                <p className="mt-2 text-[12px] text-[#6b7280]">
+                <p className="mt-1.5 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
                   {placeLoading ? "📍 매장 목록 불러오는 중..." : "📍 기준 순위 조회중"}
                 </p>
               </div>
 
-              <div className="text-[11px] text-[#9ca3af]">
+              <div className="text-[10px] leading-4 text-[#6b7280] md:text-[11px] md:text-[#9ca3af]">
                 IP, 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
               </div>
             </div>
           </div>
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
             {filteredStores.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
-                <p className="text-[18px] font-bold text-[#111827]">
+              <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+                <p className="text-[15px] font-bold text-[#111827] md:text-[18px]">
                   아직 등록된 매장이 없어요
                 </p>
-                <p className="mt-2 text-[14px] text-[#9ca3af]">
+                <p className="mt-2 text-[12px] text-[#9ca3af] md:text-[14px]">
                   상단의 매장 등록 버튼으로 첫 매장을 추가해보세요.
                 </p>
               </div>
@@ -1465,16 +1465,16 @@ useEffect(() => {
                 return (
                   <div
                     key={`${store.dbId || store.placeId || store.name}-${store.address}-${index}`}
-                    className="overflow-hidden rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+                    className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                   >
-                    <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-5 py-4 md:px-6">
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="flex min-w-0 gap-4">
+                    <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-6 md:py-4">
+                      <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="flex min-w-0 gap-2.5 md:gap-4">
                           {store.image ? (
                             <img
                               src={store.image}
                               alt={store.name}
-                              className="h-[70px] w-[70px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
+                              className="h-12 w-12 shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]"
                               loading="lazy"
                               referrerPolicy="no-referrer"
                               onError={(e) => {
@@ -1482,67 +1482,108 @@ useEffect(() => {
                               }}
                             />
                           ) : (
-                            <div className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] md:text-[12px]">
                               이미지
                             </div>
                           )}
 
                           <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-[20px] font-black tracking-[-0.03em] text-[#111827]">
-                                {store.name}
-                              </h3>
+                            <div className="flex min-w-0 items-start justify-between gap-2">
+                              <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-wrap md:gap-2">
+                                <h3 className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:text-[20px]">
+                                  {store.name}
+                                </h3>
 
-                              {store.category ? (
-                                <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
-                                  {store.category}
-                                </span>
-                              ) : null}
+                                {store.category ? (
+                                  <span className="max-w-[88px] shrink-0 truncate rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:max-w-none md:px-2.5 md:py-1 md:text-[11px]">
+                                    {store.category}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="flex shrink-0 items-center gap-1 md:hidden">
+                                {store.mobilePlaceLink ? (
+                                  <a
+                                    href={store.mobilePlaceLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex h-6 items-center rounded-full border border-[#d1d5db] bg-white px-2 text-[10px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                                  >
+                                    모바일
+                                  </a>
+                                ) : null}
+
+                                {store.pcPlaceLink ? (
+                                  <a
+                                    href={store.pcPlaceLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex h-6 items-center rounded-full border border-[#d1d5db] bg-white px-2 text-[10px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                                  >
+                                    PC
+                                  </a>
+                                ) : null}
+
+                                <button
+                                  onClick={() => handleDeleteStore(store)}
+                                  disabled={isDeleting}
+                                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#d1d5db] bg-white text-[#111827] transition hover:bg-[#f3f4f6] ${
+                                    isDeleting ? "opacity-60" : ""
+                                  }`}
+                                  aria-label="삭제"
+                                >
+                                  {isDeleting ? (
+                                    <span className="text-[11px] text-[#111827]">...</span>
+                                  ) : (
+                                    <Trash2 className="h-4 w-4 stroke-[#111827]" strokeWidth={2} />
+                                  )}
+                                </button>
+                              </div>
                             </div>
 
-                            <p className="mt-1.5 text-[13px] text-[#6b7280]">
+                            <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:mt-1.5 md:text-[13px] md:text-[#6b7280]">
                               {store.address || "-"}
                             </p>
 
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                                <div className="text-[10px] font-semibold text-[#6b7280]">
+                            <div className="mt-1.5 grid grid-cols-4 gap-1.5 md:mt-3 md:flex md:flex-wrap md:gap-2">
+                              <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                                <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
                                   월 검색량
                                 </div>
-                                <div className="mt-1 text-[15px] font-black text-[#111827]">
+                                <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[15px] md:font-black">
                                   {formatCount(store.placeMonthlyVolume)}
                                 </div>
                               </div>
 
-                              <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                                <div className="text-[10px] font-semibold text-[#6b7280]">
+                              <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                                <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
                                   모바일
                                 </div>
-                                <div className="mt-1 text-[14px] font-extrabold text-[#111827]">
+                                <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-extrabold">
                                   {formatCount(store.placeMobileVolume)}
                                 </div>
                               </div>
 
-                              <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                                <div className="text-[10px] font-semibold text-[#6b7280]">
+                              <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                                <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
                                   PC
                                 </div>
-                                <div className="mt-1 text-[14px] font-extrabold text-[#111827]">
+                                <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-extrabold">
                                   {formatCount(store.placePcVolume)}
                                 </div>
                               </div>
 
-                              <div className="rounded-[12px] border border-[#e5e7eb] bg-[#fafafa] px-3 py-2">
-                                <div className="text-[10px] font-semibold text-[#6b7280]">
+                              <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                                <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
                                   자동 추적
                                 </div>
-                                <div className="mt-1 text-[14px] font-black text-[#111827]">
+                                <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-black">
                                   {trackingLabel}
                                 </div>
                               </div>
                             </div>
 
-                            <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+                            <div className="mt-2 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-3 md:flex md:gap-2 md:text-[12px]">
                               <span className="font-semibold text-[#6b7280]">
                                 바로가기
                               </span>
@@ -1552,7 +1593,7 @@ useEffect(() => {
                                   href={store.mobilePlaceLink}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
+                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-3 md:py-1.5"
                                 >
                                   모바일
                                 </a>
@@ -1565,7 +1606,7 @@ useEffect(() => {
                                   href={store.pcPlaceLink}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
+                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-3 md:py-1.5"
                                 >
                                   PC
                                 </a>
@@ -1576,16 +1617,16 @@ useEffect(() => {
                           </div>
                         </div>
 
-                        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
+                        <div className="-ml-2 flex w-[calc(100%+0.5rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-2 xl:overflow-visible">
                           {/* 핀 */}
                           <button
                             type="button"
                             onClick={() => handleTogglePin(store)}
-                            className={`inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f9fafb]`}
+                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f9fafb] md:h-[44px] md:w-[44px] md:rounded-[14px]`}
                             aria-label="핀 고정"
                           >
                             <Pin
-                              className={`h-[20px] w-[20px] transition ${
+                              className={`h-4 w-4 transition md:h-[20px] md:w-[20px] ${
                                 store.isPinned
                                   ? "fill-[#b91c1c] stroke-[#b91c1c]"
                                   : "stroke-[#6b7280]"
@@ -1600,7 +1641,7 @@ useEffect(() => {
                             onMouseEnter={() => setUpdateHover({ id: rowId, x: updateHover.x, y: updateHover.y })}
                             onMouseLeave={() => setUpdateHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleUpdateMouseMove(e, rowId)}
-                            className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60`}
+                            className={`relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-sm font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]`}
                           >
                             <span className="relative z-30 pointer-events-none">
                               {isChecking ? "업데이트 중..." : "업데이트"}
@@ -1616,7 +1657,7 @@ useEffect(() => {
                             />
                             <div
                               className={`
-                                absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                                absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-40 md:w-40
                                 transition-opacity duration-200 ease-out
                                 ${updateHover.id === rowId ? "opacity-100" : "opacity-0"}
                               `}
@@ -1639,9 +1680,10 @@ useEffect(() => {
                             onMouseEnter={() => setRankChangeHover({ id: rowId, x: rankChangeHover.x, y: rankChangeHover.y })}
                             onMouseLeave={() => setRankChangeHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleRankChangeMouseMove(e, rowId)}
-                            className={`relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out ${rankChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                            className={`relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border px-3 text-sm font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${rankChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                           >
-                            <span className="relative z-30 pointer-events-none">순위변화보기</span>
+                            <span className="relative z-30 pointer-events-none md:hidden">순위변화</span>
+                            <span className="relative z-30 pointer-events-none hidden md:inline">순위변화보기</span>
                             <div
                               className="pointer-events-none absolute inset-0 z-0 h-full w-full"
                               style={{
@@ -1653,7 +1695,7 @@ useEffect(() => {
                             />
                             <div
                               className={`
-                                absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                                absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-40 md:w-40
                                 transition-opacity duration-200 ease-out
                                 ${rankChangeHover.id === rowId ? "opacity-100" : "opacity-0"}
                               `}
@@ -1677,7 +1719,7 @@ useEffect(() => {
                             onMouseEnter={() => setTrackingHover({ id: rowId, x: trackingHover.x, y: trackingHover.y })}
                             onMouseLeave={() => setTrackingHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleTrackingMouseMove(e, rowId)}
-                            className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed ${
+                            className={`relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${
                               trackingLabel === "ON"
                                 ? "bg-[#2563EB] text-white"
                                 : trackingHover.id === rowId
@@ -1699,7 +1741,7 @@ useEffect(() => {
                             />
                             <div
                               className={`
-                                absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                                absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-40 md:w-40
                                 transition-opacity duration-200 ease-out
                                 ${trackingHover.id === rowId ? "opacity-100" : "opacity-0"}
                               `}
@@ -1722,9 +1764,10 @@ useEffect(() => {
                             onMouseEnter={() => setKwManageHover({ id: rowId, x: kwManageHover.x, y: kwManageHover.y })}
                             onMouseLeave={() => setKwManageHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleKwManageMouseMove(e, rowId)}
-                            className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
+                            className="relative inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-sm font-bold text-white transition-all duration-300 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]"
                           >
-                            <span className="relative z-30 pointer-events-none">키워드 관리</span>
+                            <span className="relative z-30 pointer-events-none md:hidden">키워드</span>
+                            <span className="relative z-30 pointer-events-none hidden md:inline">키워드 관리</span>
                             <div
                               className="pointer-events-none absolute inset-0 z-10 h-full w-full"
                               style={{
@@ -1736,7 +1779,7 @@ useEffect(() => {
                             />
                             <div
                               className={`
-                                absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                                absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-40 md:w-40
                                 transition-opacity duration-200 ease-out
                                 ${kwManageHover.id === rowId ? "opacity-100" : "opacity-0"}
                               `}
@@ -1757,7 +1800,7 @@ useEffect(() => {
                           <button
                             onClick={() => handleDeleteStore(store)}
                             disabled={isDeleting}
-                            className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6] ${
+                            className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f3f4f6] md:inline-flex md:h-[42px] md:w-[42px] md:rounded-[14px] ${
                               isDeleting ? "opacity-60" : ""
                             }`}
                             aria-label="삭제"
@@ -1765,32 +1808,39 @@ useEffect(() => {
                             {isDeleting ? (
                               <span className="text-[12px] text-[#111827]">...</span>
                             ) : (
-                              <Trash2 className="h-[18px] w-[18px] stroke-[#111827]" strokeWidth={2} />
+                              <Trash2 className="h-4 w-4 stroke-[#111827] md:h-[18px] md:w-[18px]" strokeWidth={2} />
                             )}
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="px-5 py-5 md:px-6">
-                      <div className="overflow-hidden rounded-[18px] border border-[#e5e7eb]">
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full border-collapse">
+                    <div className="px-3 py-3 md:px-6 md:py-5">
+                      <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb] md:rounded-[18px]">
+                        <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                          <table className="w-full table-fixed border-collapse md:min-w-full md:table-auto">
+                            <colgroup>
+                              <col className="w-[31%] md:w-auto" />
+                              <col className="w-[16%] md:w-auto" />
+                              <col className="w-[15%] md:w-auto" />
+                              <col className="w-[13%] md:w-auto" />
+                              <col className="w-[25%] md:w-auto" />
+                            </colgroup>
                             <thead className="bg-[#f9fafb]">
                               <tr>
-                                <th className="px-5 py-3.5 text-left text-[12px] font-extrabold text-[#6b7280]">
+                                <th className="px-1.5 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-5 md:py-3.5 md:text-[12px]">
                                   키워드
                                 </th>
-                                <th className="px-4 py-3.5 text-right text-[12px] font-extrabold text-[#6b7280]">
+                                <th className="px-1 py-2 text-right text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-3.5 md:text-[12px]">
                                   월 검색량
                                 </th>
-                                <th className="px-4 py-3.5 text-right text-[12px] font-extrabold text-[#6b7280]">
+                                <th className="px-1 py-2 text-right text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-3.5 md:text-[12px]">
                                   모바일
                                 </th>
-                                <th className="px-4 py-3.5 text-right text-[12px] font-extrabold text-[#6b7280]">
+                                <th className="px-1 py-2 text-right text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-3.5 md:text-[12px]">
                                   PC
                                 </th>
-                                <th className="px-5 py-3.5 text-right text-[12px] font-extrabold text-[#6b7280]">
+                                <th className="px-1.5 py-2 text-right text-[10px] font-extrabold text-[#6b7280] md:px-5 md:py-3.5 md:text-[12px]">
                                   검색 순위
                                 </th>
                               </tr>
@@ -1801,7 +1851,7 @@ useEffect(() => {
                                 <tr>
                                   <td
                                     colSpan={5}
-                                    className="px-5 py-10 text-center text-[14px] text-[#9ca3af]"
+                                    className="px-2 py-7 text-center text-[12px] text-[#9ca3af] md:px-5 md:py-10 md:text-[14px]"
                                   >
                                     등록된 키워드가 없습니다.
                                   </td>
@@ -1817,47 +1867,47 @@ useEffect(() => {
                                       key={`${store.dbId}-${item.keyword}-${keywordIndex}`}
                                       className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
                                     >
-                                      <td className="px-5 py-4">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-[14px] font-bold text-[#111827]">
+                                      <td className="min-w-0 px-1.5 py-2.5 md:px-5 md:py-4">
+                                        <div className="flex min-w-0 items-center gap-1 md:gap-2">
+                                          <span className="min-w-0 truncate text-[11px] font-bold text-[#111827] md:text-[14px]">
                                             {item.keyword}
                                           </span>
                                           {item.isTracking ? (
-                                            <span className="rounded-full bg-[#eff6ff] px-2 py-1 text-[10px] font-bold text-[#2563eb]">
+                                            <span className="shrink-0 rounded-full bg-[#eff6ff] px-1 py-0.5 text-[8px] font-bold leading-none text-[#2563eb] md:px-2 md:py-1 md:text-[10px]">
                                               ON
                                             </span>
                                           ) : (
-                                            <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[10px] font-bold text-[#6b7280]">
+                                            <span className="shrink-0 rounded-full bg-[#f3f4f6] px-1 py-0.5 text-[8px] font-bold leading-none text-[#6b7280] md:px-2 md:py-1 md:text-[10px]">
                                               OFF
                                             </span>
                                           )}
                                         </div>
                                       </td>
 
-                                      <td className="px-4 py-4 text-right text-[14px] font-semibold text-[#111827]">
+                                      <td className="px-1 py-2.5 text-right text-[11px] font-semibold text-[#111827] md:px-4 md:py-4 md:text-[14px]">
                                         {formatCount(item.monthly)}
                                       </td>
 
-                                      <td className="px-4 py-4 text-right text-[14px] font-semibold text-[#6b7280]">
+                                      <td className="px-1 py-2.5 text-right text-[11px] font-semibold text-[#6b7280] md:px-4 md:py-4 md:text-[14px]">
                                         {formatCount(item.mobile)}
                                       </td>
 
-                                      <td className="px-4 py-4 text-right text-[14px] font-semibold text-[#6b7280]">
+                                      <td className="px-1 py-2.5 text-right text-[11px] font-semibold text-[#6b7280] md:px-4 md:py-4 md:text-[14px]">
                                         {formatCount(item.pc)}
                                       </td>
 
-                                      <td className="px-5 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-3">
+                                      <td className="px-1.5 py-2.5 text-right md:px-5 md:py-4">
+                                        <div className="flex items-center justify-end gap-1 md:gap-3">
                                           <div className="text-right">
-                                            <div className="text-[15px] font-black text-[#111827]">
+                                            <div className="text-xs font-black leading-tight text-[#111827] md:text-[15px]">
                                               {rankMeta.main}
                                             </div>
-                                            <div className="mt-0.5 text-[11px] font-semibold text-[#9ca3af]">
+                                            <div className="mt-0.5 text-[9px] font-semibold leading-tight text-[#9ca3af] md:text-[11px]">
                                               {rankMeta.sub}
                                             </div>
                                           </div>
 
-                                          <div className={`min-w-[42px] text-[13px] font-bold ${rankChangeUi.className}`}>
+                                          <div className={`min-w-[22px] text-[10px] font-bold md:min-w-[42px] md:text-[13px] ${rankChangeUi.className}`}>
                                             {rankChangeUi.text}
                                           </div>
                                         </div>
@@ -1871,7 +1921,7 @@ useEffect(() => {
                         </div>
                       </div>
 
-                      <div className="mt-3 flex justify-end text-[11px] text-[#9ca3af]">
+                      <div className="mt-3 flex justify-end text-[10px] text-[#9ca3af] md:text-[11px]">
                         <div>
                           마지막 업데이트:{" "}
                           <span className="font-semibold text-[#6b7280]">
@@ -1888,18 +1938,18 @@ useEffect(() => {
         </section>
 
         {isRegisterModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
-            <div className="w-full max-w-[760px] overflow-hidden rounded-[24px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
-              <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-6 py-5">
-                <div className="flex items-start justify-between gap-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3 py-4 backdrop-blur-[3px] md:px-4">
+            <div className="max-h-[92vh] w-full max-w-[760px] overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)] md:max-h-none md:rounded-[24px]">
+              <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-4 py-4 md:px-6 md:py-5">
+                <div className="flex items-start justify-between gap-3 md:gap-4">
                   <div>
-                    <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6b7280] md:text-[12px] md:tracking-[0.18em]">
                       REGISTER PLACE
                     </p>
-                    <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">
+                    <h2 className="mt-1.5 text-[18px] font-black tracking-[-0.03em] text-[#111827] md:mt-2 md:text-[22px]">
                       매장 등록
                     </h2>
-                    <p className="mt-2 text-[14px] text-[#6b7280]">
+                    <p className="mt-1.5 text-[12px] leading-4 text-[#6b7280] md:mt-2 md:text-[14px]">
                       매장명을 검색해서 추적할 플레이스를 등록하세요.
                     </p>
                   </div>
@@ -1907,14 +1957,14 @@ useEffect(() => {
                   <button
                     onClick={closeRegisterModal}
                     disabled={Boolean(registeringPlaceKey)}
-                    className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]"
+                    className="rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
                   >
                     닫기
                   </button>
                 </div>
               </div>
 
-              <div className="px-6 py-6">
+              <div className="max-h-[calc(92vh-96px)] overflow-y-auto overscroll-contain px-4 py-4 md:max-h-none md:overflow-visible md:px-6 md:py-6">
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <input
                     type="text"
@@ -1924,7 +1974,7 @@ useEffect(() => {
                       if (e.key === "Enter") handlePlaceSearch();
                     }}
                     placeholder="예: 뉴오더클럽 한남"
-                    className="h-[50px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[15px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
+                    className="h-[44px] flex-1 rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-3 text-[13px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white md:h-[50px] md:rounded-[16px] md:px-4 md:text-[15px]"
                   />
 
                   {/* 매장 검색 모달 내 버튼 */}
@@ -1934,7 +1984,7 @@ useEffect(() => {
                     onMouseMove={handleModalSearchMouseMove}
                     onClick={handlePlaceSearch}
                     disabled={placeSearchLoading}
-                    className={`relative inline-flex h-[50px] min-w-[100px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[15px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
+                    className={`relative inline-flex h-[44px] min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[50px] md:min-w-[100px] md:rounded-[16px] md:px-5 md:text-[15px] ${
                       placeSearchLoading ? "opacity-60" : ""
                     }`}
                   >
@@ -1952,7 +2002,7 @@ useEffect(() => {
                     />
                     <div
                       className={`
-                        absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                        absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
                         transition-opacity duration-200 ease-out
                         ${modalSearchHovered ? "opacity-100" : "opacity-0"}
                       `}
@@ -1972,14 +2022,14 @@ useEffect(() => {
                 </div>
 
                 {placeSearchError ? (
-                  <div className="mt-4 rounded-[14px] border border-[#fecaca] bg-[#fff] px-4 py-3 text-[14px] text-[#dc2626]">
+                  <div className="mt-3 rounded-[12px] border border-[#fecaca] bg-[#fff] px-3 py-2.5 text-[12px] text-[#dc2626] md:mt-4 md:rounded-[14px] md:px-4 md:py-3 md:text-[14px]">
                     {placeSearchError}
                   </div>
                 ) : null}
 
-                <div className="mt-5 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                <div className="mt-4 max-h-[52vh] space-y-2.5 overflow-y-auto pr-1 md:mt-5 md:max-h-[420px] md:space-y-3">
                   {placeResults.length === 0 ? (
-                    <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-5 py-10 text-center text-[14px] text-[#9ca3af]">
+                    <div className="rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-8 text-center text-[12px] text-[#9ca3af] md:rounded-[18px] md:px-5 md:py-10 md:text-[14px]">
                       검색 결과가 여기에 표시됩니다.
                     </div>
                   ) : (
@@ -1988,14 +2038,14 @@ useEffect(() => {
                       return (
                         <div
                           key={itemKey}
-                          className="flex flex-col gap-4 rounded-[18px] border border-[#e5e7eb] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.03)] md:flex-row md:items-center md:justify-between"
+                          className="flex flex-col gap-3 rounded-[14px] border border-[#e5e7eb] bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.03)] md:flex-row md:items-center md:justify-between md:gap-4 md:rounded-[18px] md:p-4"
                         >
-                          <div className="flex min-w-0 gap-4">
+                          <div className="flex min-w-0 gap-3 md:gap-4">
                             {item.image ? (
                               <img
                                 src={item.image}
                                 alt={item.title}
-                                className="h-[64px] w-[64px] rounded-[14px] object-cover ring-1 ring-[#e5e7eb]"
+                                className="h-[52px] w-[52px] rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[64px] md:w-[64px] md:rounded-[14px]"
                                 loading="lazy"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => {
@@ -2004,19 +2054,19 @@ useEffect(() => {
                                 }}
                               />
                             ) : (
-                              <div className="flex h-[64px] w-[64px] items-center justify-center rounded-[14px] bg-[#f3f4f6] text-[12px] text-[#9ca3af]">
+                              <div className="flex h-[52px] w-[52px] items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] text-[#9ca3af] md:h-[64px] md:w-[64px] md:rounded-[14px] md:text-[12px]">
                                 이미지
                               </div>
                             )}
 
                             <div className="min-w-0">
-                              <div className="text-[16px] font-black tracking-[-0.02em] text-[#111827]">
+                              <div className="text-[14px] font-black tracking-[-0.02em] text-[#111827] md:text-[16px]">
                                 {item.title}
                               </div>
-                              <div className="mt-1 text-[13px] font-semibold text-[#4b5563]">
+                              <div className="mt-0.5 text-[11px] font-semibold text-[#4b5563] md:mt-1 md:text-[13px]">
                                 {item.category}
                               </div>
-                              <div className="mt-1 text-[13px] text-[#6b7280]">
+                              <div className="mt-0.5 text-[11px] leading-4 text-[#6b7280] md:mt-1 md:text-[13px]">
                                 {item.address}
                               </div>
                             </div>
@@ -2031,7 +2081,7 @@ useEffect(() => {
                             disabled={
                               registeringPlaceKey === `${item.title}__${item.address}__${item.link}`
                             }
-                            className={`relative inline-flex h-[42px] shrink-0 min-w-[100px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
+                            className={`relative inline-flex h-10 shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[42px] md:min-w-[100px] md:rounded-[14px] md:px-4 md:text-[14px] ${
                               registeringPlaceKey === `${item.title}__${item.address}__${item.link}`
                                 ? "opacity-60"
                                 : ""
@@ -2053,7 +2103,7 @@ useEffect(() => {
                             />
                             <div
                               className={`
-                                absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                                absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
                                 transition-opacity duration-200 ease-out
                                 ${registerHover.id === itemKey ? "opacity-100" : "opacity-0"}
                               `}
@@ -2081,38 +2131,38 @@ useEffect(() => {
         )}
 
         {isKeywordModalOpen && selectedStore && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
-            <div className="w-full max-w-[860px] overflow-hidden rounded-[24px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
-              <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-6 py-5">
-                <div className="flex items-start justify-between gap-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3 py-4 backdrop-blur-[3px] md:px-4">
+            <div className="max-h-[92vh] w-full max-w-[860px] overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)] md:max-h-none md:rounded-[24px]">
+              <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-4 py-4 md:px-6 md:py-5">
+                <div className="flex items-start justify-between gap-3 md:gap-4">
                   <div>
-                    <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6b7280] md:text-[12px] md:tracking-[0.18em]">
                       KEYWORD MANAGER
                     </p>
-                    <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">
+                    <h2 className="mt-1.5 text-[18px] font-black tracking-[-0.03em] text-[#111827] md:mt-2 md:text-[22px]">
                       {selectedStore.name}
                     </h2>
-                    <p className="mt-2 text-[14px] text-[#6b7280]">
+                    <p className="mt-1.5 text-[12px] leading-4 text-[#6b7280] md:mt-2 md:text-[14px]">
                       추천 키워드를 선택하거나 직접 입력해서 관리하세요.
                     </p>
                   </div>
 
                   <button
                     onClick={closeKeywordModal}
-                    className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]"
+                    className="rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
                   >
                     닫기
                   </button>
                 </div>
               </div>
 
-              <div className="max-h-[78vh] overflow-y-auto px-6 py-6">
-                <div className="rounded-[18px] border border-[#e5e7eb] bg-white p-5">
-                  <p className="text-[13px] font-bold text-[#4b5563]">
+              <div className="max-h-[68vh] overflow-y-auto overscroll-contain px-4 py-4 md:max-h-[78vh] md:px-6 md:py-6">
+                <div className="rounded-[14px] border border-[#e5e7eb] bg-white p-4 md:rounded-[18px] md:p-5">
+                  <p className="text-[12px] font-bold text-[#4b5563] md:text-[13px]">
                     추천 키워드
                   </p>
 
-                  <div className="mt-3 flex flex-wrap gap-2.5">
+                  <div className="mt-2.5 flex flex-wrap gap-2 md:mt-3 md:gap-2.5">
                     {recommendedKeywords.map((item, idx) => {
                       const active = selectedRecommendedKeywords.includes(
                         item.keyword
@@ -2123,7 +2173,7 @@ useEffect(() => {
                           key={`${item.keyword}-${idx}`}
                           type="button"
                           onClick={() => toggleRecommendedKeyword(item.keyword)}
-                          className={`rounded-full px-4 py-2 text-[13px] font-bold transition ${
+                          className={`rounded-full px-3 py-1.5 text-[12px] font-bold transition md:px-4 md:py-2 md:text-[13px] ${
                             active
                               ? "border border-[#111827] bg-[#111827] text-white"
                               : "border border-[#d1d5db] bg-white text-[#111827] hover:bg-[#f9fafb]"
@@ -2136,8 +2186,8 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
-                  <p className="text-[13px] font-bold text-[#4b5563]">
+                <div className="mt-4 rounded-[14px] border border-[#e5e7eb] bg-white p-4 md:mt-5 md:rounded-[18px] md:p-5">
+                  <p className="text-[12px] font-bold text-[#4b5563] md:text-[13px]">
                     직접 키워드 추가
                   </p>
 
@@ -2150,39 +2200,39 @@ useEffect(() => {
                         if (e.key === "Enter") addDirectKeywords();
                       }}
                       placeholder="쉼표(,)로 여러 개 입력 가능"
-                      className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white"
+                      className="h-[42px] flex-1 rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-3 text-[12px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white md:h-[48px] md:rounded-[16px] md:px-4 md:text-[14px]"
                     />
 
                     <button
                       type="button"
                       onClick={addDirectKeywords}
-                      className="h-[48px] rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                      className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[12px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:h-[48px] md:rounded-[16px] md:px-5 md:text-[14px]"
                     >
                       추가
                     </button>
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
+                <div className="mt-4 rounded-[14px] border border-[#e5e7eb] bg-white p-4 md:mt-5 md:rounded-[18px] md:p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-[13px] font-bold text-[#4b5563]">
+                    <p className="text-[12px] font-bold text-[#4b5563] md:text-[13px]">
                       저장 예정 키워드
                     </p>
-                    <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] font-bold text-[#4b5563]">
+                    <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[11px] font-bold text-[#4b5563] md:px-2.5 md:py-1 md:text-[12px]">
                       {tempKeywords.length}개
                     </span>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2.5">
+                  <div className="mt-3 flex flex-wrap gap-2 md:mt-4 md:gap-2.5">
                     {tempKeywords.length === 0 ? (
-                      <div className="w-full rounded-[14px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-4 py-8 text-center text-[14px] text-[#9ca3af]">
+                      <div className="w-full rounded-[12px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-3 py-6 text-center text-[12px] text-[#9ca3af] md:rounded-[14px] md:px-4 md:py-8 md:text-[14px]">
                         아직 추가된 키워드가 없습니다.
                       </div>
                     ) : (
                       tempKeywords.map((keyword, idx) => (
                         <div
                           key={`${keyword}-${idx}`}
-                          className="inline-flex items-center gap-2 rounded-full border border-[#d1d5db] bg-white px-4 py-2 text-[13px] font-bold text-[#111827]"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 text-[12px] font-bold text-[#111827] md:gap-2 md:px-4 md:py-2 md:text-[13px]"
                         >
                           <span>{keyword}</span>
                           <button
@@ -2200,12 +2250,12 @@ useEffect(() => {
                 </div>
               </div>
 
-              <div className="border-t border-[#f3f4f6] bg-[#fcfcfc] px-6 py-4">
+              <div className="border-t border-[#f3f4f6] bg-[#fcfcfc] px-4 py-3 md:px-6 md:py-4">
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
                     onClick={closeKeywordModal}
                     disabled={savingKeywords}
-                    className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                    className="h-[40px] rounded-[12px] border border-[#d1d5db] bg-white px-4 text-[12px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:h-[46px] md:rounded-[14px] md:px-5 md:text-[14px]"
                   >
                     취소
                   </button>
@@ -2217,7 +2267,7 @@ useEffect(() => {
                     onMouseMove={handleSaveKwMouseMove}
                     onClick={saveKeywords}
                     disabled={savingKeywords}
-                    className={`relative inline-flex h-[46px] min-w-[120px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed ${
+                    className={`relative inline-flex h-[40px] min-w-[108px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-4 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[46px] md:min-w-[120px] md:rounded-[14px] md:px-5 md:text-[14px] ${
                       savingKeywords ? "opacity-60" : ""
                     }`}
                   >
@@ -2235,7 +2285,7 @@ useEffect(() => {
                     />
                     <div
                       className={`
-                        absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                        absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
                         transition-opacity duration-200 ease-out
                         ${saveKwHovered ? "opacity-100" : "opacity-0"}
                       `}

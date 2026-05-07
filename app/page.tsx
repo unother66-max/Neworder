@@ -30,13 +30,12 @@ export default function HomePage() {
         <TopNav showBreadcrumb={false} />
       </div>
 
-      <section className="relative z-10 w-full h-screen overflow-hidden">
+      <section className="relative z-10 h-[100svh] min-h-[600px] w-full overflow-hidden md:h-screen">
         
         {/* 💡 1층 (z-10): 지구본 영역 (스크린샷 24번 기준 완벽 복구) */}
         {/* 기존의 absolute right 설정과 calc(100vw - 994px) 연산을 그대로 가져왔습니다. */}
         <div
-          className="absolute z-10 pointer-events-none w-[994px] h-[994px] top-[30px]"
-          style={{ left: "min(1000px, calc(100vw - 994px))" }}
+          className="absolute left-[34%] top-[72px] z-10 h-[520px] w-[520px] pointer-events-none opacity-60 sm:h-[680px] sm:w-[680px] md:left-[38%] md:top-[30px] md:h-[820px] md:w-[820px] md:opacity-80 lg:h-[994px] lg:w-[994px] lg:opacity-100 lg:left-[min(1000px,calc(100vw-994px))]"
         >
           <div className="relative w-full h-full brightness-[0.9] contrast-[1.0] saturate-[0.5] hue-rotate-[0deg]">
             <AutoSpinGlobe />
@@ -47,23 +46,23 @@ export default function HomePage() {
         <div className="absolute bottom-0 left-0 w-full h-[500px] md:h-[600px] bg-gradient-to-t from-white via-white/90 via-40% to-transparent z-20 pointer-events-none" />
 
         {/* 💡 3층 (z-30): 텍스트 영역 (가장 마지막에 렌더링되어 그라데이션 위에 선명하게 뜸) */}
-        <div className="relative z-30 mx-auto max-w-7xl px-6 py-20 lg:px-8 lg:py-70 h-full pointer-events-none">
+        <div className="relative z-30 mx-auto h-full max-w-7xl px-4 pb-12 pt-28 pointer-events-none md:px-6 md:py-20 lg:px-8 lg:py-70">
           <div className="flex flex-col max-w-[600px] pointer-events-auto">
-            <h1 className="text-[4.5rem] sm:text-[5.5rem] lg:text-[6.5rem] font-black leading-[1] tracking-tighter text-slate-900">
+            <h1 className="text-[2.6rem] font-black leading-[1.05] tracking-tighter text-slate-900 sm:text-[3.5rem] md:text-[4.5rem] md:leading-[1] lg:text-[6.5rem]">
               내 매장의<br />노출 관리,<br />더 쉽게.
             </h1>
-            <p className="mt-8 text-[18px] leading-8 text-slate-700/80 font-medium">
+            <p className="mt-5 text-sm font-medium leading-6 text-slate-700/80 md:mt-8 md:text-[18px] md:leading-8">
               상위 블로그 찾기, 플레이스 순위 추적, 리뷰 추적,<br className="hidden sm:block" />
               순위 분석까지 한 곳에서 관리할 수 있습니다.
             </p>
-            <div className="mt-12 flex flex-col gap-4 sm:flex-row items-start">
+            <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row md:mt-12 md:gap-4">
               <Link
                 href="/place"
                 onMouseEnter={() => setIsCtaHovered(true)}
                 onMouseLeave={() => setIsCtaHovered(false)}
                 onMouseMove={handleCtaMouseMove}
                 className={`
-                  relative isolate z-20 inline-flex items-center px-8 py-4 rounded-full font-bold text-lg tracking-wide 
+                  relative isolate z-20 inline-flex items-center rounded-full px-5 py-3 text-sm font-bold tracking-wide md:px-8 md:py-4 md:text-lg
                   bg-transparent border-2 transition-colors duration-0 ease-in-out overflow-hidden
                   ${isCtaHovered ? 'text-white border-[#0029FF]' : 'text-black border-black'}
                 `}
@@ -86,7 +85,7 @@ export default function HomePage() {
 
                 <div
                   className={`
-                    absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl
+                    absolute -translate-x-1/2 -translate-y-1/2 h-28 w-28 rounded-full blur-2xl md:h-40 md:w-40
                     transition-opacity duration-200 ease-out
                     ${isCtaHovered ? "opacity-100" : "opacity-0"}
                   `}
@@ -109,11 +108,11 @@ export default function HomePage() {
       </section>
 
       {/* 하단 섹션 */}
-      <section className="relative z-10 bg-white py-20">
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="relative overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/70">
-            <div className="bg-slate-50 p-4 sm:p-6">
-              <div className="overflow-hidden rounded-2xl bg-white shadow-[0_18px_60px_rgba(15,23,42,0.16)]">
+      <section className="relative z-10 bg-white py-10 md:py-20">
+        <div className="mx-auto max-w-6xl px-3 md:px-4">
+          <div className="relative overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-slate-200/70 md:rounded-2xl md:shadow-2xl">
+            <div className="bg-slate-50 p-2.5 sm:p-4 md:p-6">
+              <div className="overflow-hidden rounded-xl bg-white shadow-[0_10px_34px_rgba(15,23,42,0.14)] md:rounded-2xl md:shadow-[0_18px_60px_rgba(15,23,42,0.16)]">
                 <Image src="/main/hero-1.png" alt="PostLabs" width={1400} height={900} priority className="h-auto w-full object-cover" />
               </div>
             </div>

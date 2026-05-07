@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Noto_Sans_KR } from "next/font/google";
 import { useSession, signOut } from "next-auth/react"; 
+import { Menu, X } from "lucide-react";
 
 type TopNavProps = {
   active?: unknown;
@@ -38,6 +39,7 @@ const TopNav = (_props: TopNavProps) => {
   // 🚨 [추가] 로그인 버튼 호버 및 마우스 위치 추적 상태
   const [isLoginHovered, setIsLoginHovered] = useState(false);
   const [loginMousePos, setLoginMousePos] = useState({ x: 0, y: 0 });
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLoginMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -48,8 +50,8 @@ const TopNav = (_props: TopNavProps) => {
 
   useEffect(() => {
     if (!session) {
-      setQuota(null);
-      return;
+      const clearQuotaTimer = window.setTimeout(() => setQuota(null), 0);
+      return () => window.clearTimeout(clearQuotaTimer);
     }
 
     const fetchQuota = async () => {
@@ -82,6 +84,17 @@ const TopNav = (_props: TopNavProps) => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileMenuOpen]);
 
   const handleLogout = async () => {
     if (window.confirm("로그아웃 하시겠습니까?")) {
@@ -146,25 +159,77 @@ const TopNav = (_props: TopNavProps) => {
     }, 140);
   };
 
+  const mobileMenuSections = [
+    {
+      label: "스마트스토어",
+      active: isSmartStoreActive,
+      links: [
+        { href: "/smartstore", label: "순위 추적", active: isSmartstorePriceActive },
+        { href: "/smartstore/plus-store-ranking-track", label: "플러스스토어 순위 추적", active: isSmartstorePlusActive },
+        { href: "/smartstore/review-track", label: "리뷰 분석", active: isSmartstoreReviewActive },
+      ],
+    },
+    {
+      label: "네이버 블로그",
+      active: isBlogActive,
+      links: [
+        { href: "/top-blog", label: "상위 블로그 찾기", active: isBlogTopActive },
+        { href: "/blog-analysis", label: "블로그 분석", active: isBlogAnalysisActive },
+      ],
+    },
+    {
+      label: "네이버 지도",
+      active: isPlaceActive,
+      links: [
+        { href: "/place", label: "순위 추적", active: isPlaceRankActive },
+        { href: "/place-review", label: "리뷰 분석", active: isPlaceReviewActive },
+        { href: "/place-analysis", label: "키워드 분석", active: isPlaceAnalysisActive },
+      ],
+    },
+    {
+      label: "카카오맵",
+      active: isKakaoActive,
+      links: [
+        { href: "/kakao-place", label: "키워드 순위 추적", active: isKakaoPlaceActive },
+        { href: "/kakao-ranking", label: "지역 순위 추적", active: isKakaoRankingActive },
+        { href: "/kakao-analysis", label: "키워드 분석", active: isKakaoAnalysisActive },
+      ],
+    },
+  ];
+
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 flex h-16 items-center transition-all duration-300 ease-in-out ${
-        isWhiteBg
-          ? "bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100"
-          : "bg-transparent border-b border-transparent shadow-none"
-      }`}
-    >
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 lg:px-8">
-        <div className="flex items-center gap-2">
-          <Link href="/" className="flex items-center gap-3">
+    <>
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 flex h-14 items-center transition-all duration-300 ease-in-out sm:h-16 ${
+          isWhiteBg
+            ? "bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100"
+            : "bg-transparent border-b border-transparent shadow-none"
+        }`}
+      >
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-3 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="모바일 메뉴 열기"
+              aria-expanded={isMobileMenuOpen}
+              onClick={() => setIsMobileMenuOpen(true)}
+              className={`-ml-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors sm:hidden ${
+                isWhiteBg
+                  ? "text-slate-800 hover:bg-slate-100"
+                  : "text-slate-900 hover:bg-white/40"
+              }`}
+            >
+              <Menu className="h-4.5 w-4.5" strokeWidth={2.2} />
+            </button>
+            <Link href="/" className="flex items-center gap-3">
             <img
               src="/logo.png?v=20260429-2"
               alt="PostLabs"
-              className="h-13 w-auto"
+              className="h-10 w-auto sm:h-13"
             />
             <span className="sr-only">PostLabs</span>
-          </Link>
-        </div>
+            </Link>
+          </div>
 
         <div className="hidden sm:flex items-center gap-10 text-base lg:text-lg text-slate-600">
           
@@ -598,7 +663,7 @@ const TopNav = (_props: TopNavProps) => {
         </div>
 
         {/* 🚨 우측 상단 (로그인 / 사용자 정보 분기) */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {status === "loading" ? (
             <div className="h-8 w-8"></div>
           ) : session ? (
@@ -631,20 +696,20 @@ const TopNav = (_props: TopNavProps) => {
 
               <button
                 onClick={() => router.push("/profile")}
-                className="p-2 text-slate-600 hover:text-slate-900 transition-colors"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:h-auto sm:w-auto sm:p-2"
                 title="내 정보"
               >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-4.5 w-4.5 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </button>
               
               <button
                 onClick={handleLogout}
-                className="p-2 text-slate-600 transition-colors hover:text-red-500"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-red-500 sm:h-auto sm:w-auto sm:p-2"
                 title="로그아웃"
               >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-4.5 w-4.5 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
               </button>
@@ -657,7 +722,7 @@ const TopNav = (_props: TopNavProps) => {
            onMouseLeave={() => setIsLoginHovered(false)}
            onMouseMove={handleLoginMouseMove}
            className={`
-             relative isolate z-20 inline-flex items-center px-6 py-2 rounded-full font-bold text-[13px] tracking-wide 
+		             relative isolate z-20 inline-flex min-h-10 items-center rounded-full px-3 py-1.5 text-xs font-bold tracking-wide sm:min-h-0 sm:px-6 sm:py-2 sm:text-[13px]
              bg-transparent border-2 transition-colors duration-300 ease-in-out overflow-hidden
              ${isLoginHovered ? 'border-[#2563EB]' : 'border-black'}
            `}
@@ -699,8 +764,103 @@ const TopNav = (_props: TopNavProps) => {
          </button>
           )}
         </div>
+        </div>
+      </nav>
+
+      <div
+        className={`fixed inset-0 z-[60] sm:hidden ${
+          isMobileMenuOpen ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+        aria-hidden={!isMobileMenuOpen}
+      >
+        <button
+          type="button"
+          aria-label="모바일 메뉴 닫기"
+          onClick={() => setIsMobileMenuOpen(false)}
+          className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-200 ${
+            isMobileMenuOpen ? "opacity-100" : "opacity-0"
+          }`}
+        />
+
+        <aside
+          role="dialog"
+          aria-modal="true"
+          aria-label="모바일 메뉴"
+          className={`relative z-10 flex h-full w-[min(84vw,340px)] flex-col border-r border-white/70 bg-white/95 px-5 pb-6 pt-5 shadow-[28px_0_70px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="mb-6 flex items-center justify-between">
+            <Link
+              href="/"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-3"
+            >
+              <img
+                src="/logo.png?v=20260429-2"
+                alt="PostLabs"
+                className="h-12 w-auto"
+              />
+              <span className="sr-only">PostLabs</span>
+            </Link>
+            <button
+              type="button"
+              aria-label="모바일 메뉴 닫기"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            >
+              <X className="h-4 w-4" strokeWidth={2.2} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="flex flex-col gap-4">
+              {mobileMenuSections.map((section) => (
+                <section key={section.label}>
+                  <div
+                    className={`${notoSansKr.className} mb-2 px-2 text-sm font-black ${
+                      section.active ? "text-black" : "text-slate-500"
+                    }`}
+                  >
+                    {section.label}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {section.links.map((link) => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        aria-current={link.active ? "page" : undefined}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`rounded-2xl px-4 py-3 text-sm font-bold transition-colors ${
+                          link.active
+                            ? "bg-blue-50/70 text-[#0051FF]"
+                            : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              ))}
+
+              <Link
+                href="/community"
+                aria-current={isCommunityActive ? "page" : undefined}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`mt-1 rounded-2xl px-4 py-3 text-sm font-bold transition-colors ${
+                  isCommunityActive
+                    ? "bg-blue-50/70 text-[#0051FF]"
+                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                }`}
+              >
+                커뮤니티
+              </Link>
+            </div>
+          </div>
+        </aside>
       </div>
-    </nav>
+    </>
   );
 };
 
