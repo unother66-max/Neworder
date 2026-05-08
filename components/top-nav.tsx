@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Noto_Sans_KR } from "next/font/google";
 import { useSession, signOut } from "next-auth/react"; 
-import { Menu, X } from "lucide-react";
+import { ChevronDown, ChevronRight, LogOut, Menu, MessageCircle, User, X } from "lucide-react";
 
 type TopNavProps = {
   active?: unknown;
@@ -13,10 +14,56 @@ type TopNavProps = {
   showBreadcrumb?: boolean;
 };
 
+type MobileMenuSectionKey = "smartstore" | "blog" | "place" | "kakao";
+
+const getActiveMobileSectionKey = (path: string): MobileMenuSectionKey | null => {
+  if (path.startsWith("/smartstore")) return "smartstore";
+  if (path.startsWith("/top-blog") || path.startsWith("/blog-analysis")) return "blog";
+  if (
+    path.startsWith("/place") ||
+    path.startsWith("/place-analysis") ||
+    path.startsWith("/place-review")
+  ) {
+    return "place";
+  }
+  if (
+    path.startsWith("/kakao-place") ||
+    path.startsWith("/kakao-analysis") ||
+    path.startsWith("/kakao-ranking")
+  ) {
+    return "kakao";
+  }
+  return null;
+};
+
 const notoSansKr = Noto_Sans_KR({
   subsets: ["latin"],
   weight: ["700", "900"],
 });
+
+const MobileServiceIcon = ({
+  src,
+  label,
+  active,
+}: {
+  src: string;
+  label: string;
+  active: boolean;
+}) => (
+  <span
+    className={`flex h-8 w-8 shrink-0 items-center justify-center ${
+      active ? "opacity-100" : "opacity-80"
+    }`}
+  >
+    <Image
+      src={src}
+      alt={label}
+      width={32}
+      height={32}
+      className="h-8 w-8 object-contain"
+    />
+  </span>
+);
 
 const TopNav = (_props: TopNavProps) => {
   const router = useRouter();
@@ -39,7 +86,12 @@ const TopNav = (_props: TopNavProps) => {
   // 🚨 [추가] 로그인 버튼 호버 및 마우스 위치 추적 상태
   const [isLoginHovered, setIsLoginHovered] = useState(false);
   const [loginMousePos, setLoginMousePos] = useState({ x: 0, y: 0 });
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [drawerAnimatingOpen, setDrawerAnimatingOpen] = useState(false);
+  const [mobileExpandedSection, setMobileExpandedSection] =
+    useState<MobileMenuSectionKey | null>(() => getActiveMobileSectionKey(pathname));
+  const mobileMenuFrameRef = useRef<number | null>(null);
+  const mobileMenuCloseTimerRef = useRef<number | null>(null);
 
   const handleLoginMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -86,7 +138,7 @@ const TopNav = (_props: TopNavProps) => {
   }, []);
 
   useEffect(() => {
-    if (!isMobileMenuOpen) return;
+    if (!mobileMenuOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -94,7 +146,54 @@ const TopNav = (_props: TopNavProps) => {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isMobileMenuOpen]);
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (mobileMenuFrameRef.current) {
+        window.cancelAnimationFrame(mobileMenuFrameRef.current);
+      }
+      if (mobileMenuCloseTimerRef.current) {
+        window.clearTimeout(mobileMenuCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const openMobileMenu = () => {
+    if (mobileMenuCloseTimerRef.current) {
+      window.clearTimeout(mobileMenuCloseTimerRef.current);
+      mobileMenuCloseTimerRef.current = null;
+    }
+    if (mobileMenuFrameRef.current) {
+      window.cancelAnimationFrame(mobileMenuFrameRef.current);
+      mobileMenuFrameRef.current = null;
+    }
+
+    setDrawerAnimatingOpen(false);
+    setMobileExpandedSection(getActiveMobileSectionKey(pathname));
+    setMobileMenuOpen(true);
+
+    mobileMenuFrameRef.current = window.requestAnimationFrame(() => {
+      setDrawerAnimatingOpen(true);
+      mobileMenuFrameRef.current = null;
+    });
+  };
+
+  const closeMobileMenu = () => {
+    if (mobileMenuFrameRef.current) {
+      window.cancelAnimationFrame(mobileMenuFrameRef.current);
+      mobileMenuFrameRef.current = null;
+    }
+    if (mobileMenuCloseTimerRef.current) {
+      window.clearTimeout(mobileMenuCloseTimerRef.current);
+    }
+
+    setDrawerAnimatingOpen(false);
+    mobileMenuCloseTimerRef.current = window.setTimeout(() => {
+      setMobileMenuOpen(false);
+      mobileMenuCloseTimerRef.current = null;
+    }, 300);
+  };
 
   const handleLogout = async () => {
     if (window.confirm("로그아웃 하시겠습니까?")) {
@@ -113,6 +212,7 @@ const TopNav = (_props: TopNavProps) => {
     pathname.startsWith("/kakao-ranking");
   
   const isCommunityActive = pathname.startsWith("/community");
+  const isProfileActive = pathname.startsWith("/profile");
 
   const isPlaceRankActive = pathname === "/place" || pathname.startsWith("/place/");
   const isPlaceAnalysisActive = pathname.startsWith("/place-analysis");
@@ -159,9 +259,23 @@ const TopNav = (_props: TopNavProps) => {
     }, 140);
   };
 
+  const mobileDrawerTransform = drawerAnimatingOpen
+    ? "translate3d(0, 0, 0)"
+    : "translate3d(100%, 0, 0)";
+  const mobileDrawerClassName =
+    "fixed right-0 top-0 z-[10000] flex h-dvh w-[78%] max-w-[340px] flex-col shadow-2xl backdrop-blur-xl";
+  const mobileDrawerStyle: React.CSSProperties = {
+    backgroundColor: "rgba(255,255,255,0.78)",
+    transform: mobileDrawerTransform,
+    transition: "transform 300ms ease-out",
+    willChange: "transform",
+  };
+
   const mobileMenuSections = [
     {
+      key: "smartstore" as const,
       label: "스마트스토어",
+      iconSrc: "/icons/smartstore-icon.png",
       active: isSmartStoreActive,
       links: [
         { href: "/smartstore", label: "순위 추적", active: isSmartstorePriceActive },
@@ -170,7 +284,9 @@ const TopNav = (_props: TopNavProps) => {
       ],
     },
     {
+      key: "blog" as const,
       label: "네이버 블로그",
+      iconSrc: "/icons/blog-icon.png",
       active: isBlogActive,
       links: [
         { href: "/top-blog", label: "상위 블로그 찾기", active: isBlogTopActive },
@@ -178,8 +294,10 @@ const TopNav = (_props: TopNavProps) => {
       ],
     },
     {
+      key: "place" as const,
       label: "네이버 지도",
-      active: isPlaceActive,
+      iconSrc: "/icons/map-icon.png",
+      active: isPlaceActive || isPlaceAnalysisActive || isPlaceReviewActive,
       links: [
         { href: "/place", label: "순위 추적", active: isPlaceRankActive },
         { href: "/place-review", label: "리뷰 분석", active: isPlaceReviewActive },
@@ -187,7 +305,9 @@ const TopNav = (_props: TopNavProps) => {
       ],
     },
     {
+      key: "kakao" as const,
       label: "카카오맵",
+      iconSrc: "/icons/kakaomap-icon.png",
       active: isKakaoActive,
       links: [
         { href: "/kakao-place", label: "키워드 순위 추적", active: isKakaoPlaceActive },
@@ -200,7 +320,7 @@ const TopNav = (_props: TopNavProps) => {
   return (
     <>
       <nav
-        className={`fixed top-0 left-0 right-0 z-50 flex h-14 items-center transition-all duration-300 ease-in-out sm:h-16 ${
+        className={`fixed top-0 left-0 right-0 z-50 flex h-11 items-center transition-all duration-300 ease-in-out sm:h-16 ${
           isWhiteBg
             ? "bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100"
             : "bg-transparent border-b border-transparent shadow-none"
@@ -208,19 +328,6 @@ const TopNav = (_props: TopNavProps) => {
       >
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="모바일 메뉴 열기"
-              aria-expanded={isMobileMenuOpen}
-              onClick={() => setIsMobileMenuOpen(true)}
-              className={`-ml-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors sm:hidden ${
-                isWhiteBg
-                  ? "text-slate-800 hover:bg-slate-100"
-                  : "text-slate-900 hover:bg-white/40"
-              }`}
-            >
-              <Menu className="h-4.5 w-4.5" strokeWidth={2.2} />
-            </button>
             <Link href="/" className="flex items-center gap-3">
             <img
               src="/logo.png?v=20260429-2"
@@ -231,7 +338,7 @@ const TopNav = (_props: TopNavProps) => {
             </Link>
           </div>
 
-        <div className="hidden sm:flex items-center gap-10 text-base lg:text-lg text-slate-600">
+        <div className="hidden md:flex items-center gap-10 text-base lg:text-lg text-slate-600">
           
           {/* ========================================================= */}
           {/* 스마트스토어 */}
@@ -763,101 +870,220 @@ const TopNav = (_props: TopNavProps) => {
            />
          </button>
           )}
+          <button
+            type="button"
+            data-testid="mobile-menu-open"
+            aria-label="모바일 메뉴 열기"
+            aria-expanded={mobileMenuOpen}
+            onClick={openMobileMenu}
+            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors md:hidden ${
+              isWhiteBg
+                ? "text-slate-800 hover:bg-slate-100"
+                : "text-slate-900 hover:bg-white/40"
+            }`}
+          >
+            <Menu className="h-6 w-6" strokeWidth={2.2} />
+          </button>
         </div>
         </div>
       </nav>
 
       <div
-        className={`fixed inset-0 z-[60] sm:hidden ${
-          isMobileMenuOpen ? "pointer-events-auto" : "pointer-events-none"
-        }`}
-        aria-hidden={!isMobileMenuOpen}
+        className="fixed inset-0 z-[9999] md:hidden"
+        style={{ pointerEvents: mobileMenuOpen ? "auto" : "none" }}
+        aria-hidden={!mobileMenuOpen}
       >
         <button
           type="button"
-          aria-label="모바일 메뉴 닫기"
-          onClick={() => setIsMobileMenuOpen(false)}
-          className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-200 ${
-            isMobileMenuOpen ? "opacity-100" : "opacity-0"
-          }`}
+          aria-label="메뉴 닫기"
+          onClick={closeMobileMenu}
+          className="absolute inset-0 bg-black/45"
+          style={{
+            opacity: mobileMenuOpen ? 0.72 : 0,
+            transition: "opacity 300ms ease-out",
+          }}
         />
 
         <aside
           role="dialog"
           aria-modal="true"
           aria-label="모바일 메뉴"
-          className={`relative z-10 flex h-full w-[min(84vw,340px)] flex-col border-r border-white/70 bg-white/95 px-5 pb-6 pt-5 shadow-[28px_0_70px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          data-testid="mobile-drawer"
+          className={mobileDrawerClassName}
+          style={mobileDrawerStyle}
         >
-          <div className="mb-6 flex items-center justify-between">
-            <Link
-              href="/"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-3"
-            >
-              <img
-                src="/logo.png?v=20260429-2"
-                alt="PostLabs"
-                className="h-12 w-auto"
-              />
-              <span className="sr-only">PostLabs</span>
-            </Link>
+          <div className="flex h-[58px] items-center justify-between px-5 pt-1">
+            <div className="text-[22px] font-black tracking-[-0.03em] text-slate-950">
+              PostLabs
+            </div>
             <button
               type="button"
-              aria-label="모바일 메뉴 닫기"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              data-testid="mobile-menu-close"
+              aria-label="메뉴 닫기"
+              onClick={closeMobileMenu}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-800 transition-colors hover:bg-white"
             >
-              <X className="h-4 w-4" strokeWidth={2.2} />
+              <X className="h-6 w-6" strokeWidth={2.2} />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
-            <div className="flex flex-col gap-4">
-              {mobileMenuSections.map((section) => (
-                <section key={section.label}>
-                  <div
-                    className={`${notoSansKr.className} mb-2 px-2 text-sm font-black ${
-                      section.active ? "text-black" : "text-slate-500"
-                    }`}
+          <nav className="flex-1 overflow-y-auto px-5 pb-4 pt-0">
+            <div className="flex flex-col gap-0.5">
+              {mobileMenuSections.map((section) => {
+                const isOpen = mobileExpandedSection === section.key;
+
+                return (
+                <section key={section.key} className="pb-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMobileExpandedSection((current) =>
+                        current === section.key ? null : section.key
+                      )
+                    }
+                    className={[
+                      "flex w-full items-center gap-3 rounded-[14px] py-1.5 text-left transition-colors",
+                      section.active ? "text-[#0F172A]" : "text-slate-600 hover:text-slate-900",
+                    ].join(" ")}
+                    aria-expanded={mobileExpandedSection === section.key}
                   >
-                    {section.label}
-                  </div>
-                  <div className="flex flex-col gap-1">
+                    <MobileServiceIcon
+                      src={section.iconSrc}
+                      label={section.label}
+                      active={section.active}
+                    />
+                    <span
+                      className={[
+                        "min-w-0 flex-1 text-[15px] tracking-[-0.02em]",
+                        section.active ? "font-bold text-[#0F172A]" : "font-semibold text-slate-600",
+                      ].join(" ")}
+                    >
+                      {section.label}
+                    </span>
+                    <ChevronDown
+                      className={[
+                        "h-4 w-4 shrink-0 transition-transform duration-300",
+                        section.active ? "text-[#0F172A]" : "text-slate-500",
+                        isOpen ? "rotate-180" : "rotate-0",
+                      ].join(" ")}
+                      strokeWidth={2.5}
+                    />
+                  </button>
+
+                  <div
+                    data-testid={`mobile-submenu-${section.key}`}
+                    style={{
+                      maxHeight: isOpen ? 180 : 0,
+                      opacity: isOpen ? 1 : 0,
+                      transform: isOpen ? "translateY(0)" : "translateY(-6px)",
+                      overflow: "hidden",
+                      transition:
+                        "max-height 300ms ease-out, opacity 220ms ease-out, transform 300ms ease-out",
+                    }}
+                  >
+                    <div className="ml-11 flex flex-col gap-1 pb-0.5 pt-1">
                     {section.links.map((link) => (
                       <Link
                         key={link.href}
                         href={link.href}
                         aria-current={link.active ? "page" : undefined}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className={`rounded-2xl px-4 py-3 text-sm font-bold transition-colors ${
+                        onClick={closeMobileMenu}
+                        className={`flex items-center gap-2 rounded-[10px] px-1.5 py-0.5 text-[14px] transition-colors ${
                           link.active
-                            ? "bg-blue-50/70 text-[#0051FF]"
-                            : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                            ? "font-semibold text-[#0051FF]"
+                            : "text-slate-600 hover:bg-white/70 hover:text-slate-950"
                         }`}
                       >
-                        {link.label}
+                        <span
+                          className={`text-[13px] leading-none ${
+                            link.active ? "text-[#0051FF]" : "text-slate-400"
+                          }`}
+                        >
+                          •
+                        </span>
+                        <span>{link.label}</span>
                       </Link>
                     ))}
+                    </div>
                   </div>
                 </section>
-              ))}
+                );
+              })}
 
               <Link
                 href="/community"
                 aria-current={isCommunityActive ? "page" : undefined}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`mt-1 rounded-2xl px-4 py-3 text-sm font-bold transition-colors ${
+                onClick={closeMobileMenu}
+                className={`flex min-h-9 items-center gap-3 rounded-[14px] py-1.5 transition-colors ${
                   isCommunityActive
-                    ? "bg-blue-50/70 text-[#0051FF]"
-                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                    ? "text-[#0F172A]"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                커뮤니티
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                  <MessageCircle
+                    className={`h-6 w-6 object-contain text-current ${
+                      isCommunityActive ? "opacity-100" : "opacity-80"
+                    }`}
+                    strokeWidth={1.8}
+                  />
+                </span>
+                <span
+                  className={`min-w-0 flex-1 text-[15px] ${
+                    isCommunityActive ? "font-bold text-[#0F172A]" : "font-semibold text-slate-600"
+                  }`}
+                >
+                  커뮤니티
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-current" strokeWidth={2.4} />
               </Link>
             </div>
-          </div>
+
+            <div className="my-2 pt-1">
+              <div className="flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeMobileMenu();
+                    router.push("/profile");
+                  }}
+                  className="flex min-h-9 items-center gap-3 rounded-[14px] py-1.5 text-left"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                    <User
+                      className={`h-6 w-6 object-contain ${
+                        isProfileActive ? "text-[#0F172A]" : "text-slate-600"
+                      } ${isProfileActive ? "opacity-100" : "opacity-80"}`}
+                      strokeWidth={1.8}
+                    />
+                  </span>
+                  <span
+                    className={`text-[15px] ${
+                      isProfileActive ? "font-bold text-[#0F172A]" : "font-semibold text-slate-600"
+                    }`}
+                  >
+                    마이페이지
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeMobileMenu();
+                    handleLogout();
+                  }}
+                  className="flex min-h-9 items-center gap-3 rounded-[14px] py-1.5 text-left"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                    <LogOut
+                      className="h-6 w-6 object-contain text-slate-600 opacity-80"
+                      strokeWidth={1.8}
+                    />
+                  </span>
+                  <span className="text-[15px] font-semibold text-slate-600">로그아웃</span>
+                </button>
+              </div>
+            </div>
+          </nav>
         </aside>
       </div>
     </>

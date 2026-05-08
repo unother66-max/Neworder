@@ -150,71 +150,71 @@ export default function CommunityDetailPage() {
   return (
     <>
       <TopNav />
-      <main className="min-h-screen bg-white pt-24 pb-20">
-        <div className="mx-auto max-w-[850px] px-6">
+      <main className="min-h-screen bg-white pb-[72px] pt-16 md:pb-20 md:pt-24">
+        <div className="mx-auto max-w-[850px] px-5 sm:px-6">
           
-          <button onClick={() => router.push('/community')} className="flex items-center gap-2 text-slate-400 hover:text-slate-800 transition-colors mb-8 font-bold">
+          <button onClick={() => router.push('/community')} className="mb-8 hidden items-center gap-2 text-slate-400 transition-colors hover:text-slate-800 md:flex font-bold">
             <ArrowLeft size={20} /> 목록으로 돌아가기
           </button>
 
-          <div className="border-b border-slate-100 pb-8 mb-8">
-            <span className="inline-block bg-blue-50 text-blue-600 text-[12px] font-black px-3 py-1 rounded-md mb-4">{post.category}</span>
-            <h1 className="text-[32px] font-black text-slate-900 leading-tight mb-6">{post.title}</h1>
+          <div className="mb-6 border-b border-slate-100 pb-6 md:mb-8 md:pb-8">
+            <span className="mb-3 inline-block rounded-md bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-600 md:mb-4 md:px-3 md:text-[12px]">{post.category}</span>
+            <h1 className="mb-5 text-[28px] font-black leading-tight text-slate-900 md:mb-6 md:text-[32px]">{post.title}</h1>
             
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400"><User size={20} /></div>
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-400 md:h-10 md:w-10"><User size={18} /></div>
                 <div>
                   {/* 🚨 [수정] 본문 작성자 표시 (관리자 이메일일 경우 "포스트랩스" 표시) */}
-                  <div className="text-[14px] font-bold text-slate-800">
+                  <div className="text-[13px] font-bold text-slate-800 md:text-[14px]">
                     {post.author?.email === ADMIN_EMAIL ? "포스트랩스" : (post.author?.name || "익명")}
                   </div>
-                  <div className="flex items-center gap-3 text-[12px] text-slate-400 mt-0.5">
-                    <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(post.createdAt).toLocaleDateString()}</span>
-                    <span className="flex items-center gap-1"><Eye size={14} /> {post.views}</span>
+                  <div className="mt-0.5 flex items-center gap-2.5 text-[11px] text-slate-400 md:gap-3 md:text-[12px]">
+                    <span className="flex items-center gap-1"><Calendar size={13} /> {new Date(post.createdAt).toLocaleDateString()}</span>
+                    <span className="flex items-center gap-1"><Eye size={13} /> {post.views}</span>
                   </div>
                 </div>
               </div>
 
               {canEditOrDelete && (
                 <div className="flex gap-2">
-                  <SwipeButton defaultBg="bg-slate-400" hoverBg="bg-[#2563eb]" onClick={() => router.push(`/community/${params.id}/edit`)} className="px-4 py-1.5 rounded-full text-[13px]">
+                  <button onClick={() => router.push(`/community/${params.id}/edit`)} className="rounded-full border border-slate-300 bg-white/70 px-3 py-1 text-[12px] font-bold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 md:px-4 md:py-1.5 md:text-[13px]">
                     수정
-                  </SwipeButton>
-                  <SwipeButton defaultBg="bg-slate-400" hoverBg="bg-red-500" onClick={handleDelete} className="px-4 py-1.5 rounded-full text-[13px]">
+                  </button>
+                  <button onClick={handleDelete} className="rounded-full border border-slate-300 bg-white/70 px-3 py-1 text-[12px] font-bold text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500 md:px-4 md:py-1.5 md:text-[13px]">
                     삭제
-                  </SwipeButton>
+                  </button>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="text-[16px] text-slate-700 leading-[1.8] min-h-[200px] whitespace-pre-wrap mb-20">{post.content}</div>
+          <div className="mb-12 min-h-[150px] max-w-[700px] whitespace-pre-wrap text-[15px] leading-[1.75] text-slate-700 md:mb-20 md:min-h-[200px] md:text-[16px] md:leading-[1.8]">{post.content}</div>
 
           {/* 댓글 영역 */}
-          <div className="pt-8 border-t border-slate-100">
-            <h3 className="text-[18px] font-bold text-slate-900 mb-6">댓글 <span className="text-[#0051FF]">{post.comments?.length || 0}</span></h3>
+          <div className="border-t border-slate-100 pt-6 md:pt-8">
+            <h3 className="mb-4 text-[17px] font-bold text-slate-900 md:mb-6 md:text-[18px]">댓글 <span className="text-[#0051FF]">{post.comments?.length || 0}</span></h3>
 
-            <div className="mb-10 bg-slate-50 p-4 rounded-[20px] border border-slate-100 focus-within:border-[#0051FF] focus-within:bg-white focus-within:shadow-[0_10px_30px_rgba(0,81,255,0.06)] transition-all">
+            <div className="mb-7 rounded-[20px] border border-slate-100 bg-slate-50 p-3 transition-all focus-within:border-[#0051FF] focus-within:bg-white focus-within:shadow-[0_10px_30px_rgba(0,81,255,0.06)] md:mb-10 md:p-4">
               <textarea
                 value={commentInput}
                 onChange={(e) => setCommentInput(e.target.value)}
                 placeholder={session ? "댓글을 남겨주세요." : "로그인 후 댓글을 남길 수 있습니다."}
                 disabled={!session || isSubmitting}
-                className="w-full h-[80px] bg-transparent text-[14px] outline-none resize-none text-slate-800"
+                className="h-14 w-full resize-none bg-transparent text-[13px] text-slate-800 outline-none md:h-[80px] md:text-[14px]"
               />
-              <div className="flex justify-end mt-2">
+              <div className="mt-2 flex justify-end pr-16 md:pr-0">
                 <SwipeButton 
                   disabled={!session || isSubmitting || !commentInput.trim()}
                   onClick={handleCommentSubmit}
-                  className="px-8 py-2.5 rounded-[12px] text-[13px]"
+                  className="rounded-[10px] px-5 py-1.5 text-[12px] md:rounded-[12px] md:px-8 md:py-2.5 md:text-[13px]"
                 >
                   {isSubmitting ? "등록 중..." : "등록하기"}
                 </SwipeButton>
               </div>
             </div>
 
-            <div className="flex flex-col gap-8 pb-20">
+            <div className="flex flex-col gap-6 pb-28 md:gap-8 md:pb-20">
               {post.comments?.map((comment: any) => {
                 const isCommAuthor = session?.user?.email === comment.author?.email;
                 const canManageComm = isCommAuthor || (session?.user?.email === ADMIN_EMAIL);
@@ -235,8 +235,8 @@ export default function CommunityDetailPage() {
                         </div>
                         {canManageComm && editingCommentId !== comment.id && (
                           <div className="flex gap-2">
-                            <button onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.content); }} className="text-[12px] font-bold text-slate-300 hover:text-blue-500 transition-colors">수정</button>
-                            <button onClick={() => handleCommentDelete(comment.id)} className="text-[12px] font-bold text-slate-300 hover:text-red-500 transition-colors">삭제</button>
+                            <button onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.content); }} className="rounded-full border border-slate-300 bg-white/70 px-2 py-0.5 text-[11px] font-bold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 md:px-2.5 md:py-1 md:text-[12px]">수정</button>
+                            <button onClick={() => handleCommentDelete(comment.id)} className="rounded-full border border-slate-300 bg-white/70 px-2 py-0.5 text-[11px] font-bold text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500 md:px-2.5 md:py-1 md:text-[12px]">삭제</button>
                           </div>
                         )}
                       </div>
@@ -249,7 +249,7 @@ export default function CommunityDetailPage() {
                             className="w-full min-h-[70px] bg-slate-50 border border-slate-200 rounded-[12px] p-3 text-[14px] outline-none"
                           />
                           <div className="flex justify-end gap-2 mt-3">
-                            <button onClick={() => setEditingCommentId(null)} className="px-4 py-2 bg-slate-100 text-slate-500 text-[12px] font-bold rounded-[8px] hover:bg-slate-200 transition-colors">취소</button>
+                            <button onClick={() => setEditingCommentId(null)} className="rounded-[8px] border border-slate-300 bg-white/70 px-3 py-1.5 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50 md:px-4 md:py-2 md:text-[12px]">취소</button>
                             <SwipeButton onClick={() => handleCommentEditSubmit(comment.id)} className="px-5 py-2 rounded-[8px] text-[12px]">
                               저장
                             </SwipeButton>

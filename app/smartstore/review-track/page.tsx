@@ -131,10 +131,10 @@ function StarTrackTick({ label, count, total }: { label: string; count: number; 
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
     <div className="min-w-0">
-      <div className="h-1 overflow-hidden rounded-full bg-gray-200">
-        <div className="h-1 rounded-full bg-gray-900" style={{ width: `${pct}%` }} />
+      <div className="h-1 overflow-hidden rounded-full bg-[#e5e7eb]">
+        <div className="h-1 rounded-full bg-[#111827]" style={{ width: `${pct}%` }} />
       </div>
-      <div className="mt-1 text-center text-[10px] font-semibold text-gray-500">{label}</div>
+      <div className="mt-1 text-center text-[10px] font-semibold text-[#6b7280]">{label}</div>
     </div>
   );
 }
@@ -155,11 +155,13 @@ function MetricStat({
         ? `+ ${delta.toLocaleString()}`
         : `- ${Math.abs(delta).toLocaleString()}`;
   return (
-    <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2">
-      <div className="text-[10px] font-extrabold text-gray-600">{label}</div>
-      <div className="mt-0.5 flex items-baseline justify-between gap-2">
-        <div className="text-[16px] font-black tracking-[-0.02em] text-gray-900">{value}</div>
-        <div className="text-[10px] font-semibold text-gray-400">{d}</div>
+    <div className="flex h-[54px] min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-2 md:h-[62px] md:rounded-[12px] md:px-3">
+      <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">{label}</div>
+      <div className="mt-1 flex min-w-0 items-end justify-between gap-1.5">
+        <div className="min-w-0 truncate text-[14px] font-semibold leading-none tracking-[-0.02em] text-[#111827] md:text-[16px] md:font-black">
+          {value}
+        </div>
+        <div className="shrink-0 text-[10px] font-semibold leading-none text-[#9ca3af]">{d}</div>
       </div>
     </div>
   );
@@ -170,11 +172,11 @@ function ProductThumb({ src, alt }: { src: string | null; alt: string }) {
   const finalSrc = src?.trim();
   if (!finalSrc || broken) {
     return (
-      <div className="flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-[14px] bg-[#f3f4f6] ring-1 ring-[#e5e7eb]">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]">
         <img
           src={PRODUCT_CARD_PLACEHOLDER_IMG}
           alt=""
-          className="h-8 w-8 opacity-[0.35]"
+          className="h-7 w-7 opacity-[0.35] md:h-8 md:w-8"
           width={32}
           height={32}
           aria-hidden
@@ -186,7 +188,7 @@ function ProductThumb({ src, alt }: { src: string | null; alt: string }) {
     <img
       src={finalSrc}
       alt={alt}
-      className="h-[56px] w-[56px] shrink-0 rounded-[14px] object-cover ring-1 ring-[#e5e7eb]"
+      className="h-12 w-12 shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]"
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setBroken(true)}
@@ -395,66 +397,81 @@ export default function SmartstoreReviewTrackPage() {
   if (!mounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#f8fafc] pt-24">
+    <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
       <TopNav activeSmartstoreSub="review-track" />
 
-      <div className="mx-auto max-w-[1100px] px-4 pb-16 pt-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-[18px] font-black text-[#111827]">상품 리뷰 관리</div>
-            <div className="text-[12px] font-semibold text-[#9ca3af]">
-              스마트스토어 상품의 리뷰 수/평점을 수집하고 변화를 추적합니다.
+      <section className="mx-auto max-w-[1240px] px-3 py-2 pb-16 md:px-6 md:py-5 lg:px-8">
+        <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  상품 리뷰 관리
+                </h1>
+                <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:py-1 md:text-[11px]">
+                  REVIEW
+                </span>
+              </div>
+              <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px]">
+                <span className="md:hidden">상품 리뷰와 평점을 관리합니다.</span>
+                <span className="hidden md:inline">
+                  스마트스토어 상품의 리뷰 수와 평점 변화를 한 화면에서 추적합니다.
+                </span>
+              </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className={`
-                relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px]
-                bg-[#333333] px-4 text-[13px] font-bold tracking-wide text-white font-sans
-                transition-all duration-300 ease-in-out
-              `}
-              onMouseEnter={() => setIsAddHovered(true)}
-              onMouseLeave={() => setIsAddHovered(false)}
-              onMouseMove={handleMouseMove}
-              onClick={() => {
-                setError("");
-                setShowManualInput(false);
-                setManualName("");
-                setManualImageUrl("");
-                setAddOpen(true);
-              }}
-            >
-              <span className="relative z-30 pointer-events-none">상품 등록</span>
-              <div
-                className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-                style={{
-                  transformOrigin: "left",
-                  transform: isAddHovered ? "scaleX(1)" : "scaleX(0)",
-                  transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
-                  backgroundColor: "#2563EB",
-                }}
-              />
-              <div
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-row md:gap-3 lg:items-center">
+              <button
+                type="button"
                 className={`
-                  absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
-                  transition-opacity duration-200 ease-out
-                  ${isAddHovered ? "opacity-100" : "opacity-0"}
+                  relative inline-flex h-[40px] min-w-0 items-center justify-center overflow-hidden rounded-[12px]
+                  bg-[#333333] px-3 text-[12px] font-bold text-white font-sans
+                  transition-all duration-300 ease-in-out
+                  md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]
                 `}
-                style={{
-                  left: `${mousePos.x}px`,
-                  top: `${mousePos.y}px`,
-                  pointerEvents: "none",
-                  zIndex: 25,
-                  backgroundImage:
-                    "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
-                  mixBlendMode: "soft-light",
-                  filter:
-                    "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                onMouseEnter={() => setIsAddHovered(true)}
+                onMouseLeave={() => setIsAddHovered(false)}
+                onMouseMove={handleMouseMove}
+                onClick={() => {
+                  setError("");
+                  setShowManualInput(false);
+                  setManualName("");
+                  setManualImageUrl("");
+                  setAddOpen(true);
                 }}
-              />
-            </button>
+              >
+                <span className="relative z-30 inline-flex items-center gap-1.5 pointer-events-none">
+                  <Plus size={15} />
+                  상품 등록
+                </span>
+                <div
+                  className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                  style={{
+                    transformOrigin: "left",
+                    transform: isAddHovered ? "scaleX(1)" : "scaleX(0)",
+                    transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
+                    backgroundColor: "#2563EB",
+                  }}
+                />
+                <div
+                  className={`
+                    absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
+                    transition-opacity duration-200 ease-out
+                    ${isAddHovered ? "opacity-100" : "opacity-0"}
+                  `}
+                  style={{
+                    left: `${mousePos.x}px`,
+                    top: `${mousePos.y}px`,
+                    pointerEvents: "none",
+                    zIndex: 25,
+                    backgroundImage:
+                      "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
+                    mixBlendMode: "soft-light",
+                    filter:
+                      "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
+                  }}
+                />
+              </button>
 
             <button
               type="button"
@@ -464,14 +481,15 @@ export default function SmartstoreReviewTrackPage() {
               onMouseLeave={() => setIsSyncAllHovered(false)}
               onMouseMove={handleSyncAllMouseMove}
               className={`
-                relative inline-flex h-[44px] items-center justify-center overflow-hidden rounded-[14px]
-                bg-[#333333] px-4 text-[13px] font-extrabold tracking-wide text-white font-sans
-                transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed
+                relative inline-flex h-[40px] min-w-0 items-center justify-center overflow-hidden rounded-[12px]
+                bg-[#333333] px-3 text-[12px] font-bold text-white font-sans
+                transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-50
+                md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]
               `}
             >
-              <span className="relative z-30 inline-flex items-center gap-2 pointer-events-none">
-                <RefreshCw size={16} className={syncAllLoading ? "animate-spin" : ""} />
-                {syncAllLoading ? "전체 업데이트 중..." : "전체 업데이트"}
+              <span className="relative z-30 inline-flex min-w-0 items-center gap-1.5 pointer-events-none">
+                <RefreshCw size={15} className={syncAllLoading ? "animate-spin" : ""} />
+                <span className="truncate">{syncAllLoading ? "업데이트 중..." : "전체 업데이트"}</span>
               </span>
               <div
                 className="pointer-events-none absolute inset-0 z-10 h-full w-full"
@@ -484,7 +502,7 @@ export default function SmartstoreReviewTrackPage() {
               />
               <div
                 className={`
-                  absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                  absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
                   transition-opacity duration-200 ease-out
                   ${isSyncAllHovered ? "opacity-100" : "opacity-0"}
                 `}
@@ -501,27 +519,28 @@ export default function SmartstoreReviewTrackPage() {
                 }}
               />
             </button>
+            </div>
           </div>
         </div>
 
         {error ? (
-          <div className="mt-4 rounded-[14px] border border-[#fecaca] bg-[#fff1f2] p-3 text-[13px] font-bold text-[#b91c1c]">
+          <div className="mt-2.5 rounded-[14px] border border-[#fecaca] bg-[#fff1f2] px-3 py-2.5 text-[12px] font-bold text-[#b91c1c] md:mt-4 md:p-3 md:text-[13px]">
             {error}
           </div>
         ) : null}
 
-        <div className="mt-6 rounded-[18px] bg-white p-4 shadow-sm ring-1 ring-[#e5e7eb]">
+        <div className="mt-2.5 overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:mt-5 md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
           {selectedTarget ? (
-            <div className="flex items-center gap-4">
+            <div className="flex min-w-0 items-center gap-2.5 md:gap-4">
               <ProductThumb
               src={selectedTarget.target.imageUrl}
               alt={selectedTarget.target.name}
               />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-black text-[#111827]">
+                <div className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:text-[20px]">
                 {selectedTarget.target.name}
                 </div>
-                <div className="mt-0.5 truncate text-[12px] font-semibold text-[#9ca3af]">
+                <div className="mt-0.5 truncate text-[12px] font-semibold text-[#6b7280] md:mt-1.5 md:text-[13px]">
                 {selectedTarget.target.storeName ? `${selectedTarget.target.storeName} · ` : ""}
                 상품ID {selectedTarget.target.productId}
                 </div>
@@ -530,41 +549,48 @@ export default function SmartstoreReviewTrackPage() {
               href={selectedTarget.target.productUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-[12px] bg-white px-3 py-2 text-[12px] font-extrabold text-[#111827] ring-1 ring-[#e5e7eb] hover:bg-[#f9fafb]"
+                className="inline-flex h-8 shrink-0 items-center rounded-[10px] border border-[#d1d5db] bg-white px-2.5 text-[11px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:h-[38px] md:rounded-[12px] md:px-3 md:text-[12px]"
               >
                 상품 보기
               </a>
             </div>
           ) : (
-            <div className="text-[13px] font-bold text-[#6b7280]">
-              아직 리뷰 관리 대상 상품이 없습니다. 상단의 ‘상품 추가’로 시작하세요.
+            <div className="text-[12px] font-bold leading-5 text-[#6b7280] md:text-[13px]">
+              아직 리뷰 관리 대상 상품이 없습니다. 상단의 상품 등록으로 시작하세요.
             </div>
           )}
         </div>
 
-        <div className="mt-6 space-y-4">
-          <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 md:gap-2">
               <div>
-                <div className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
-                  등록된 상품
+                <div className="flex items-center gap-2">
+                  <div className="text-[15px] font-black tracking-[-0.02em] text-[#111827] md:text-[17px]">
+                    등록된 상품
+                  </div>
+                  <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:px-2.5 md:py-1 md:text-[11px]">
+                    {targets.length}개
+                  </span>
                 </div>
-                <div className="mt-1 text-[12px] text-[#6b7280]">
-                  각 상품은 개별 업데이트/삭제가 가능합니다.
+                <div className="mt-1 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
+                  {loading ? "상품 목록 불러오는 중..." : "각 상품은 개별 업데이트가 가능합니다."}
                 </div>
               </div>
-              <div className="text-[11px] text-[#9ca3af]">* 상단 버튼은 전체 업데이트입니다.</div>
+              <div className="text-[10px] leading-4 text-[#6b7280] md:text-[11px] md:text-[#9ca3af]">
+                전체 업데이트는 상단 버튼을 사용합니다.
+              </div>
             </div>
           </div>
 
           {loading ? (
-            <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-14 text-center text-[14px] text-[#9ca3af]">
+            <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-4 py-10 text-center text-[13px] text-[#9ca3af] md:rounded-[22px] md:px-6 md:py-14 md:text-[14px]">
               불러오는 중...
             </div>
           ) : targets.length === 0 ? (
-            <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
-              <p className="text-[18px] font-bold text-[#111827]">아직 등록된 상품이 없어요</p>
-              <p className="mt-2 text-[14px] text-[#9ca3af]">
+            <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+              <p className="text-[15px] font-bold text-[#111827] md:text-[18px]">아직 등록된 상품이 없어요</p>
+              <p className="mt-2 text-[12px] text-[#9ca3af] md:text-[14px]">
                 상단의 상품 등록 버튼으로 스마트스토어 상품 URL을 추가해보세요.
               </p>
             </div>
@@ -577,65 +603,66 @@ export default function SmartstoreReviewTrackPage() {
               return (
                 <div
                   key={t.id}
-                  className="rounded-[22px] border border-gray-200 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)] md:px-6"
+                  className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition hover:shadow-[0_8px_24px_rgba(15,23,42,0.055)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div className="flex min-w-0 items-center gap-4">
-                      <ProductThumb src={t.target.imageUrl} alt={t.target.name} />
-                      <div className="min-w-0">
-                        <div className="truncate text-[14px] font-black text-gray-900">
-                          {t.target.name}
-                        </div>
-                        <div className="mt-1 truncate text-[12px] font-semibold text-gray-600">
-                          {t.target.storeName ? `${t.target.storeName} · ` : ""}
-                          상품ID {t.target.productId}
-                        </div>
-                        <div className="mt-1 text-[11px] font-semibold text-gray-400">
-                          업데이트 {t.target.updatedAtLabel}
+                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-6 md:py-4">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="flex min-w-0 gap-2.5 md:gap-4">
+                        <ProductThumb src={t.target.imageUrl} alt={t.target.name} />
+                        <div className="min-w-0 flex-1">
+                          <div className="min-w-0 overflow-hidden text-[15px] font-black leading-snug tracking-[-0.03em] text-[#111827] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] md:text-[20px]">
+                            {t.target.name}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:mt-1.5 md:text-[13px] md:text-[#6b7280]">
+                            {t.target.storeName ? `${t.target.storeName} · ` : ""}
+                            상품ID {t.target.productId}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] font-semibold text-[#9ca3af] md:mt-1">
+                            업데이트 {t.target.updatedAtLabel}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex w-full flex-col gap-3 md:flex-1 md:px-4">
-                      <div className="grid w-full grid-cols-3 gap-2">
-                        <MetricStat
-                          label="리뷰 수"
-                          value={fmtNum(t.target.reviewCount)}
-                          delta={t.delta.reviewCount}
-                        />
-                        <MetricStat
-                          label="포토/영상"
-                          value={fmtNum(t.target.reviewPhotoVideoCount)}
-                          delta={t.delta.reviewPhotoVideoCount}
-                        />
-                        <MetricStat
-                          label="한달사용"
-                          value={fmtNum(t.target.reviewMonthlyUseCount)}
-                          delta={t.delta.reviewMonthlyUseCount}
-                        />
-                        <MetricStat
-                          label="재구매"
-                          value={fmtNum(t.target.reviewRepurchaseCount)}
-                          delta={t.delta.reviewRepurchaseCount}
-                        />
-                        <MetricStat
-                          label="스토어픽"
-                          value={fmtNum(t.target.reviewStorePickCount)}
-                          delta={t.delta.reviewStorePickCount}
-                        />
-                        <MetricStat
-                          label="평점"
-                          value={
-                            t.target.reviewRating == null
-                              ? "-"
-                              : `★ ${fmtRating(t.target.reviewRating)}`
-                          }
-                          delta={t.delta.reviewRating}
-                        />
+                      <div className="flex w-full min-w-0 flex-col gap-3 xl:flex-1 xl:px-4">
+                        <div className="grid w-full grid-cols-2 gap-1.5 min-[420px]:grid-cols-3 md:gap-2">
+                          <MetricStat
+                            label="리뷰 수"
+                            value={fmtNum(t.target.reviewCount)}
+                            delta={t.delta.reviewCount}
+                          />
+                          <MetricStat
+                            label="포토/영상"
+                            value={fmtNum(t.target.reviewPhotoVideoCount)}
+                            delta={t.delta.reviewPhotoVideoCount}
+                          />
+                          <MetricStat
+                            label="한달사용"
+                            value={fmtNum(t.target.reviewMonthlyUseCount)}
+                            delta={t.delta.reviewMonthlyUseCount}
+                          />
+                          <MetricStat
+                            label="재구매"
+                            value={fmtNum(t.target.reviewRepurchaseCount)}
+                            delta={t.delta.reviewRepurchaseCount}
+                          />
+                          <MetricStat
+                            label="스토어픽"
+                            value={fmtNum(t.target.reviewStorePickCount)}
+                            delta={t.delta.reviewStorePickCount}
+                          />
+                          <MetricStat
+                            label="평점"
+                            value={
+                              t.target.reviewRating == null
+                                ? "-"
+                                : `★ ${fmtRating(t.target.reviewRating)}`
+                            }
+                            delta={t.delta.reviewRating}
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center justify-end gap-2 md:shrink-0">
+                      <div className="flex w-full items-center justify-end gap-1.5 md:gap-2 xl:w-auto xl:shrink-0">
                       <button
                         type="button"
                         onClick={() => syncOne(t)}
@@ -643,9 +670,9 @@ export default function SmartstoreReviewTrackPage() {
                         onMouseEnter={() => setUpdateHover({ id: t.id, x: updateHover.x, y: updateHover.y })}
                         onMouseLeave={() => setUpdateHover((prev) => prev.id === t.id ? { ...prev, id: null } : prev)}
                         onMouseMove={(e) => handleUpdateMouseMove(e, t.id)}
-                        className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-extrabold text-white font-sans transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`relative inline-flex h-8 min-w-[104px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:min-w-[118px] md:rounded-[14px] md:px-4 md:text-[13px]`}
                       >
-                        <span className="relative z-30 inline-flex items-center gap-2 pointer-events-none">
+                        <span className="relative z-30 inline-flex items-center gap-1.5 pointer-events-none">
                           <RefreshCw
                             size={14}
                             className={syncingTargetId === t.id ? "animate-spin" : ""}
@@ -663,7 +690,7 @@ export default function SmartstoreReviewTrackPage() {
                         />
                         <div
                           className={`
-                            absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
+                            absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
                             transition-opacity duration-200 ease-out
                             ${updateHover.id === t.id ? "opacity-100" : "opacity-0"}
                           `}
@@ -683,23 +710,26 @@ export default function SmartstoreReviewTrackPage() {
                       <button
                         type="button"
                         onClick={() => removeTarget(t.id)}
-                        className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6] ring-1 ring-transparent hover:ring-[#e5e7eb]`}
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#e5e7eb] bg-white text-[#6b7280] transition hover:border-[#d1d5db] hover:bg-[#f9fafb] hover:text-[#111827] md:h-[42px] md:w-[42px] md:rounded-[14px]`}
                         aria-label="삭제"
                         title="삭제"
                       >
-                        <Trash2 size={16} className="stroke-[#111827]" strokeWidth={2} />
+                        <Trash2 size={15} strokeWidth={2} />
                       </button>
+                      </div>
                     </div>
                   </div>
 
                   {stars ? (
-                    <div className="mt-4 rounded-2xl border border-gray-200 bg-white px-4 py-3">
-                      <div className="grid grid-cols-5 gap-4">
-                        <StarTrackTick label="5점" count={stars["5"]} total={totalStars} />
-                        <StarTrackTick label="4점" count={stars["4"]} total={totalStars} />
-                        <StarTrackTick label="3점" count={stars["3"]} total={totalStars} />
-                        <StarTrackTick label="2점" count={stars["2"]} total={totalStars} />
-                        <StarTrackTick label="1점" count={stars["1"]} total={totalStars} />
+                    <div className="px-3 py-2.5 md:px-6 md:py-4">
+                      <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-3 py-2.5 md:rounded-[16px] md:px-4 md:py-3">
+                        <div className="grid grid-cols-5 gap-2 md:gap-4">
+                          <StarTrackTick label="5점" count={stars["5"]} total={totalStars} />
+                          <StarTrackTick label="4점" count={stars["4"]} total={totalStars} />
+                          <StarTrackTick label="3점" count={stars["3"]} total={totalStars} />
+                          <StarTrackTick label="2점" count={stars["2"]} total={totalStars} />
+                          <StarTrackTick label="1점" count={stars["1"]} total={totalStars} />
+                        </div>
                       </div>
                     </div>
                   ) : null}
@@ -847,7 +877,7 @@ export default function SmartstoreReviewTrackPage() {
             </div>
           </div>
         ) : null}
-      </div>
+      </section>
     </main>
   );
 }
