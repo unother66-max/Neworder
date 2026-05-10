@@ -783,6 +783,219 @@ export function extractPlacesFromAllSearchJson(
   return out;
 }
 
+/**
+ * 추천형 키워드(데이트·핫플 등)용: 파싱 불가 항목도 빈 stub으로 보존.
+ * id/name이 없는 항목(광고·섹션 헤더 등)도 자리를 차지해 뒤 항목의 rank가 압축되지 않는다.
+ * stub은 placeId·name이 비어 있으므로 rank 매칭(findIndex)에서 자동으로 스킵된다.
+ */
+export function extractPlacesFromAllSearchJsonPreservingPositions(
+  json: unknown
+): MapAllSearchPlaceRow[] {
+  const place = getAllSearchPlaceBlock(json);
+  const list = place?.list;
+  if (!Array.isArray(list)) return [];
+
+  return list.map((item, i): MapAllSearchPlaceRow => {
+    const row = mapAllSearchListItemToRow(item, i);
+    if (row) return row;
+    // 파싱 불가 항목: 위치 보존용 stub (name/id 비어 있어 rank 매칭에서 스킵됨)
+    return {
+      id: "",
+      name: "",
+      category: "",
+      roadAddress: "",
+      address: "",
+      x: "",
+      y: "",
+      thumUrl: "",
+      placeReviewCount: 0,
+      reviewCount: 0,
+      rank: i + 1,
+    };
+  });
+}
+
+/**
+ * 브라우저 세션에서 확보한 allSearch JSON mixed-order 분석용 — 서버 로그만.
+ * 추천형 키워드 + browserAllSearchJson 전달 시 check-place-rank에서 호출.
+ */
+export function logBrowserAllSearchMixedOrderAnalysis(
+  keyword: string,
+  json: unknown
+): void {
+  const block = getAllSearchPlaceBlock(json);
+  const rawList: NaverMapAllSearchPlaceListItem[] = Array.isArray(block?.list)
+    ? (block!.list! as NaverMapAllSearchPlaceListItem[])
+    : [];
+  const root =
+    json && typeof json === "object" ? (json as Record<string, unknown>) : null;
+  const topKeys = root ? Object.keys(root).slice(0, 14) : [];
+  const result = root?.result;
+  const resultKeys =
+    result && typeof result === "object"
+      ? Object.keys(result as object).slice(0, 16)
+      : [];
+  const rawSample = rawList.slice(0, 15).map(
+    (item: NaverMapAllSearchPlaceListItem, i: number) => {
+      const it = item as NaverMapAllSearchPlaceListItem & Record<string, unknown>;
+      return {
+        i,
+        id: it.id ?? null,
+        name: it.name ?? null,
+        rank: it.rank ?? null,
+        index: it.index ?? null,
+        type: it.type ?? null,
+        isAd: it.isAd ?? null,
+        businessType: it.businessType ?? null,
+        category: Array.isArray(it.category)
+          ? (it.category as string[]).slice(0, 2)
+          : (it.category ?? null),
+        hasPlaceFields: !!(it.id && it.name),
+      };
+    }
+  );
+  console.log("[check-place-rank browser mixed-order 분석]", {
+    keyword,
+    topKeys,
+    resultKeys,
+    placeListLen: rawList.length,
+    totalCount: block?.totalCount ?? null,
+    rawSample,
+  });
+}
+
+/**
+ * 추천형 키워드용 무토큰 allSearch — position-preserving 파싱 적용.
+ * 토큰이 필요한 경우 CE_EMPTY_TOKEN/NCAPTCHA failureCode를 반환하며,
+ * 호출자가 token 기반 fetchAllSearchPlacesAutoDetailed로 fallback할 수 있다.
+ */
+export async function fetchAllSearchPlacesForIntentKeyword(
+  keyword: string,
+  coords?: { x?: string; y?: string }
+): Promise<FetchAllSearchCheckPlaceDetailedResult> {
+  const trimmed = String(keyword || "").trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      failureCode: "KEYWORD_EMPTY",
+      userMessage: userMessageForAllSearchFailure("KEYWORD_EMPTY"),
+    };
+  }
+
+  const url = buildAllSearchUrlCheckPlaceRankStyle(trimmed, coords);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Referer: buildAllSearchRefererCheckPlaceRankStyle(trimmed),
+        "User-Agent": NAVER_MAP_ALL_SEARCH_CHECK_PLACE_UA,
+      },
+      cache: "no-store",
+      signal: allSearchFetchSignal(),
+    });
+  } catch (e) {
+    if (isAllSearchFetchTimedOut(e)) {
+      return {
+        ok: false,
+        failureCode: "FETCH_TIMEOUT",
+        userMessage: userMessageForAllSearchFailure("FETCH_TIMEOUT"),
+      };
+    }
+    throw e;
+  }
+
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return {
+      ok: false,
+      failureCode: "JSON_PARSE",
+      userMessage: userMessageForAllSearchFailure("JSON_PARSE"),
+    };
+  }
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      failureCode: "HTTP_ERROR",
+      userMessage: userMessageForAllSearchFailure("HTTP_ERROR"),
+    };
+  }
+
+  if (isAllSearchNcaptchaOrEmpty(json)) {
+    const diag = diagnoseAllSearchEmptyOrBlocked(json);
+    const confirmRules = extractAllSearchNcaptchaConfirmRules(json);
+    let failureCode: AllSearchCheckPlaceFailureCode;
+    if (diag.reason === "NCAPTCHA") {
+      failureCode =
+        confirmRules === "CE_EMPTY_TOKEN" ? "CE_EMPTY_TOKEN" : "NCAPTCHA";
+    } else if (diag.reason === "PLACE_BLOCK_MISSING") {
+      failureCode = "PLACE_BLOCK_MISSING";
+    } else if (diag.reason === "PLACE_LIST_NOT_ARRAY") {
+      failureCode = "PLACE_LIST_NOT_ARRAY";
+    } else {
+      failureCode = "UNEXPECTED_REJECT";
+    }
+    return {
+      ok: false,
+      failureCode,
+      userMessage: userMessageForAllSearchFailure(failureCode, confirmRules),
+    };
+  }
+
+  const block = getAllSearchPlaceBlock(json);
+  const rawList: NaverMapAllSearchPlaceListItem[] = Array.isArray(block?.list)
+    ? (block!.list! as NaverMapAllSearchPlaceListItem[])
+    : [];
+  const rawListLength = rawList.length;
+  const places = extractPlacesFromAllSearchJsonPreservingPositions(json);
+  const parsedCount = places.filter((p) => p.id || p.name).length;
+  const totalCount = Number(block?.totalCount ?? parsedCount);
+
+  if (parsedCount === 0) {
+    return {
+      ok: false,
+      failureCode: "EMPTY_LIST",
+      userMessage: userMessageForAllSearchFailure("EMPTY_LIST"),
+    };
+  }
+
+  console.log("[allSearch 추천형 파싱]", {
+    keyword: trimmed,
+    rawListLength,
+    parsedCount,
+    stubCount: rawListLength - parsedCount,
+    totalCount,
+  });
+
+  // 추천형 키워드 mixed order 분석용 — 실제 화면 노출 순서 파악을 위해 raw item 필드 구조 로그
+  // rank/index/type/isAd 등 광고·섹션 구분 마커 확인 목적 (임의 보정 적용 전 분석 단계)
+  if (rawList.length > 0) {
+    const rawSample = rawList.slice(0, 10).map((item: NaverMapAllSearchPlaceListItem, i: number) => {
+      const it = item as NaverMapAllSearchPlaceListItem & Record<string, unknown>;
+      return {
+        i,
+        id: it.id ?? null,
+        name: it.name ?? null,
+        rank: it.rank ?? null,
+        index: it.index ?? null,
+        type: it.type ?? null,
+        isAd: it.isAd ?? null,
+        businessType: it.businessType ?? null,
+        category: Array.isArray(it.category)
+          ? (it.category as string[]).slice(0, 2)
+          : (it.category ?? null),
+        hasId: !!(it.id && (it.name)),
+      };
+    });
+    console.log("[allSearch 추천형 raw구조]", { keyword: trimmed, rawSample });
+  }
+
+  return { ok: true, places, totalCount };
+}
+
 /** ncaptcha·비정상 응답만 차단. `place.list`가 빈 배열이면 0건 검색으로 정상 처리 */
 export function isAllSearchNcaptchaOrEmpty(json: unknown): boolean {
   const j = json as NaverMapAllSearchApiResult & {

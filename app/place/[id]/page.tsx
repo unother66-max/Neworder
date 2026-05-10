@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import TopNav from "@/components/top-nav";
+import { debugFetchBrowserAllSearchJson } from "@/lib/browser-allsearch-debug";
+import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 import {
   LineChart,
   Line,
@@ -235,6 +237,22 @@ export default function PlaceDetailPage() {
       });
 
       for (const keyword of place.keywords) {
+        let browserAllSearchJson: unknown | undefined;
+        if (isIntentMixedKeyword(keyword.keyword)) {
+          try {
+            const dbg = await debugFetchBrowserAllSearchJson({
+              keyword: keyword.keyword,
+              x: place.x ?? undefined,
+              y: place.y ?? undefined,
+            });
+            if (dbg.ok) {
+              browserAllSearchJson = dbg.json;
+            }
+          } catch {
+            /* 브라우저 allSearch 디버그 실패는 순위 조회에 영향 없음 */
+          }
+        }
+
         const response = await fetch("/api/check-place-rank", {
           method: "POST",
           headers: {
@@ -246,6 +264,9 @@ export default function PlaceDetailPage() {
             x: place.x,
             y: place.y,
             placeKeywordId: keyword.id,
+            ...(browserAllSearchJson !== undefined
+              ? { browserAllSearchJson }
+              : {}),
           }),
         });
 

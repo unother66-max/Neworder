@@ -100,7 +100,7 @@ function hintCandidates(keyword: string): string[] {
     }
   }
 
-  return out.slice(0, 5);
+  return out.slice(0, 2);
 }
 
 /**
@@ -187,14 +187,8 @@ async function fetchKeywordSearchVolumeUncached(
   }
 
   const attemptFetch = (hintKeywords: string) => {
-    const qs = new URLSearchParams({
-      hintKeywords,
-      showDetail: "1",
-    });
+    const qs = new URLSearchParams({ hintKeywords, showDetail: "1" });
     const url = `https://api.searchad.naver.com${uri}?${qs.toString()}`;
-    console.log(
-      `[getKeywordSearchVolume] 요청 keyword="${kwRaw}" hintKeywords="${hintKeywords}" encHintKeywords="${encodeURIComponent(hintKeywords)}" url=${url}`
-    );
     const ts = Date.now().toString();
     const sig = makeSignature(ts, method, uri, secretKey);
     return fetch(url, {
@@ -210,82 +204,48 @@ async function fetchKeywordSearchVolumeUncached(
     });
   };
 
-  let list: KeywordToolItem[] = [];
-  let lastStatus: number | null = null;
   let chosen: KeywordToolItem | null = null;
 
   try {
     for (const hint of hints) {
       const hintKeywords = hintKeywordsToApiParam(hint);
-      if (!hintKeywords) {
-        console.warn(
-          `[getKeywordSearchVolume] 힌트 변환 후 빈 값 스킵 keyword="${kwRaw}" rawHint="${hint}"`
-        );
-        continue;
-      }
+      if (!hintKeywords) continue;
 
-      let res = await attemptFetch(hintKeywords);
-      lastStatus = res.status;
-      if (!res.ok && (res.status === 429 || res.status === 503)) {
-        await new Promise((r) => setTimeout(r, 400));
-        res = await attemptFetch(hintKeywords);
-        lastStatus = res.status;
+      const res = await attemptFetch(hintKeywords);
+
+      // 429: 즉시 0 반환 (retry 없음)
+      if (res.status === 429) {
+        console.warn(`[getKeywordSearchVolume] 429 keyword="${kwRaw}"`);
+        return { mobile: 0, pc: 0, total: 0 };
       }
 
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        const lastBodySnippet = text.slice(0, 280);
         console.warn(
-          `[getKeywordSearchVolume] API 실패 keyword="${kwRaw}" hint="${hint}" hintKeywords="${hintKeywords}" status=${res.status} body=${JSON.stringify(lastBodySnippet)}`
+          `[getKeywordSearchVolume] 실패 keyword="${kwRaw}" status=${res.status}`
         );
         continue;
       }
 
       const data = (await res.json()) as { keywordList?: KeywordToolItem[] };
       const next = (data.keywordList || []) as KeywordToolItem[];
-      if (!next.length) {
-        console.warn(
-          `[getKeywordSearchVolume] 빈 keywordList keyword="${kwRaw}" hint="${hint}" hintKeywords="${hintKeywords}"`
-        );
-        continue;
-      }
+      if (!next.length) continue;
 
       const row = pickKeywordVolumeRow(next, kwRaw);
       if (row) {
-        list = next;
         chosen = row;
         break;
       }
-
-      const relSample = next
-        .slice(0, 5)
-        .map((i) => i.relKeyword)
-        .join(" | ");
-      console.warn(
-        `[getKeywordSearchVolume] 응답에 입력 키워드와 일치하는 행 없음 keyword="${kwRaw}" hintKeywords="${hintKeywords}" relKeywords(sample)=${relSample}`
-      );
     }
 
-    if (!chosen || typeof chosen !== "object") {
-      console.warn(
-        `[getKeywordSearchVolume] 모든 힌트에서 매칭 실패 keyword="${kwRaw}" lastStatus=${lastStatus} lastListSize=${list.length}`
-      );
+    if (!chosen) {
       return { mobile: 0, pc: 0, total: 0 };
     }
 
     const pc = toNumber(chosen.monthlyPcQcCnt);
     const mobile = toNumber(chosen.monthlyMobileQcCnt);
-
-    return {
-      mobile,
-      pc,
-      total: pc + mobile,
-    };
+    return { mobile, pc, total: pc + mobile };
   } catch (error) {
-    console.error(
-      `[getKeywordSearchVolume] 예외 keyword="${kwRaw}"`,
-      error
-    );
+    console.error(`[getKeywordSearchVolume] 예외 keyword="${kwRaw}"`, error);
     return { mobile: 0, pc: 0, total: 0 };
   }
 }

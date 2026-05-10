@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 import { fetchAllSearchPlacesAutoDetailed } from "@/lib/naver-map-all-search-auto";
 import {
+  type AllSearchCheckPlaceFailureCode,
   type CheckPlaceRankListItem,
+  logBrowserAllSearchMixedOrderAnalysis,
   mapAllSearchRowsToCheckPlaceRankList,
   extractPlacesFromAllSearchJson,
+  extractPlacesFromAllSearchJsonPreservingPositions,
+  fetchAllSearchPlacesForIntentKeyword,
 } from "@/lib/naver-map-all-search";
+import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 import { fetchBestPcmapBusinessesBatchJson } from "@/lib/pcmap-businesses-batch-fetch";
 import {
   mergePcmapGraphqlBatch,
@@ -16,9 +21,29 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-// place 순위조회: 원래처럼 최대 280위까지 계산/표시
-const DISPLAY = 280;
-const SEARCH_CAP = 600;
+// place 순위조회: 계산/표시 범위를 동일 상수로 관리
+const RANK_SCAN_LIMIT = 280;
+const DISPLAY = RANK_SCAN_LIMIT;
+const SEARCH_CAP = RANK_SCAN_LIMIT;
+const PCMAP_FETCH_TIMEOUT_MS = 18_000;
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  }) as Promise<T>;
+}
 
 function normalizeText(value: unknown) {
   if (value == null) return "";
@@ -93,43 +118,26 @@ function mapRawAllSearchJsonToCheckPlaceRankList(
   return mapAllSearchRowsToCheckPlaceRankList(rows, display);
 }
 
-function isIntentMixedKeyword(keyword: string): boolean {
-  const n = normalizeText(keyword);
-
-  const hints = [
-    "데이트",
-    "핫플",
-    "가볼만한",
-    "놀거리",
-    "분위기",
-    "코스",
-  ];
-
-  return hints.some((h) => n.includes(normalizeText(h)));
-}
-
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-const keyword = String(body.keyword || "").trim();
+    const keyword = String(body.keyword || "").trim();
 
-let actualKeyword = keyword;
+    let actualKeyword = keyword;
 
-const compactKeyword = keyword.replace(/\s+/g, "");
+    const compactKeyword = keyword.replace(/\s+/g, "");
 
-if (
-  compactKeyword === "이태원데이트"
-) {
-  actualKeyword = keyword;
-  console.log("[추천형 키워드 보정]", {
-    original: keyword,
-    actualKeyword,
-  });
-}
-const targetName = String(body.targetName || "").trim();
-const browserAllSearchJson = body?.browserAllSearchJson ?? null;
-const x = body.x ? String(body.x) : "";
-const y = body.y ? String(body.y) : "";
+    if (compactKeyword === "이태원데이트") {
+      actualKeyword = keyword;
+      console.log("[추천형 키워드 보정]", {
+        original: keyword,
+        actualKeyword,
+      });
+    }
+    const targetName = String(body.targetName || "").trim();
+    const browserAllSearchJson = body?.browserAllSearchJson ?? null;
+    const x = body.x ? String(body.x) : "";
+    const y = body.y ? String(body.y) : "";
 
     if (!keyword) {
       return NextResponse.json(
@@ -140,106 +148,177 @@ const y = body.y ? String(body.y) : "";
 
     console.log("[check-place-rank] 시작:", keyword);
 
-// 1) 브라우저에서 직접 가져온 allSearch JSON이 있으면 그걸 최우선 사용
-let fullList: CheckPlaceRankListItem[] = [];
-let usedSource: "browser-allSearch" | "pcmap-graphql" | "allSearch" = "pcmap-graphql";
+    // 추천형 여부를 최상단에서 결정 — 이후 모든 분기에서 참조
+    const shouldPreferAllSearch = isIntentMixedKeyword(actualKeyword);
 
-if (browserAllSearchJson) {
-  try {
-    const browserMapped = mapRawAllSearchJsonToCheckPlaceRankList(
-      browserAllSearchJson,
-      SEARCH_CAP
-    );
+    let fullList: CheckPlaceRankListItem[] = [];
+    let usedSource: "browser-allSearch" | "pcmap-graphql" | "allSearch" =
+      "pcmap-graphql";
+    let autoOk = false;
+    let failureCode: AllSearchCheckPlaceFailureCode | null = null;
+    let failureMessage: string | null = null;
 
-    if (browserMapped.length > 0) {
-      fullList = browserMapped;
-      usedSource = "browser-allSearch";
-      console.log("[check-place-rank browser-allSearch]", {
-        parsed: browserMapped.length,
-      });
-    } else {
-      console.warn("[check-place-rank browser-allSearch] 파싱 결과 0건");
-    }
-  } catch (e) {
-    console.warn("[check-place-rank browser-allSearch] 실패", e);
-  }
-}
+    // 1) 브라우저에서 직접 가져온 allSearch JSON이 있으면 그걸 최우선 사용
+    // 추천형 키워드: 광고/섹션 헤더도 stub으로 위치 보존 → rank 압축 방지
+    if (browserAllSearchJson) {
+      if (shouldPreferAllSearch) {
+        logBrowserAllSearchMixedOrderAnalysis(
+          actualKeyword,
+          browserAllSearchJson
+        );
+      }
+      try {
+        const rows = shouldPreferAllSearch
+          ? extractPlacesFromAllSearchJsonPreservingPositions(browserAllSearchJson)
+          : extractPlacesFromAllSearchJson(browserAllSearchJson);
 
-// 2) 브라우저 allSearch가 없거나 비었으면 기존 pcmap 시도
-// 단, "이태원 데이트" 같은 추천/의도형 키워드는 pcmap보다 allSearch를 우선 사용
-const shouldPreferAllSearch = isIntentMixedKeyword(actualKeyword);
-let autoOk = false;
+        const browserMapped = mapAllSearchRowsToCheckPlaceRankList(
+          rows,
+          SEARCH_CAP
+        );
 
-if (fullList.length === 0 && shouldPreferAllSearch) {
-  usedSource = "allSearch";
-  const auto = await fetchAllSearchPlacesAutoDetailed(
-    actualKeyword,
-    {
-      x,
-      y,
-    }
-  );
-  autoOk = auto.ok;
-  const pack = auto.ok ? auto : null;
-  fullList =
-    pack && pack.places.length > 0
-      ? mapAllSearchRowsToCheckPlaceRankList(pack.places, SEARCH_CAP)
-      : [];
-}
-
-if (fullList.length === 0) {
-
-  usedSource = "pcmap-graphql";
-
-  try {
-    const { batch, mode } =
-      await fetchBestPcmapBusinessesBatchJson(actualKeyword);
-
-    if (batch) {
-      const merged = mergePcmapGraphqlBatch(batch);
-
-      const mapped = mapPcmapItemsToCheckPlaceRankList(
-        merged.items,
-        SEARCH_CAP
-      );
-
-      if (mapped.length > 0) {
-        fullList = mapped;
-
-        console.log("[check-place-rank pcmap]", {
-          mode,
-          mergedCount: merged.items.length,
-          parsed: mapped.length,
-          gqlErrors: merged.graphqlErrors,
-        });
+        if (browserMapped.length > 0) {
+          fullList = browserMapped;
+          usedSource = "browser-allSearch";
+          console.log("[check-place-rank browser-allSearch]", {
+            intentKeyword: shouldPreferAllSearch,
+            rawRows: rows.length,
+            realPlaces: browserMapped.filter((r) => r.placeId).length,
+            stubs: browserMapped.filter((r) => !r.placeId).length,
+          });
+        } else {
+          console.warn("[check-place-rank browser-allSearch] 파싱 결과 0건");
+        }
+      } catch (e) {
+        console.warn("[check-place-rank browser-allSearch] 실패", e);
       }
     }
-  } catch (e) {
-    console.warn("[check-place-rank pcmap] 실패", e);
-  }
-}
-  
 
-// 3) 마지막 fallback: 서버 allSearch(auto)
-// 의도형 키워드는 위에서 먼저 시도했으므로 여기서는 반복 호출하지 않음
-if (fullList.length === 0 && !shouldPreferAllSearch) {
+    // 2) 추천형 키워드: allSearch 우선
+    // 무토큰 + position-preserving 먼저 시도 → 실패 시 token 기반 fallback
+    // ※ pcmap-graphql은 일반 업종 순위에 최적화되어 있어 추천형 키워드 순위가 부정확함
+    if (fullList.length === 0 && shouldPreferAllSearch) {
+      usedSource = "allSearch";
 
+      const tokenless = await fetchAllSearchPlacesForIntentKeyword(
+        actualKeyword,
+        { x, y }
+      );
 
-  usedSource = "allSearch";
-  const auto = await fetchAllSearchPlacesAutoDetailed(
-    actualKeyword,
-    {
-      x,
-      y,
+      if (tokenless.ok) {
+        const mapped = mapAllSearchRowsToCheckPlaceRankList(
+          tokenless.places,
+          SEARCH_CAP
+        );
+        if (mapped.length > 0) {
+          fullList = mapped;
+          autoOk = true;
+          console.log("[check-place-rank allSearch 추천형 tokenless]", {
+            totalRows: tokenless.places.length,
+            realPlaces: mapped.filter((r) => r.placeId).length,
+            stubs: mapped.filter((r) => !r.placeId).length,
+          });
+        }
+      } else {
+        console.warn("[check-place-rank allSearch 추천형 tokenless 실패]", {
+          failureCode: tokenless.failureCode,
+        });
+        failureCode = tokenless.failureCode;
+        if (
+          tokenless.failureCode === "NCAPTCHA" ||
+          tokenless.failureCode === "CE_EMPTY_TOKEN"
+        ) {
+          failureMessage = "네이버 보안 응답으로 순위 확인 실패";
+        } else {
+          failureMessage = tokenless.userMessage;
+        }
+      }
+
+      // tokenless 실패 시 → token 기반 allSearch (filtered, stubs 미포함)
+      if (fullList.length === 0) {
+        const auto = await fetchAllSearchPlacesAutoDetailed(actualKeyword, {
+          x,
+          y,
+        });
+        autoOk = auto.ok;
+        if (auto.ok && auto.places.length > 0) {
+          fullList = mapAllSearchRowsToCheckPlaceRankList(
+            auto.places,
+            SEARCH_CAP
+          );
+          console.log("[check-place-rank allSearch 추천형 token-based]", {
+            places: auto.places.length,
+            note: "위치 보존 미적용(token 필요 환경) — rank 압축 가능성 있음",
+          });
+          failureCode = null;
+          failureMessage = null;
+        } else if (!auto.ok) {
+          failureCode = auto.failureCode;
+          if (
+            auto.failureCode === "NCAPTCHA" ||
+            auto.failureCode === "CE_EMPTY_TOKEN"
+          ) {
+            failureMessage = "네이버 보안 응답으로 순위 확인 실패";
+          } else {
+            failureMessage = auto.userMessage;
+          }
+        }
+      }
     }
-  );
-  autoOk = auto.ok;
-  const pack = auto.ok ? auto : null;
-  fullList =
-    pack && pack.places.length > 0
-      ? mapAllSearchRowsToCheckPlaceRankList(pack.places, SEARCH_CAP)
-      : [];
-}
+
+    // 3) pcmap-graphql: 일반 키워드 기본 경로 + 추천형(allSearch 실패 시) 추정 순위 fallback
+    if (fullList.length === 0) {
+      usedSource = "pcmap-graphql";
+
+      try {
+        const { batch, mode } = await withTimeout(
+          fetchBestPcmapBusinessesBatchJson(actualKeyword),
+          PCMAP_FETCH_TIMEOUT_MS,
+          `[check-place-rank pcmap] timeout ${PCMAP_FETCH_TIMEOUT_MS}ms`
+        );
+
+        if (batch) {
+          const merged = mergePcmapGraphqlBatch(batch);
+
+          const mapped = mapPcmapItemsToCheckPlaceRankList(
+            merged.items,
+            SEARCH_CAP
+          );
+
+          if (mapped.length > 0) {
+            fullList = mapped;
+
+            console.log("[check-place-rank pcmap]", {
+              mode,
+              mergedCount: merged.items.length,
+              parsed: mapped.length,
+              gqlErrors: merged.graphqlErrors,
+              intentFallbackEstimate: shouldPreferAllSearch,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[check-place-rank pcmap] 실패/timeout -> allSearch fallback",
+          e
+        );
+      }
+    }
+
+    // 4) 최종 fallback: 서버 allSearch(auto) — 일반 키워드 pcmap 실패 시
+    if (fullList.length === 0 && !shouldPreferAllSearch) {
+      usedSource = "allSearch";
+      const auto = await fetchAllSearchPlacesAutoDetailed(actualKeyword, {
+        x,
+        y,
+      });
+      autoOk = auto.ok;
+      const pack = auto.ok ? auto : null;
+      fullList =
+        pack && pack.places.length > 0
+          ? mapAllSearchRowsToCheckPlaceRankList(pack.places, SEARCH_CAP)
+          : [];
+    }
 
     const rank =
       targetName && fullList.length > 0
@@ -268,47 +347,84 @@ if (fullList.length === 0 && !shouldPreferAllSearch) {
             return idx >= 0 ? String(idx + 1) : "-";
           })()
         : "-";
-    const list = fullList.slice(0, DISPLAY);
+
+    // 추천형 키워드는 stub(placeId 없는 위치 보존용 항목)을 display에서 제외
+    // rank 계산(findIndex)은 stub 포함 fullList 기준이므로 rank 정확도는 유지됨
+    const list = (
+      shouldPreferAllSearch
+        ? fullList.filter((row) => row.placeId)
+        : fullList
+    ).slice(0, DISPLAY);
+
+    // 추천형: 데이터 소스에 따른 정확도 표시 (프론트 안내용)
+    let accuracy: "exact" | "source" | "estimated" | undefined;
+    let warningOut: string | null = null;
+
+    if (shouldPreferAllSearch && fullList.length > 0) {
+      if (usedSource === "browser-allSearch") {
+        accuracy = "source";
+        warningOut = null;
+        failureCode = null;
+        failureMessage = null;
+      } else if (usedSource === "allSearch") {
+        accuracy = "exact";
+        warningOut = null;
+        failureCode = null;
+        failureMessage = null;
+      } else if (usedSource === "pcmap-graphql") {
+        accuracy = "estimated";
+        warningOut =
+          "추천형 키워드는 네이버 화면 순서와 다를 수 있는 추정 순위입니다.";
+      }
+    }
 
     console.log("==================================================");
-console.log(`🔎 [전수조사] 현재 서버가 파싱한 전체 매장 수: ${fullList.length}개`);
-console.log(
-  "💡 [상위 1~50위]",
-  fullList.slice(0, 10).map((row) => `${row.rank}위:${row.name}`)
-);
-console.log(
-  "💡 [전체 이름 검색용]",
-  fullList.map((row) => row.name).join(" | ")
-);
-console.log("==================================================");
+    console.log(`🔎 [전수조사] 현재 서버가 파싱한 전체 매장 수: ${fullList.length}개`);
+    console.log(
+      "💡 [상위 10개]",
+      fullList.slice(0, 10).map((row) => `${row.rank}위:${row.name}`)
+    );
+    console.log("==================================================");
 
     console.log("[check-place-rank 결과]", {
       source: usedSource,
       parsed: fullList.length,
       autoOk,
       rank,
+      failureCode,
     });
 
     const relatedCandidates = [keyword, `${keyword} 추천`, `${keyword} 근처`];
 
-    const related = [];
+    // DB에 저장된 검색량이 있으면 우선 사용, 없을 때만 API 호출.
+    // body.skipVolume=true면 전체 API 호출 생략.
+    // body.relatedVolume = { [keyword]: { mobile, pc, total } } 형태.
+    type VolumeEntry = { mobile?: number; pc?: number; total?: number };
+    const dbVolume = (body.relatedVolume ?? {}) as Record<string, VolumeEntry>;
+    const skipVolume = body.skipVolume === true;
 
-    for (const k of relatedCandidates) {
-      try {
-        const volume = await getKeywordSearchVolume(k);
-        related.push({
-          keyword: k,
-          ...volume,
-        });
-      } catch {
-        related.push({
-          keyword: k,
-          total: 0,
-          mobile: 0,
-          pc: 0,
-        });
-      }
-    }
+    const related = await Promise.all(
+      relatedCandidates.map(async (k) => {
+        const db = dbVolume[k];
+        if (
+          skipVolume ||
+          (db && typeof db.mobile === "number" && typeof db.pc === "number")
+        ) {
+          return {
+            keyword: k,
+            mobile: db?.mobile ?? 0,
+            pc: db?.pc ?? 0,
+            total: db?.total ?? (db?.mobile ?? 0) + (db?.pc ?? 0),
+          };
+        }
+        try {
+          const vol = await getKeywordSearchVolume(k);
+          return { keyword: k, ...vol };
+        } catch {
+          return { keyword: k, mobile: 0, pc: 0, total: 0 };
+        }
+      })
+    );
 
     return NextResponse.json({
       ok: true,
@@ -316,6 +432,13 @@ console.log("==================================================");
       related,
       list,
       rank,
+      failureCode,
+      message: failureMessage,
+      ...(shouldPreferAllSearch &&
+      fullList.length > 0 &&
+      typeof accuracy !== "undefined"
+        ? { accuracy, warning: warningOut }
+        : {}),
     });
   } catch (e) {
     console.error("[check-place-rank ERROR]", e);

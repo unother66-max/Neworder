@@ -53,6 +53,11 @@ function hasValidFirstPage(batch: unknown[] | null): boolean {
   return firstPageItems.length > 0;
 }
 
+type FetchSinglePageResult =
+  | { kind: "success"; part: unknown; count: number }
+  | { kind: "end"; count: 0 }
+  | { kind: "failed" };
+
 async function fetchRawBatchOnce(
   keyword: string,
   coordAnchorKeyword?: string,
@@ -89,67 +94,137 @@ async function fetchRawBatchOnce(
   : buildGetPlacesListFetchHeadersForServer(q, tunedCoords);
 
   const finalBatch: unknown[] = [];
+  const maxRetryForRetryableErrors = 5;
+
+  const fetchSinglePage = async (
+    pageIndex: number,
+    start: number
+  ): Promise<FetchSinglePageResult> => {
+    for (let attempt = 1; attempt <= maxRetryForRetryableErrors; attempt++) {
+      try {
+        const batchBody = buildGetPlacesListPagedBatch(q, tunedCoords, 1, 30);
+        const placesPayload = batchBody[0] as any;
+        if (placesPayload?.variables?.placesInput) {
+          placesPayload.variables.placesInput.start = start;
+        }
+
+        const res = await fetch(NAVER_PCMAP_GRAPHQL_URL, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(batchBody),
+          cache: "no-store",
+        });
+
+        const isRetryableHttpError =
+          res.status === 429 || (res.status >= 500 && res.status <= 599);
+
+        if (isRetryableHttpError) {
+          console.warn("[pcmap single page retryable status]", {
+            keyword: q,
+            pageIndex,
+            start,
+            attempt,
+            status: res.status,
+          });
+          if (attempt < maxRetryForRetryableErrors) {
+            await new Promise((r) => setTimeout(r, 700 * attempt));
+            continue;
+          }
+          return { kind: "failed" };
+        }
+
+        if (!res.ok) {
+          console.warn("[pcmap single page non-retryable status]", {
+            keyword: q,
+            pageIndex,
+            start,
+            attempt,
+            status: res.status,
+          });
+          return { kind: "failed" };
+        }
+
+        const raw = await res.text();
+        const batch = parseBatchedGraphqlBody(raw);
+        const part = Array.isArray(batch) ? batch[0] : null;
+        if (!part) {
+          console.warn("[pcmap single page invalid payload]", {
+            keyword: q,
+            pageIndex,
+            start,
+            attempt,
+          });
+          return { kind: "failed" };
+        }
+        const items = getPlacesItemsFromBatchPart(part);
+        const first = items[0] as { name?: unknown } | undefined;
+
+        console.log("[pcmap single page result]", {
+          keyword: q,
+          pageIndex,
+          start,
+          attempt,
+          count: items.length,
+          first: first?.name ? String(first.name) : null,
+        });
+
+        if (items.length === 0) {
+          // 정상 응답에서 0건이면 마지막 페이지로 간주하고 즉시 종료한다.
+          return { kind: "end", count: 0 };
+        }
+
+        return { kind: "success", part, count: items.length };
+      } catch (error) {
+        console.warn("[pcmap single page network error]", {
+          keyword: q,
+          pageIndex,
+          start,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (attempt < maxRetryForRetryableErrors) {
+          await new Promise((r) => setTimeout(r, 700 * attempt));
+          continue;
+        }
+        return { kind: "failed" };
+      }
+    }
+
+    return { kind: "failed" };
+  };
 
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
     const start = 1 + pageIndex * 30;
-    let successPart: unknown | null = null;
+    const pageResult = await fetchSinglePage(pageIndex, start);
 
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      const batchBody = buildGetPlacesListPagedBatch(q, tunedCoords, 1, 30);
+    if (pageResult.kind === "success") {
+      finalBatch.push(pageResult.part);
+      await new Promise((r) => setTimeout(r, 250));
+      continue;
+    }
 
-      const placesPayload = batchBody[0] as any;
-      if (placesPayload?.variables?.placesInput) {
-        placesPayload.variables.placesInput.start = start;
-      }
-
-      const res = await fetch(NAVER_PCMAP_GRAPHQL_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(batchBody),
-        cache: "no-store",
-      });
-
-      const raw = await res.text();
-      const batch = parseBatchedGraphqlBody(raw);
-      const part = Array.isArray(batch) ? batch[0] : null;
-      const items = getPlacesItemsFromBatchPart(part);
-      const first = items[0] as { name?: unknown } | undefined;
-
-      console.log("[pcmap single page result]", {
+    if (pageResult.kind === "end") {
+      console.log("[pcmap single page] 마지막 페이지 도달 → 이후 페이지 중단", {
         keyword: q,
         pageIndex,
         start,
-        attempt,
-        count: items.length,
-        first: first?.name ? String(first.name) : null,
       });
-
-      if (items.length > 0) {
-        successPart = part;
-        break;
-      }
-
-      await new Promise((r) => setTimeout(r, 700 * attempt));
+      break;
     }
 
-    if (pageIndex === 0 && !successPart) {
+    if (pageIndex === 0) {
       console.warn("[pcmap single page] 첫 페이지 실패 → 전체 폐기", {
         keyword: q,
       });
       return null;
     }
 
-    if (successPart) {
-      finalBatch.push(successPart);
-    } else {
-      console.warn("[pcmap single page] 중간 페이지 실패 → 해당 페이지만 스킵", {
-        keyword: q,
-        pageIndex,
-        start,
-      });
-    }
-
-    await new Promise((r) => setTimeout(r, 250));
+    console.warn("[pcmap single page] 페이지 실패 → 이후 페이지 중단", {
+      keyword: q,
+      pageIndex,
+      start,
+    });
+    break;
   }
 
   return finalBatch.length > 0 ? finalBatch : null;

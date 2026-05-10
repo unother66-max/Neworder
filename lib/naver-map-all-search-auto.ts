@@ -1,6 +1,6 @@
 /**
- * allSearch: 환경 토큰 → 메모리 캐시 → 무토큰 →(실패 시) Playwright 토큰 갱신 후 재시도.
- * 수동 DevTools 복사 없이 place-rank-analyze 서버에서 목록을 채우기 위함.
+ * allSearch: 환경 토큰 → 메모리 캐시 → 무토큰 순서로 시도.
+ * Playwright 기반 토큰 캡처/인페이지 fetch는 사용하지 않는다.
  */
 
 import {
@@ -100,58 +100,8 @@ export async function fetchAllSearchPlacesAutoDetailed(
   );
   if (tokenless.ok) return tokenless;
 
-  const needPlaywright =
-    tokenless.failureCode === "CE_EMPTY_TOKEN" ||
-    tokenless.failureCode === "NCAPTCHA" ||
-    tokenless.failureCode === "FETCH_TIMEOUT" ||
-    tokenless.failureCode === "EMPTY_LIST" ||
-    tokenless.failureCode === "UNEXPECTED_REJECT" ||
-    tokenless.failureCode === "PLACE_BLOCK_MISSING";
-
-  if (!needPlaywright) {
-    return tokenless;
-  }
-
-  const {
-    isNaverMapPlaywrightDisabled,
-    captureNaverMapAllSearchToken,
-    fetchAllSearchPlaywrightInPageDetailed,
-  } = await import("@/lib/naver-map-playwright-token");
-
-  if (isNaverMapPlaywrightDisabled()) {
-    console.warn(`${LOG_PREFIX} playwright disabled (NAVER_MAP_PLAYWRIGHT_DISABLE=1)`);
-    return tokenless;
-  }
-
-  try {
-    const inPage = await fetchAllSearchPlaywrightInPageDetailed(trimmed, {
-      timeoutMs: 48_000,
-    });
-    if (inPage.ok) {
-      console.log(`${LOG_PREFIX} playwright in-page ok`, {
-        places: inPage.places.length,
-      });
-      return inPage;
-    }
-    console.warn(`${LOG_PREFIX} playwright in-page miss`, {
-      failureCode: inPage.failureCode,
-    });
-
-    const cap = await captureNaverMapAllSearchToken(trimmed, {
-      timeoutMs: 42_000,
-    });
-    if (!cap.token) {
-      console.warn(`${LOG_PREFIX} playwright no token`, cap.error);
-      return tokenless;
-    }
-
-    rememberToken(cap.token);
-    const again = await tryWithToken("playwright", cap.token);
-    if (again) return again;
-    forgetToken();
-  } catch (e) {
-    console.error(`${LOG_PREFIX} playwright error`, e);
-  }
-
+  console.warn(`${LOG_PREFIX} tokenless failed`, {
+    failureCode: tokenless.failureCode,
+  });
   return tokenless;
 }

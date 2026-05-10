@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
 import { Pin, Trash2 } from "lucide-react";
+import { debugFetchBrowserAllSearchJson } from "@/lib/browser-allsearch-debug";
+import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 
 type KeywordItem = {
   keyword: string;
@@ -1132,6 +1134,22 @@ useEffect(() => {
       for (const batch of batches) {
         
         for (const item of batch) {
+          let browserAllSearchJson: unknown | undefined;
+          if (isIntentMixedKeyword(item.keyword)) {
+            try {
+              const dbg = await debugFetchBrowserAllSearchJson({
+                keyword: item.keyword,
+                x: target.x,
+                y: target.y,
+              });
+              if (dbg.ok) {
+                browserAllSearchJson = dbg.json;
+              }
+            } catch {
+              /* 브라우저 allSearch 디버그 실패는 순위 조회에 영향 없음 */
+            }
+          }
+
           const response = await fetch("/api/check-place-rank", {
             method: "POST",
             headers: {
@@ -1145,6 +1163,9 @@ useEffect(() => {
               y: target.y,
               ...(item.placeKeywordId
                 ? { placeKeywordId: item.placeKeywordId }
+                : {}),
+              ...(browserAllSearchJson !== undefined
+                ? { browserAllSearchJson }
                 : {}),
             }),
           });
