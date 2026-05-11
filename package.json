@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "postinstall": "prisma generate",
     "naver-map-token": "node scripts/refresh-naver-map-allsearch-token.mjs"
   },
   "dependencies": {

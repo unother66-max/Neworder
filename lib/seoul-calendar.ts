@@ -6,6 +6,28 @@ function seoulMidnightUtc(y: number, month: number, day: number): Date {
   return new Date(Date.UTC(y, month - 1, day) - 9 * 60 * 60 * 1000);
 }
 
+/** `yyyy-MM-dd` (서울 달력) → UTC instant 구간 `[start, endExclusive)` */
+export function utcRangeForSeoulDateString(iso: string): {
+  start: Date;
+  endExclusive: Date;
+} {
+  const [ys, ms, ds] = iso.split("-").map((v) => parseInt(v, 10));
+  const start = seoulMidnightUtc(ys, ms, ds);
+  const endExclusive = seoulMidnightUtc(ys, ms, ds + 1);
+  return { start, endExclusive };
+}
+
+/** `days`일치 서울 날짜 키 (오름차순, 막날≈오늘) */
+export function recentSeoulDateStrings(days: number, reference = new Date()): string[] {
+  const keys: string[] = [];
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    keys.push(
+      seoulCalendarDateString(new Date(reference.getTime() - offset * 86_400_000))
+    );
+  }
+  return [...new Set(keys)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
 /** yyyy-mm-dd in Asia/Seoul for the instant `reference` */
 export function seoulCalendarDateString(reference = new Date()): string {
   return new Intl.DateTimeFormat("sv-SE", {

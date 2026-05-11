@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { isAdminEmail } from "@/lib/admin-emails";
 import { extractClientIp, shouldAttemptVisitLog } from "@/lib/visit-request";
+import { getVisitInternalSecret } from "@/lib/visit-internal-secret";
 
 const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
 
@@ -24,15 +25,18 @@ function redirectLogin(req: NextRequest) {
 }
 
 async function recordVisitIfEligible(req: NextRequest) {
-  const visitSecret =
-    process.env.VISIT_LOG_SECRET ??
-    process.env.NEXTAUTH_SECRET ??
-    secret;
+  const visitSecret = getVisitInternalSecret();
   if (!visitSecret || !shouldAttemptVisitLog(req)) return;
 
   const url = `${req.nextUrl.origin}/api/internal/visit`;
   const ip = extractClientIp(req);
   const ua = req.headers.get("user-agent") ?? "";
+  const path = req.nextUrl.pathname + (req.nextUrl.search ?? "");
+  const navReferrer = req.headers.get("referer")?.trim() || null;
+  const body = JSON.stringify({
+    path,
+    referrer: navReferrer,
+  });
   const ac = new AbortController();
   const t = globalThis.setTimeout(() => ac.abort(), 2500);
   try {
@@ -45,7 +49,7 @@ async function recordVisitIfEligible(req: NextRequest) {
         "x-visit-client-ip": ip,
         "user-agent": ua,
       },
-      body: "{}",
+      body,
     });
   } catch {
     /* non-blocking for UX */

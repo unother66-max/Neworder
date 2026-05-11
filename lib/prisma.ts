@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient;
+  prisma?: AppPrisma;
 };
 
 // 개발 환경 연결 제한 로직 유지
@@ -32,10 +32,14 @@ function createPrismaClient(): PrismaClient {
   });
 }
 
-export const prisma =
-  globalForPrisma.prisma ??
-  createPrismaClient();
+/** 생성된 스키마 기준 전체 Prisma 클라이언트 타입 (커스텀 옵션으로 인한 타입 축소 방지) */
+export type AppPrisma = PrismaClient;
 
-if (!globalForPrisma.prisma) {
-  globalForPrisma.prisma = prisma;
+function getPrismaSingleton(): AppPrisma {
+  if (globalForPrisma.prisma) return globalForPrisma.prisma;
+  const client = createPrismaClient();
+  globalForPrisma.prisma = client;
+  return client;
 }
+
+export const prisma: AppPrisma = getPrismaSingleton();

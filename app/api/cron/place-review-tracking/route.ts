@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { createAdminAlert } from "@/lib/admin-alert";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
@@ -74,6 +75,17 @@ export async function GET(req: Request) {
             date: trackedDate,
             reason: "placeUrl 없음",
           });
+          void createAdminAlert({
+            type: "cron",
+            level: "error",
+            title: "리뷰 자동추적 실패",
+            message: `업체명: ${place.name} / 사유: placeUrl 없음`,
+            meta: {
+              placeId: place.id,
+              cron: "place-review-tracking",
+              reason: "placeUrl 없음",
+            },
+          });
           continue;
         }
 
@@ -95,6 +107,17 @@ export async function GET(req: Request) {
             saved: false,
             date: trackedDate,
             reason: "리뷰 파싱 실패",
+          });
+          void createAdminAlert({
+            type: "cron",
+            level: "error",
+            title: "리뷰 자동추적 실패",
+            message: `업체명: ${place.name} / 사유: getNaverPlaceReviewSnapshot 파싱 실패(지표 null)`,
+            meta: {
+              placeId: place.id,
+              cron: "place-review-tracking",
+              reason: "리뷰 파싱 실패",
+            },
           });
           continue;
         }
@@ -168,12 +191,26 @@ export async function GET(req: Request) {
       } catch (error) {
         console.error(`[place-review-tracking] save failed: ${place.name}`, error);
 
+        const reason =
+          error instanceof Error ? error.message : "저장 실패";
+        void createAdminAlert({
+          type: "cron",
+          level: "error",
+          title: "리뷰 자동추적 실패",
+          message: `업체명: ${place.name} / 사유: getNaverPlaceReviewSnapshot 또는 저장 실패 — ${reason}`,
+          meta: {
+            placeId: place.id,
+            cron: "place-review-tracking",
+            error: reason,
+          },
+        });
+
         results.push({
           placeId: place.id,
           name: place.name,
           saved: false,
           date: trackedDate,
-          reason: error instanceof Error ? error.message : "저장 실패",
+          reason,
         });
       }
     }
@@ -186,6 +223,16 @@ export async function GET(req: Request) {
     });
   } catch (error) {
     console.error("place-review-tracking cron error:", error);
+
+    const msg =
+      error instanceof Error ? error.message : "리뷰 자동추적 실패";
+    void createAdminAlert({
+      type: "cron",
+      level: "error",
+      title: "리뷰 자동추적 크론 전체 실패",
+      message: `사유: ${msg}`,
+      meta: { cron: "place-review-tracking", scope: "global" },
+    });
 
     return NextResponse.json(
       {

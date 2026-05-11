@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import localFont from "next/font/local";
 import "./globals.css";
 import ScrollTracker from "./components/ScrollTracker";
@@ -63,7 +64,9 @@ export default function RootLayout({
         className={notoSansKR.className}
         suppressHydrationWarning
       >
-        <ScrollTracker />
+        <Suspense fallback={null}>
+          <ScrollTracker />
+        </Suspense>
 
         {/* 실제 콘텐츠 */}
         <Providers>

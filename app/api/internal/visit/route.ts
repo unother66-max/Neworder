@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { seoulCalendarDateString } from "@/lib/seoul-calendar";
+import { categorizeReferrer } from "@/lib/referrer-category";
+import { snippetFromUserAgent } from "@/lib/user-agent-hint";
+import { getVisitInternalSecret } from "@/lib/visit-internal-secret";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,8 +52,7 @@ function isAuthorized(req: NextRequest, selfOrigin: string, internalSecret: stri
 
 export async function POST(req: NextRequest) {
   const selfOrigin = new URL(req.url).origin;
-  const internalSecret =
-    process.env.VISIT_LOG_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
+  const internalSecret = getVisitInternalSecret();
 
   let body: VisitBody = {};
   try {
@@ -76,13 +78,38 @@ export async function POST(req: NextRequest) {
   const uaHash = sha256Hex(`ua:${ua}`);
 
   try {
-    await prisma.visitorLog.upsert({
-      where: {
-        visitDate_ipHash_uaHash: { visitDate, ipHash, uaHash },
-      },
-      create: { visitDate, ipHash, uaHash },
-      update: { seenAt: new Date() },
+    const rawRef =
+      typeof body.referrer === "string" ? body.referrer.trim().slice(0, 480) : "";
+    const pathStr =
+      typeof body.path === "string" ? body.path.trim().slice(0, 500) : "";
+    const uaPlain = (req.headers.get("user-agent") ?? "").trim().slice(0, 512);
+
+    const referrerStored = rawRef.length > 0 ? rawRef : null;
+    const referrerCategory = referrerStored
+      ? categorizeReferrer(referrerStored)
+      : "direct";
+
+    await prisma.$transaction(async (tx) => {
+      await tx.visitorLog.upsert({
+        where: {
+          visitDate_ipHash_uaHash: { visitDate, ipHash, uaHash },
+        },
+        create: { visitDate, ipHash, uaHash },
+        update: { seenAt: new Date() },
+      });
+
+      await tx.visitorEvent.create({
+        data: {
+          visitDate,
+          path: pathStr.length > 0 ? pathStr : null,
+          referrer: referrerStored,
+          referrerCategory,
+          ipHash,
+          uaSnippet: snippetFromUserAgent(uaPlain, 256),
+        },
+      });
     });
+
     console.log("[visit-log] upsert_ok", {
       visitDate,
       source,

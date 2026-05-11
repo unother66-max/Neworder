@@ -29,6 +29,8 @@ model User {
   updatedAt               DateTime                 @updatedAt
   /** false: 마이그레이션으로 createdAt만 채워져 실제 가입일과 다를 수 있음 */
   createdAtReliable       Boolean                  @default(true)
+  /** 관리자 전용 회원 메모 (비공개) */
+  adminMemo               String?                  @db.Text
   tier                    UserTier                 @default(FREE)
   emailVerified           DateTime?
   
@@ -92,6 +94,41 @@ model VisitorLog {
 
   @@unique([visitDate, ipHash, uaHash])
   @@index([visitDate])
+}
+
+/** 방문 건별 이벤트 (대시보드·유입·최근 로그용). 일 방문 카운트는 VisitorLog 유지 */
+model VisitorEvent {
+  id                 String   @id @default(cuid())
+  createdAt          DateTime @default(now())
+  /** Asia/Seoul yyyy-MM-dd 집계 키 */
+  visitDate          String
+  path               String?  @db.VarChar(512)
+  /** 짧게만 저장 */
+  referrer           String?  @db.VarChar(512)
+  referrerCategory   String   @default("other")
+  ipHash             String   @db.VarChar(64)
+  uaSnippet          String?  @db.VarChar(256)
+
+  @@index([visitDate])
+  @@index([createdAt])
+  @@index([referrerCategory])
+}
+
+/** 관리자용 운영 알림 (수집/크론 실패 등) */
+model AdminAlert {
+  id        String   @id @default(cuid())
+  type      String
+  level     String
+  title     String
+  message   String   @db.Text
+  meta      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([isRead])
+  @@index([type])
+  @@index([level])
 }
 
 // --- 🚨 기존 기능 모델 (오류 방지를 위해 모두 포함) ---

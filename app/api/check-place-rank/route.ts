@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createAdminAlert } from "@/lib/admin-alert";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 import { fetchAllSearchPlacesAutoDetailed } from "@/lib/naver-map-all-search-auto";
 import {
@@ -426,6 +427,30 @@ export async function POST(req: Request) {
       })
     );
 
+    const blockAlertCodes: AllSearchCheckPlaceFailureCode[] = [
+      "NCAPTCHA",
+      "CE_EMPTY_TOKEN",
+    ];
+    if (
+      failureCode &&
+      blockAlertCodes.includes(failureCode) &&
+      fullList.length === 0
+    ) {
+      void createAdminAlert({
+        type: "place",
+        level: "error",
+        title: "플레이스 순위 조회 실패",
+        message: `키워드: ${keyword} / 사유: ${failureCode}`,
+        meta: {
+          source: "check-place-rank",
+          keyword,
+          targetName: targetName || undefined,
+          failureCode,
+          failureMessage: failureMessage ?? undefined,
+        },
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       keyword,
@@ -442,6 +467,16 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[check-place-rank ERROR]", e);
+    void createAdminAlert({
+      type: "place",
+      level: "error",
+      title: "플레이스 순위 조회 서버 오류",
+      message:
+        e instanceof Error
+          ? `check-place-rank: ${e.message}`
+          : "check-place-rank: 알 수 없는 오류",
+      meta: { source: "check-place-rank" },
+    });
     return NextResponse.json(
       { ok: false, message: "서버 오류" },
       { status: 500 }
