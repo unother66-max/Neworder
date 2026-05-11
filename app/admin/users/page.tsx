@@ -88,17 +88,35 @@ const RECENT_TAKE = 40;
 export const dynamic = "force-dynamic";
 
 async function distinctIpSince(since: Date): Promise<number> {
-  const rows = await prisma.visitorEvent.findMany({
-    where: { createdAt: { gte: since } },
-    distinct: ["ipHash"],
-    select: { ipHash: true },
-  });
-  return rows.length;
+  try {
+    const rows = await prisma.visitorEvent.findMany({
+      where: { createdAt: { gte: since } },
+      distinct: ["ipHash"],
+      select: { ipHash: true },
+    });
+    return rows.length;
+  } catch (err) {
+    console.error("[admin/users] visitorEvent distinctIpSince failed", err);
+    return 0;
+  }
 }
 
-function refCountsMap(
-  rows: { referrerCategory: string; _count: { _all: number } | null }[]
-): Record<string, number> {
+function unwrapSettled<T>(
+  result: PromiseSettledResult<T>,
+  fallback: T,
+  label: string
+): T {
+  if (result.status === "fulfilled") return result.value;
+  console.error(`[admin/users] ${label} failed`, result.reason);
+  return fallback;
+}
+
+type VisitorEventReferrerGroupRow = {
+  referrerCategory: string;
+  _count: { _all: number } | null;
+};
+
+function refCountsMap(rows: VisitorEventReferrerGroupRow[]): Record<string, number> {
   return Object.fromEntries(
     rows.map((r) => [r.referrerCategory, r._count?._all ?? 0])
   );
@@ -149,21 +167,12 @@ export default async function AdminUsersPage() {
   const window30 = new Date(nowMs - 30 * 60 * 1000);
   const windowRecent = new Date(nowMs - 2 * 60 * 1000);
 
-  const [
-    totalUsers,
-    joinedTodayCount,
-    visitorsToday,
-    distinct5m,
-    distinct30m,
-    distinctRecent,
-    refTodayRows,
-    ref7Rows,
-    recentEvents,
-    visitorLogByDay,
-    signupRowsRaw,
-    recentUsers,
-    recentAdminAlerts,
-  ] = await Promise.all([
+  const signupFallback: SignupCountByIso[] = dateKeysSeven.map((iso) => ({
+    iso,
+    c: 0,
+  }));
+
+  const dashboardSettled = await Promise.allSettled([
     prisma.user.count(),
     prisma.user.count({
       where: {
@@ -246,6 +255,60 @@ export default async function AdminUsersPage() {
       },
     }),
   ]);
+
+  const totalUsers = unwrapSettled(dashboardSettled[0], 0, "user.count");
+  const joinedTodayCount = unwrapSettled(
+    dashboardSettled[1],
+    0,
+    "user.count joinedToday"
+  );
+  const visitorsToday = unwrapSettled(
+    dashboardSettled[2],
+    0,
+    "visitorLog.count today"
+  );
+  const distinct5m = unwrapSettled(dashboardSettled[3], 0, "distinctIp 5m");
+  const distinct30m = unwrapSettled(dashboardSettled[4], 0, "distinctIp 30m");
+  const distinctRecent = unwrapSettled(
+    dashboardSettled[5],
+    0,
+    "distinctIp 2m"
+  );
+  const refTodayRows = unwrapSettled(
+    dashboardSettled[6],
+    [] as VisitorEventReferrerGroupRow[],
+    "visitorEvent.groupBy refToday"
+  );
+  const ref7Rows = unwrapSettled(
+    dashboardSettled[7],
+    [] as VisitorEventReferrerGroupRow[],
+    "visitorEvent.groupBy ref7d"
+  );
+  const recentEvents = unwrapSettled(
+    dashboardSettled[8],
+    [] as VisitorEventRecentRow[],
+    "visitorEvent.findMany recent"
+  );
+  const visitorLogByDay = unwrapSettled(
+    dashboardSettled[9],
+    [] as VisitorLogDailyCountRow[],
+    "visitorLog.groupBy 7d"
+  );
+  const signupRowsRaw = unwrapSettled(
+    dashboardSettled[10],
+    signupFallback,
+    "signup counts by day"
+  );
+  const recentUsers = unwrapSettled(
+    dashboardSettled[11],
+    [] as RecentUserRow[],
+    "user.findMany recent"
+  );
+  const recentAdminAlerts = unwrapSettled(
+    dashboardSettled[12],
+    [] as AdminAlertListItem[],
+    "adminAlert.findMany"
+  );
 
   const visitorByDayMap = Object.fromEntries(
     visitorLogByDay.map((r: VisitorLogDailyCountRow) => [
