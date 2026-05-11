@@ -21,20 +21,33 @@ const notoSansKR = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "포스트랩스 | 네이버 플레이스 분석",
-  description: "내 매장의 노출 관리, 더 쉽게",
+  metadataBase: new URL("https://postlabs.co.kr"),
+
+  verification: {
+    other: {
+      "naver-site-verification":
+        "ab01c328b075c3f3f917e876c6e683531c50344a",
+    },
+  },
+
+  title:
+    "포스트랩스 | 네이버 플레이스 순위조회 · 스마트스토어 순위확인 · 키워드 분석",
+  description:
+    "네이버 플레이스 순위조회, 스마트스토어 순위확인, 키워드 분석, 리뷰 추적, 자동 노출관리 기능 제공",
 
   openGraph: {
-    title: "포스트랩스 | 네이버 플레이스 분석",
-    description: "내 매장의 노출 관리, 더 쉽게",
+    title:
+      "포스트랩스 | 네이버 플레이스 순위조회 · 스마트스토어 순위확인",
+    description:
+      "플레이스 순위조회, 스마트스토어 순위추적, 키워드 분석 기능 제공",
     url: "https://postlabs.co.kr",
-    siteName: "PostLabs",
+    siteName: "포스트랩스",
     images: [
       {
         url: "https://postlabs.co.kr/images/og-image-v2.png",
         width: 1200,
         height: 630,
-        alt: "PostLabs",
+        alt: "포스트랩스",
       },
     ],
     locale: "ko_KR",
@@ -43,8 +56,10 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "포스트랩스 | 네이버 플레이스 분석",
-    description: "내 매장의 노출 관리, 더 쉽게",
+    title:
+      "포스트랩스 | 네이버 플레이스 순위조회 · 스마트스토어 순위확인",
+    description:
+      "플레이스 순위조회, 스마트스토어 순위추적, 키워드 분석 기능 제공",
     images: ["https://postlabs.co.kr/images/og-image-v2.png"],
   },
 };
@@ -60,10 +75,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${poppins.variable} ${notoSansKR.variable}`}
     >
-      <body
-        className={notoSansKR.className}
-        suppressHydrationWarning
-      >
+      <body className={notoSansKR.className} suppressHydrationWarning>
         <Suspense fallback={null}>
           <ScrollTracker />
         </Suspense>
