@@ -106,6 +106,21 @@ export default function HomePage() {
 
       </section>
 
+      <section className="sr-only">
+  <h2>네이버 마케팅 분석 도구</h2>
+
+  <div>
+    <p>네이버 플레이스 순위조회</p>
+    <p>스마트스토어 순위확인</p>
+    <p>네이버 블로그 키워드 분석</p>
+    <p>카카오맵 순위조회</p>
+    <p>지역 키워드 분석</p>
+    <p>네이버 플레이스 저장수 추적</p>
+    <p>리뷰 변화 추적 기능</p>
+  </div>
+</section>
     </main>
+
+    
   );
 }
