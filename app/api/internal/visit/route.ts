@@ -6,9 +6,15 @@ import { seoulCalendarDateString } from "@/lib/seoul-calendar";
 import { categorizeReferrer } from "@/lib/referrer-category";
 import { snippetFromUserAgent } from "@/lib/user-agent-hint";
 import { getVisitInternalSecret } from "@/lib/visit-internal-secret";
+import {
+  shouldPersistVisitorEvent,
+  visitPathnameFromFullPath,
+} from "@/lib/visit-path-eligibility";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const DEDUP_WINDOW_MS = 30_000;
 
 function sha256Hex(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
@@ -62,8 +68,7 @@ export async function POST(req: NextRequest) {
     body = {};
   }
 
-  const source = isAuthorized(req, selfOrigin, internalSecret);
-  if (!source) {
+  if (!isAuthorized(req, selfOrigin, internalSecret)) {
     console.warn("[visit-log] forbidden", {
       origin: req.headers.get("origin"),
       hasReferer: Boolean(req.headers.get("referer")),
@@ -80,9 +85,17 @@ export async function POST(req: NextRequest) {
   try {
     const rawRef =
       typeof body.referrer === "string" ? body.referrer.trim().slice(0, 480) : "";
-    const pathStr =
+    const pathStrRaw =
       typeof body.path === "string" ? body.path.trim().slice(0, 500) : "";
     const uaPlain = (req.headers.get("user-agent") ?? "").trim().slice(0, 512);
+
+    const pathnameOnly = visitPathnameFromFullPath(
+      pathStrRaw.length > 0 ? pathStrRaw : "/"
+    );
+    const recordVisitorEvent = shouldPersistVisitorEvent(pathnameOnly);
+
+    const pathStored: string | null =
+      pathStrRaw.length > 0 ? pathStrRaw.slice(0, 512) : null;
 
     const referrerStored = rawRef.length > 0 ? rawRef : null;
     const referrerCategory = referrerStored
@@ -98,10 +111,24 @@ export async function POST(req: NextRequest) {
         update: { seenAt: new Date() },
       });
 
+      if (!recordVisitorEvent) return;
+
+      const recentDup = await tx.visitorEvent.findFirst({
+        where: {
+          ipHash,
+          path: pathStored,
+          createdAt: {
+            gt: new Date(Date.now() - DEDUP_WINDOW_MS),
+          },
+        },
+        select: { id: true },
+      });
+      if (recentDup) return;
+
       await tx.visitorEvent.create({
         data: {
           visitDate,
-          path: pathStr.length > 0 ? pathStr : null,
+          path: pathStored,
           referrer: referrerStored,
           referrerCategory,
           ipHash,
@@ -110,11 +137,6 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    console.log("[visit-log] upsert_ok", {
-      visitDate,
-      source,
-      path: typeof body.path === "string" ? body.path : null,
-    });
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[visit-log] upsert_failed", {

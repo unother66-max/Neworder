@@ -89,10 +89,10 @@ export const dynamic = "force-dynamic";
 
 async function distinctIpSince(since: Date): Promise<number> {
   try {
-    const rows = await prisma.visitorEvent.findMany({
+    const rows = await prisma.visitorEvent.groupBy({
+      by: ["ipHash"],
       where: { createdAt: { gte: since } },
-      distinct: ["ipHash"],
-      select: { ipHash: true },
+      _count: { _all: true },
     });
     return rows.length;
   } catch (err) {
@@ -200,6 +200,7 @@ export default async function AdminUsersPage() {
       _count: { _all: true },
     }),
     prisma.visitorEvent.findMany({
+      where: { visitDate: { in: dateKeysSeven } },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: {

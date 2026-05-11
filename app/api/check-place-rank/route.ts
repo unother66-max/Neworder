@@ -121,6 +121,7 @@ function mapRawAllSearchJsonToCheckPlaceRankList(
 
 export async function POST(req: Request) {
   try {
+    const perfStartMs = Date.now();
     const body = await req.json();
     const keyword = String(body.keyword || "").trim();
 
@@ -146,6 +147,18 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    let naverMsAccum = 0;
+    const timedNaverFetch = async <T>(fn: () => Promise<T>): Promise<T> => {
+      const s = Date.now();
+      try {
+        return await fn();
+      } finally {
+        naverMsAccum += Date.now() - s;
+      }
+    };
+    let volumeMsAccum = 0;
+    let fallbackUsed = false;
 
     console.log("[check-place-rank] 시작:", keyword);
 
@@ -201,9 +214,8 @@ export async function POST(req: Request) {
     if (fullList.length === 0 && shouldPreferAllSearch) {
       usedSource = "allSearch";
 
-      const tokenless = await fetchAllSearchPlacesForIntentKeyword(
-        actualKeyword,
-        { x, y }
+      const tokenless = await timedNaverFetch(() =>
+        fetchAllSearchPlacesForIntentKeyword(actualKeyword, { x, y })
       );
 
       if (tokenless.ok) {
@@ -237,10 +249,13 @@ export async function POST(req: Request) {
 
       // tokenless 실패 시 → token 기반 allSearch (filtered, stubs 미포함)
       if (fullList.length === 0) {
-        const auto = await fetchAllSearchPlacesAutoDetailed(actualKeyword, {
-          x,
-          y,
-        });
+        fallbackUsed = true;
+        const auto = await timedNaverFetch(() =>
+          fetchAllSearchPlacesAutoDetailed(actualKeyword, {
+            x,
+            y,
+          })
+        );
         autoOk = auto.ok;
         if (auto.ok && auto.places.length > 0) {
           fullList = mapAllSearchRowsToCheckPlaceRankList(
@@ -269,13 +284,16 @@ export async function POST(req: Request) {
 
     // 3) pcmap-graphql: 일반 키워드 기본 경로 + 추천형(allSearch 실패 시) 추정 순위 fallback
     if (fullList.length === 0) {
+      if (shouldPreferAllSearch) fallbackUsed = true;
       usedSource = "pcmap-graphql";
 
       try {
-        const { batch, mode } = await withTimeout(
-          fetchBestPcmapBusinessesBatchJson(actualKeyword),
-          PCMAP_FETCH_TIMEOUT_MS,
-          `[check-place-rank pcmap] timeout ${PCMAP_FETCH_TIMEOUT_MS}ms`
+        const { batch, mode } = await timedNaverFetch(() =>
+          withTimeout(
+            fetchBestPcmapBusinessesBatchJson(actualKeyword),
+            PCMAP_FETCH_TIMEOUT_MS,
+            `[check-place-rank pcmap] timeout ${PCMAP_FETCH_TIMEOUT_MS}ms`
+          )
         );
 
         if (batch) {
@@ -308,11 +326,14 @@ export async function POST(req: Request) {
 
     // 4) 최종 fallback: 서버 allSearch(auto) — 일반 키워드 pcmap 실패 시
     if (fullList.length === 0 && !shouldPreferAllSearch) {
+      fallbackUsed = true;
       usedSource = "allSearch";
-      const auto = await fetchAllSearchPlacesAutoDetailed(actualKeyword, {
-        x,
-        y,
-      });
+      const auto = await timedNaverFetch(() =>
+        fetchAllSearchPlacesAutoDetailed(actualKeyword, {
+          x,
+          y,
+        })
+      );
       autoOk = auto.ok;
       const pack = auto.ok ? auto : null;
       fullList =
@@ -418,10 +439,13 @@ export async function POST(req: Request) {
             total: db?.total ?? (db?.mobile ?? 0) + (db?.pc ?? 0),
           };
         }
+        const sv = Date.now();
         try {
           const vol = await getKeywordSearchVolume(k);
+          volumeMsAccum += Date.now() - sv;
           return { keyword: k, ...vol };
         } catch {
+          volumeMsAccum += Date.now() - sv;
           return { keyword: k, mobile: 0, pc: 0, total: 0 };
         }
       })
@@ -450,6 +474,21 @@ export async function POST(req: Request) {
         },
       });
     }
+
+    const warningsCount =
+      (typeof warningOut === "string" && warningOut.trim() ? 1 : 0) +
+      (typeof failureMessage === "string" && failureMessage.trim() ? 1 : 0);
+
+    console.log("[rank-perf]", {
+      keyword: actualKeyword,
+      totalMs: Date.now() - perfStartMs,
+      naverMs: Math.round(naverMsAccum),
+      volumeMs: Math.round(volumeMsAccum),
+      dbMs: 0,
+      fallbackUsed,
+      failureCode: failureCode ?? null,
+      warningsCount,
+    });
 
     return NextResponse.json({
       ok: true,

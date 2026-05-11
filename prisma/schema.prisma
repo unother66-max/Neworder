@@ -112,6 +112,8 @@ model VisitorEvent {
   @@index([visitDate])
   @@index([createdAt])
   @@index([referrerCategory])
+  @@index([createdAt, ipHash])
+  @@index([ipHash, path, createdAt])
 }
 
 /** 관리자용 운영 알림 (수집/크론 실패 등) */

@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+import { shouldPersistVisitorEvent } from "@/lib/visit-path-eligibility";
+
 function seoulCalendarDateKey(now = new Date()): string {
   return new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Asia/Seoul",
@@ -40,6 +42,7 @@ export default function ScrollTracker() {
   }, []);
 
   useEffect(() => {
+    if (!shouldPersistVisitorEvent(pathname)) return;
     if (typeof window === "undefined" || typeof sessionStorage === "undefined")
       return;
 
