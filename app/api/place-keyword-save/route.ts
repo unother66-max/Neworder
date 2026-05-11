@@ -4,6 +4,14 @@ import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 const MAX_KEYWORDS_PER_STORE = 10;
 
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  const num = Number(String(value).replace(/,/g, "").trim());
+  return Number.isFinite(num) ? num : null;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -48,15 +56,36 @@ export async function POST(req: Request) {
     }
 
     // 검색량이 비어 있으면 서버에서 키워드도구로 채움(클라이언트는 null로 보내는 경우가 많음)
-    let nextMobile: number | null = mobileVolume ?? null;
-    let nextPc: number | null = pcVolume ?? null;
-    let nextTotal: number | null = totalVolume ?? null;
-    if (nextMobile == null || nextPc == null || nextTotal == null) {
-      const vol = await getKeywordSearchVolume(String(keyword));
-      nextMobile = nextMobile ?? vol.mobile;
-      nextPc = nextPc ?? vol.pc;
-      nextTotal = nextTotal ?? vol.total;
+    const inputMobile = toNullableNumber(mobileVolume);
+    const inputPc = toNullableNumber(pcVolume);
+    const inputTotal = toNullableNumber(totalVolume);
+    const needsVolumeFetch =
+      inputMobile == null || inputPc == null || inputTotal == null;
+
+    const vol = needsVolumeFetch
+      ? await getKeywordSearchVolume(String(keyword))
+      : null;
+
+    if (vol && process.env.NODE_ENV !== "production") {
+      console.log("[keyword volume raw]", {
+        keyword,
+        result: vol,
+      });
     }
+
+    const hasReliableVolume = vol?.ok === true;
+    const ignoreLoneZeroTotal =
+      inputTotal === 0 && (inputMobile == null || inputPc == null);
+
+    const nextMobile = hasReliableVolume
+      ? vol.mobile
+      : (inputMobile ?? exists?.mobileVolume ?? null);
+    const nextPc = hasReliableVolume
+      ? vol.pc
+      : (inputPc ?? exists?.pcVolume ?? null);
+    const nextTotal = hasReliableVolume
+      ? vol.total
+      : (ignoreLoneZeroTotal ? (exists?.totalVolume ?? null) : (inputTotal ?? exists?.totalVolume ?? null));
 
     const placeKeyword = await prisma.placeKeyword.upsert({
       where: {

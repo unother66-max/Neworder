@@ -98,9 +98,7 @@ export async function GET() {
       orderBy: [{ rankPinned: "desc" }, { createdAt: "desc" }],
       include: {
         keywords: {
-          orderBy: {
-            createdAt: "asc",
-          },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         },
         rankHistory: {
           orderBy: {

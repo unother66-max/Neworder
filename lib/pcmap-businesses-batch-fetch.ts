@@ -9,6 +9,7 @@ import {
   buildLocationFallbackSearchKeyword,
   countBusinessesItemsInBatch,
 } from "@/lib/place-keyword-fallback";
+import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 
 function parseBatchedGraphqlBody(raw: string): unknown[] | null {
   const t = String(raw || "").trimStart();
@@ -73,25 +74,18 @@ async function fetchRawBatchOnce(
 
   const coords = resolveBusinessesCoords(q, anchor);
 
-  const compactKeyword = q.replace(/\s+/g, "");
-  const isItaewonRecommend =
-    /(이태원|한남|한강진)/.test(compactKeyword) &&
-    /(데이트|소개팅|분위기|핫플|브런치|와인|기념일|가볼만한곳|놀거리)/.test(
-      compactKeyword
-    );
-  
-  const tunedCoords = isItaewonRecommend
-    ? { x: "127.0012", y: "37.5347" }
-    : coords;
-  
-  const tunedBoundary = isItaewonRecommend
-    ? "126.9875;37.5399;127.0095;37.5288"
-    : null;
+  if (isIntentMixedKeyword(q)) {
+    console.log("[pcmap batch] 추천형 좌표(resolve 그대로)", {
+      keyword: q,
+      x: coords.x,
+      y: coords.y,
+    });
+  }
 
   const pageCount = opts?.mapReferer ? 1 : Math.max(1, opts?.pages ?? 10);
   const headers = opts?.mapReferer
   ? buildGetPlacesListFetchHeaders(q)
-  : buildGetPlacesListFetchHeadersForServer(q, tunedCoords);
+  : buildGetPlacesListFetchHeadersForServer(q, coords);
 
   const finalBatch: unknown[] = [];
   const maxRetryForRetryableErrors = 5;
@@ -102,7 +96,7 @@ async function fetchRawBatchOnce(
   ): Promise<FetchSinglePageResult> => {
     for (let attempt = 1; attempt <= maxRetryForRetryableErrors; attempt++) {
       try {
-        const batchBody = buildGetPlacesListPagedBatch(q, tunedCoords, 1, 30);
+        const batchBody = buildGetPlacesListPagedBatch(q, coords, 1, 30);
         const placesPayload = batchBody[0] as any;
         if (placesPayload?.variables?.placesInput) {
           placesPayload.variables.placesInput.start = start;

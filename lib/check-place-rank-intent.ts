@@ -22,6 +22,7 @@ export function isIntentMixedKeyword(keyword: string): boolean {
 
   const hints = [
     "데이트",
+    "모임",
     "핫플",
     "가볼만한",
     "놀거리",

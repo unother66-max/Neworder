@@ -1690,7 +1690,11 @@ export default function SmartstoreRankPage() {
                     type="text"
                     value={kwInput}
                     onChange={(e) => setKwInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addDirectKeywords()}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      if (e.nativeEvent.isComposing) return;
+                      addDirectKeywords();
+                    }}
                     placeholder="쉼표(,)로 여러 개 입력 가능"
                     className="h-[42px] flex-1 rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[13px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#9ca3af] focus:bg-white"
                   />

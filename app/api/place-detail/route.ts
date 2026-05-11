@@ -69,9 +69,7 @@ export async function GET(req: Request) {
       },
       include: {
         keywords: {
-          orderBy: {
-            createdAt: "asc",
-          },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         },
         rankHistory: {
           orderBy: {

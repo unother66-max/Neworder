@@ -958,7 +958,11 @@ export default function KakaoPlacePage() {
                   <input
                     type="text" value={kwInput}
                     onChange={(e) => setKwInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addDirectKeywords()}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      if (e.nativeEvent.isComposing) return;
+                      addDirectKeywords();
+                    }}
                     placeholder="쉼표(,)로 여러 개 입력 가능"
                     className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition focus:border-[#2563eb] focus:bg-white"
                   />

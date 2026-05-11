@@ -4,7 +4,25 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin, Trash2 } from "lucide-react";
+import { Pin, Trash2, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  DragOverlay,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { PostlabsSlideHoverButton } from "@/components/postlabs-slide-hover-button";
 import { debugFetchBrowserAllSearchJson } from "@/lib/browser-allsearch-debug";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 
@@ -175,6 +193,114 @@ function formatCount(value?: string | number | null) {
   if (!/^\d+$/.test(onlyNumber)) return String(value);
 
   return Number(onlyNumber).toLocaleString("ko-KR");
+}
+
+function monthlyVolumeLabelForModal(
+  keyword: string,
+  savedMap: Map<string, KeywordItem>,
+  recommended: RecommendedKeyword[],
+): string | null {
+  const item = savedMap.get(keyword);
+  const fromSaved = item?.monthly?.trim();
+  if (fromSaved && fromSaved !== "-") {
+    const only = fromSaved.replace(/,/g, "");
+    if (/^\d+$/.test(only)) return formatCount(only);
+  }
+  const hit = recommended.find((r) => r.keyword === keyword);
+  const raw = hit?.monthly != null ? String(hit.monthly).trim() : "";
+  if (raw && raw !== "-") {
+    const only = raw.replace(/,/g, "");
+    if (/^\d+$/.test(only)) return formatCount(only);
+  }
+  return null;
+}
+
+function PlaceKeywordModalSortRow({
+  keyword,
+  index,
+  monthlyLabel,
+  deleting,
+  onRemove,
+}: {
+  keyword: string;
+  index: number;
+  monthlyLabel: string | null;
+  deleting: boolean;
+  onRemove: () => void;
+}) {
+  const showTopRibbon = index < 3;
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: keyword });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    touchAction: "none",
+    ...(isDragging
+      ? {
+          boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
+          opacity: 0.22,
+          zIndex: 6,
+        }
+      : {}),
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-2 rounded-[12px] border border-[#e8eaef] bg-white px-2 py-2.5 shadow-sm last:mb-0 sm:flex-nowrap md:gap-3 md:rounded-[14px] md:px-3 md:py-3"
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className="-ml-0.5 flex shrink-0 cursor-grab touch-manipulation rounded-md bg-transparent p-1 text-[#c4cad4] outline-none hover:text-[#9ca3af] active:cursor-grabbing"
+        aria-label="드래그하여 순서 변경"
+        {...listeners}
+        {...attributes}
+      >
+        <GripVertical className="h-5 w-5 md:h-[18px] md:w-[18px]" strokeWidth={2} />
+      </button>
+
+      <div className="min-w-0 flex-1 basis-[min(100%,10rem)] sm:basis-auto">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-[12px] font-bold leading-snug text-[#111827] md:text-[13px]">
+            {keyword}
+          </span>
+          {monthlyLabel ? (
+            <span className="text-[10px] font-semibold whitespace-nowrap text-[#9ca3af] md:text-[11px]">
+              월 검색량 {monthlyLabel}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-2.5">
+        {showTopRibbon ? (
+          <span className="max-w-[8.5rem] text-right text-[9px] font-semibold leading-snug text-[#7c3aed] sm:max-w-none md:text-[10px]">
+            전체 목록에 표시됨
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={deleting}
+          className="flex h-8 min-w-[2rem] items-center justify-center text-[13px] text-[#dc2626] transition hover:opacity-80 disabled:opacity-60"
+          aria-label="키워드 제거"
+        >
+          {deleting ? "..." : "✕"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function getRankMeta(rank?: string | number | null) {
@@ -529,9 +655,9 @@ export default function PlacePage() {
   const [selectedRecommendedKeywords, setSelectedRecommendedKeywords] =
     useState<string[]>([]);
   const [tempKeywords, setTempKeywords] = useState<string[]>([]);
-  const [draggingKeywordIndex, setDraggingKeywordIndex] = useState<
-    number | null
-  >(null);
+  const [activeKeywordDrag, setActiveKeywordDrag] = useState<string | null>(
+    null
+  );
   const [checkingStoreIndex, setCheckingStoreIndex] = useState<number | null>(
     null
   );
@@ -558,8 +684,6 @@ export default function PlacePage() {
   const [modalSearchHovered, setModalSearchHovered] = useState(false);
   const [modalSearchMousePos, setModalSearchMousePos] = useState({ x: 0, y: 0 });
   const [registerHover, setRegisterHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
-  const [saveKwHovered, setSaveKwHovered] = useState(false);
-  const [saveKwMousePos, setSaveKwMousePos] = useState({ x: 0, y: 0 });
 
   const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -595,11 +719,6 @@ export default function PlacePage() {
   const handleRegisterMouseMove = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setRegisterHover({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
-  };
-
-  const handleSaveKwMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setSaveKwMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
   useEffect(() => {
@@ -679,6 +798,37 @@ export default function PlacePage() {
     if (!selectedStore) return [];
     return getDefaultRecommendedKeywords(selectedStore);
   }, [selectedStore]);
+
+  const keywordModalSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  );
+
+  const handleKeywordModalDragStart = (event: DragStartEvent) => {
+    setActiveKeywordDrag(String(event.active.id));
+  };
+
+  const handleKeywordModalDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveKeywordDrag(null);
+
+    if (!over) return;
+    if (active.id === over.id) return;
+
+    setTempKeywords((items) => {
+      const oid = String(active.id);
+      const nid = String(over.id);
+      const oldIndex = items.indexOf(oid);
+      const newIndex = items.indexOf(nid);
+      if (oldIndex < 0 || newIndex < 0) return items;
+      return arrayMove(items, oldIndex, newIndex);
+    });
+  };
+
+  const handleKeywordModalDragCancel = () => {
+    setActiveKeywordDrag(null);
+  };
 
 // 🔥 자동 순위 조회 감지 로직 (새 키워드만 필터링해서 넘겨줌)
 useEffect(() => {
@@ -870,7 +1020,7 @@ useEffect(() => {
         .filter((keyword) => existingKeywords.includes(keyword))
     );
     setKeywordInput("");
-    setDraggingKeywordIndex(null);
+    setActiveKeywordDrag(null);
     setDeletingKeywordKey(null);
     setIsKeywordModalOpen(true);
   };
@@ -881,8 +1031,8 @@ useEffect(() => {
     setKeywordInput("");
     setSelectedRecommendedKeywords([]);
     setTempKeywords([]);
-    setDraggingKeywordIndex(null);
     setDeletingKeywordKey(null);
+    setActiveKeywordDrag(null);
   };
 
   const addKeywordsToTemp = (keywords: string[]) => {
@@ -1066,6 +1216,24 @@ useEffect(() => {
           }
         })
       );
+
+      const reorderRes = await fetch("/api/place-keyword-reorder", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          placeId: targetStore.dbId,
+          keywords: tempKeywords,
+        }),
+      });
+
+      const reorderPayload = await reorderRes.json();
+
+      if (!reorderRes.ok) {
+        throw new Error(reorderPayload.error || "키워드 순서 저장 실패");
+      }
 
       await fetchPlaces();
       closeKeywordModal();
@@ -1949,6 +2117,11 @@ useEffect(() => {
                                             <div className="mt-0.5 text-[9px] font-semibold leading-tight text-[#9ca3af] md:text-[11px]">
                                               {rankMeta.sub}
                                             </div>
+                                            {isIntentMixedKeyword(item.keyword) ? (
+                                              <div className="mt-0.5 text-[8px] leading-snug text-[#b0b6bf] md:text-[10px] md:leading-tight">
+                                                모바일 기준
+                                              </div>
+                                            ) : null}
                                           </div>
 
                                           <div className={`min-w-[22px] text-[10px] font-bold md:min-w-[42px] md:text-[13px] ${rankChangeUi.className}`}>
@@ -2241,54 +2414,93 @@ useEffect(() => {
                       value={keywordInput}
                       onChange={(e) => setKeywordInput(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") addDirectKeywords();
+                        if (e.key !== "Enter") return;
+                        if (e.nativeEvent.isComposing) return;
+                        addDirectKeywords();
                       }}
                       placeholder="쉼표(,)로 여러 개 입력 가능"
                       className="h-[42px] flex-1 rounded-[14px] border border-[#d1d5db] bg-[#fafafa] px-3 text-[12px] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white md:h-[48px] md:rounded-[16px] md:px-4 md:text-[14px]"
                     />
 
-                    <button
+                    <PostlabsSlideHoverButton
                       type="button"
+                      variant="outline-fill"
                       onClick={addDirectKeywords}
-                      className="h-[42px] rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[12px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:h-[48px] md:rounded-[16px] md:px-5 md:text-[14px]"
+                      className="h-[42px] shrink-0 rounded-[14px] border border-[#d1d5db] bg-white px-4 text-[12px] font-bold md:h-[48px] md:rounded-[16px] md:px-5 md:text-[14px]"
                     >
-                      추가
-                    </button>
+                      <span className="transition-colors duration-200 motion-reduce:transition-none group-hover:text-white">
+                        추가
+                      </span>
+                    </PostlabsSlideHoverButton>
                   </div>
                 </div>
 
                 <div className="mt-4 rounded-[14px] border border-[#e5e7eb] bg-white p-4 md:mt-5 md:rounded-[18px] md:p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[12px] font-bold text-[#4b5563] md:text-[13px]">
-                      저장 예정 키워드
-                    </p>
-                    <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[11px] font-bold text-[#4b5563] md:px-2.5 md:py-1 md:text-[12px]">
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                    <div className="min-w-0 flex-1 basis-[min(100%,12rem)] sm:basis-auto">
+                      <p className="text-[12px] font-bold leading-snug text-[#4b5563] md:text-[13px]">
+                        키워드 순서 변경
+                      </p>
+                      <p className="mt-2 text-[11px] font-medium leading-relaxed text-[#6b7280] md:mt-2 md:text-[12px] md:leading-[1.65]">
+                        키워드를 드래그 앤 드롭하여 순서를 변경하세요. 상위 3개의 키워드는 전체 목록에서도 검색량과 순위를 쉽게 확인하실 수 있습니다.
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[11px] font-bold leading-none text-[#4b5563] md:px-2.5 md:py-1 md:text-[12px]">
                       {tempKeywords.length}개
                     </span>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2 md:mt-4 md:gap-2.5">
+                  <div className="mt-3 md:mt-4">
                     {tempKeywords.length === 0 ? (
-                      <div className="w-full rounded-[12px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-3 py-6 text-center text-[12px] text-[#9ca3af] md:rounded-[14px] md:px-4 md:py-8 md:text-[14px]">
+                      <div className="flex min-h-[100px] w-full flex-col justify-center rounded-[12px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-3 py-6 text-center text-[12px] text-[#9ca3af] md:rounded-[14px] md:px-4 md:py-8 md:text-[14px]">
                         아직 추가된 키워드가 없습니다.
                       </div>
                     ) : (
-                      tempKeywords.map((keyword, idx) => (
-                        <div
-                          key={`${keyword}-${idx}`}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 text-[12px] font-bold text-[#111827] md:gap-2 md:px-4 md:py-2 md:text-[13px]"
+                      <div
+                        className="max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]"
+                        style={{ position: "relative" }}
+                      >
+                        <DndContext
+                          sensors={keywordModalSensors}
+                          collisionDetection={closestCenter}
+                          onDragStart={handleKeywordModalDragStart}
+                          onDragEnd={handleKeywordModalDragEnd}
+                          onDragCancel={handleKeywordModalDragCancel}
                         >
-                          <span>{keyword}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeTempKeyword(keyword)}
-                            disabled={deletingKeywordKey === keyword}
-                            className="text-[#dc2626] transition hover:opacity-80"
+                          <SortableContext
+                            items={tempKeywords}
+                            strategy={verticalListSortingStrategy}
                           >
-                            {deletingKeywordKey === keyword ? "..." : "✕"}
-                          </button>
-                        </div>
-                      ))
+                            {tempKeywords.map((keyword, idx) => (
+                              <PlaceKeywordModalSortRow
+                                key={keyword}
+                                keyword={keyword}
+                                index={idx}
+                                monthlyLabel={monthlyVolumeLabelForModal(
+                                  keyword,
+                                  selectedStoreSavedKeywordMap,
+                                  recommendedKeywords
+                                )}
+                                deleting={deletingKeywordKey === keyword}
+                                onRemove={() => removeTempKeyword(keyword)}
+                              />
+                            ))}
+                          </SortableContext>
+                          <DragOverlay dropAnimation={null}>
+                            {activeKeywordDrag ? (
+                              <div className="flex cursor-grabbing items-center gap-2 rounded-[12px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-lg md:rounded-[14px] md:py-3">
+                                <GripVertical
+                                  className="h-5 w-5 text-[#c4cad4]"
+                                  strokeWidth={2}
+                                />
+                                <span className="text-[12px] font-bold text-[#111827] md:text-[13px]">
+                                  {activeKeywordDrag}
+                                </span>
+                              </div>
+                            ) : null}
+                          </DragOverlay>
+                        </DndContext>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2296,56 +2508,25 @@ useEffect(() => {
 
               <div className="border-t border-[#f3f4f6] bg-[#fcfcfc] px-4 py-3 md:px-6 md:py-4">
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                  <button
+                  <PostlabsSlideHoverButton
+                    variant="outline-soft"
                     onClick={closeKeywordModal}
                     disabled={savingKeywords}
-                    className="h-[40px] rounded-[12px] border border-[#d1d5db] bg-white px-4 text-[12px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:h-[46px] md:rounded-[14px] md:px-5 md:text-[14px]"
+                    className="h-[40px] w-full shrink-0 rounded-[12px] border border-[#d1d5db] bg-white px-4 text-[12px] font-bold md:h-[46px] md:w-auto md:min-w-[112px] md:rounded-[14px] md:px-5 md:text-[14px]"
                   >
                     취소
-                  </button>
+                  </PostlabsSlideHoverButton>
 
-                  {/* 키워드 저장 모달 버튼 */}
-                  <button
-                    onMouseEnter={() => setSaveKwHovered(true)}
-                    onMouseLeave={() => setSaveKwHovered(false)}
-                    onMouseMove={handleSaveKwMouseMove}
+                  <PostlabsSlideHoverButton
+                    variant="primary"
                     onClick={saveKeywords}
                     disabled={savingKeywords}
-                    className={`relative inline-flex h-[40px] min-w-[108px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-4 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[46px] md:min-w-[120px] md:rounded-[14px] md:px-5 md:text-[14px] ${
+                    className={`h-[40px] w-full min-w-[108px] shrink-0 rounded-[12px] bg-[#333333] px-4 text-[12px] font-bold text-white md:h-[46px] md:w-auto md:min-w-[120px] md:rounded-[14px] md:px-5 md:text-[14px] ${
                       savingKeywords ? "opacity-60" : ""
                     }`}
                   >
-                    <span className="relative z-30 pointer-events-none">
-                      {savingKeywords ? "키워드 저장중" : "키워드 저장"}
-                    </span>
-                    <div
-                      className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-                      style={{
-                        transformOrigin: "left",
-                        transform: saveKwHovered ? "scaleX(1)" : "scaleX(0)",
-                        transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
-                        backgroundColor: "#2563EB",
-                      }}
-                    />
-                    <div
-                      className={`
-                        absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl md:h-32 md:w-32
-                        transition-opacity duration-200 ease-out
-                        ${saveKwHovered ? "opacity-100" : "opacity-0"}
-                      `}
-                      style={{
-                        left: `${saveKwMousePos.x}px`,
-                        top: `${saveKwMousePos.y}px`,
-                        pointerEvents: "none",
-                        zIndex: 25,
-                        backgroundImage:
-                          "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
-                        mixBlendMode: "soft-light",
-                        filter:
-                          "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.14))",
-                      }}
-                    />
-                  </button>
+                    {savingKeywords ? "키워드 저장중" : "키워드 저장"}
+                  </PostlabsSlideHoverButton>
                 </div>
               </div>
             </div>

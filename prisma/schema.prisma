@@ -117,6 +117,7 @@ model PlaceKeyword {
   mobileVolume Int?
   pcVolume     Int?
   totalVolume  Int?
+  sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   isTracking   Boolean  @default(false)

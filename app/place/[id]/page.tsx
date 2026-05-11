@@ -935,6 +935,11 @@ export default function PlaceDetailPage() {
                                       <div className="mt-0.5 text-[11px] font-semibold text-[#9ca3af]">
                                         {rankMeta.sub}
                                       </div>
+                                      {isIntentMixedKeyword(keyword.keyword) ? (
+                                        <div className="mt-0.5 text-[9px] leading-snug text-[#b0b6bf]">
+                                          모바일 기준
+                                        </div>
+                                      ) : null}
                                     </div>
 
                                     <div className="pt-[2px] text-[11px] font-bold">
@@ -1009,6 +1014,11 @@ export default function PlaceDetailPage() {
                             (chartData[chartData.length - 1]?.rank ?? "-")}
                           {selectedKeyword.currentRank ? "" : "위"}
                         </div>
+                        {isIntentMixedKeyword(selectedKeyword.keyword) ? (
+                          <div className="mt-1 text-[9px] leading-snug text-[#b0b6bf] md:text-[10px] md:leading-tight">
+                            모바일 기준
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">

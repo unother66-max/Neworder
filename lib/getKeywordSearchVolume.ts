@@ -10,10 +10,37 @@ export type KeywordVolumeResult = {
   mobile: number;
   pc: number;
   total: number;
+  ok: boolean;
+  reason?:
+    | "empty"
+    | "missing-env"
+    | "rate-limited"
+    | "api-error"
+    | "not-found"
+    | "exception";
+  matchedKeyword?: string;
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const volumeCache = new Map<string, { value: KeywordVolumeResult; timestamp: number }>();
+
+const isDevLogs = process.env.NODE_ENV !== "production";
+
+/** 입력 문자열 통일용 (NFKC, 제로폭 제거, trim) */
+export function normalizeVolumeKeywordInput(raw: string): string {
+  return String(raw ?? "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+}
+
+/**
+ * 검색량(SearchAD keywordstool) 힌트·행 매칭용: 공백 제거 ("한남동 피자" → "한남동피자").
+ * 캐시/유사 매칭용 normalizeKeywordKey(소문자·앤 치환)와 역할 분리.
+ */
+export function compactKeywordForVolumeHint(keyword: string): string {
+  return normalizeVolumeKeywordInput(keyword).replace(/\s+/g, "");
+}
 
 function makeSignature(
   timestamp: string,
@@ -67,11 +94,11 @@ function hintKeywordsToApiParam(hint: string): string {
  * 공백 유·무 등 여러 변형을 순서대로 시도한다.
  */
 function hintCandidates(keyword: string): string[] {
-  const trimmed = keyword.trim();
+  const trimmed = normalizeVolumeKeywordInput(keyword);
   if (!trimmed) return [];
 
   const spaced = trimmed.replace(/\s+/g, " ").trim();
-  const compact = trimmed.replace(/\s+/g, "");
+  const compact = compactKeywordForVolumeHint(trimmed);
 
   const out: string[] = [];
   const seen = new Set<string>();
@@ -82,6 +109,7 @@ function hintCandidates(keyword: string): string[] {
     out.push(h);
   };
 
+  if (compact !== spaced) add(compact);
   add(spaced);
   // "○○ 추천" / "○○ 근처" 는 도구 응답에 정확 행이 없을 때가 많아 본문(접두) 힌트를 추가
   if (/ 추천$/.test(spaced)) {
@@ -90,8 +118,6 @@ function hintCandidates(keyword: string): string[] {
   if (/ 근처$/.test(spaced)) {
     add(spaced.replace(/ 근처$/, "").trim());
   }
-  if (compact !== spaced) add(compact);
-
   if (!trimmed.includes(" ")) {
     const re = new RegExp(`^(.+)(${COMMON_SUFFIX})$`, "u");
     const m = trimmed.match(re);
@@ -112,9 +138,9 @@ function pickKeywordVolumeRow(
   kwRaw: string
 ): KeywordToolItem | null {
   const pickForTarget = (target: string): KeywordToolItem | null => {
-    const trimmed = target.trim();
+    const trimmed = normalizeVolumeKeywordInput(target);
     const key = normalizeKeywordKey(trimmed);
-    const compact = trimmed.replace(/\s+/g, "");
+    const compact = compactKeywordForVolumeHint(trimmed);
     if (!list.length || !key) return null;
 
     const byNorm = list.find(
@@ -128,7 +154,8 @@ function pickKeywordVolumeRow(
     if (byTrim) return byTrim;
 
     const byCompact = list.find(
-      (item) => (item.relKeyword ?? "").replace(/\s+/g, "") === compact
+      (item) =>
+        compactKeywordForVolumeHint(item.relKeyword ?? "") === compact
     );
     if (byCompact) return byCompact;
 
@@ -173,17 +200,17 @@ async function fetchKeywordSearchVolumeUncached(
 ): Promise<KeywordVolumeResult> {
   const method = "GET";
   const uri = "/keywordstool";
-  const kwRaw = String(keyword ?? "").trim();
+  const kwRaw = normalizeVolumeKeywordInput(String(keyword ?? ""));
   if (!kwRaw || !kwRaw.replace(/\s/g, "")) {
     console.warn(`[getKeywordSearchVolume] 비정상/빈 키워드: "${keyword}"`);
-    return { mobile: 0, pc: 0, total: 0 };
+    return { mobile: 0, pc: 0, total: 0, ok: false, reason: "empty" };
   }
 
   const hints = hintCandidates(kwRaw);
 
   if (!hints.length) {
     console.warn(`[getKeywordSearchVolume] 빈 키워드: "${keyword}"`);
-    return { mobile: 0, pc: 0, total: 0 };
+    return { mobile: 0, pc: 0, total: 0, ok: false, reason: "empty" };
   }
 
   const attemptFetch = (hintKeywords: string) => {
@@ -216,7 +243,7 @@ async function fetchKeywordSearchVolumeUncached(
       // 429: 즉시 0 반환 (retry 없음)
       if (res.status === 429) {
         console.warn(`[getKeywordSearchVolume] 429 keyword="${kwRaw}"`);
-        return { mobile: 0, pc: 0, total: 0 };
+        return { mobile: 0, pc: 0, total: 0, ok: false, reason: "rate-limited" };
       }
 
       if (!res.ok) {
@@ -228,6 +255,18 @@ async function fetchKeywordSearchVolumeUncached(
 
       const data = (await res.json()) as { keywordList?: KeywordToolItem[] };
       const next = (data.keywordList || []) as KeywordToolItem[];
+      if (isDevLogs) {
+        console.log("[getKeywordSearchVolume raw]", {
+          keyword: kwRaw,
+          hintKeywords,
+          count: next.length,
+          sample: next.slice(0, 5).map((item) => ({
+            relKeyword: item.relKeyword,
+            monthlyPcQcCnt: item.monthlyPcQcCnt,
+            monthlyMobileQcCnt: item.monthlyMobileQcCnt,
+          })),
+        });
+      }
       if (!next.length) continue;
 
       const row = pickKeywordVolumeRow(next, kwRaw);
@@ -238,15 +277,21 @@ async function fetchKeywordSearchVolumeUncached(
     }
 
     if (!chosen) {
-      return { mobile: 0, pc: 0, total: 0 };
+      return { mobile: 0, pc: 0, total: 0, ok: false, reason: "not-found" };
     }
 
     const pc = toNumber(chosen.monthlyPcQcCnt);
     const mobile = toNumber(chosen.monthlyMobileQcCnt);
-    return { mobile, pc, total: pc + mobile };
+    return {
+      mobile,
+      pc,
+      total: pc + mobile,
+      ok: true,
+      matchedKeyword: chosen.relKeyword,
+    };
   } catch (error) {
     console.error(`[getKeywordSearchVolume] 예외 keyword="${kwRaw}"`, error);
-    return { mobile: 0, pc: 0, total: 0 };
+    return { mobile: 0, pc: 0, total: 0, ok: false, reason: "exception" };
   }
 }
 
@@ -261,19 +306,19 @@ export async function getKeywordSearchVolume(
     console.warn(
       "[getKeywordSearchVolume] NAVER_SEARCHAD_ACCESS_KEY / SECRET_KEY / CUSTOMER_ID 중 일부가 비어 있습니다."
     );
-    return { mobile: 0, pc: 0, total: 0 };
+    return { mobile: 0, pc: 0, total: 0, ok: false, reason: "missing-env" };
   }
 
-  const kwInput = String(keyword ?? "").trim();
+  const kwInput = normalizeVolumeKeywordInput(String(keyword ?? ""));
   if (!kwInput || !kwInput.replace(/\s/g, "")) {
     console.warn(`[getKeywordSearchVolume] 빈 키워드: "${keyword}"`);
-    return { mobile: 0, pc: 0, total: 0 };
+    return { mobile: 0, pc: 0, total: 0, ok: false, reason: "empty" };
   }
 
   const cacheKey = normalizeKeywordKey(kwInput);
   if (!cacheKey) {
     console.warn(`[getKeywordSearchVolume] 빈 키워드(정규화 후): "${keyword}"`);
-    return { mobile: 0, pc: 0, total: 0 };
+    return { mobile: 0, pc: 0, total: 0, ok: false, reason: "empty" };
   }
 
   const now = Date.now();
