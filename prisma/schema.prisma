@@ -27,6 +27,8 @@ model User {
   image                   String?
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
+  /** false: 마이그레이션으로 createdAt만 채워져 실제 가입일과 다를 수 있음 */
+  createdAtReliable       Boolean                  @default(true)
   tier                    UserTier                 @default(FREE)
   emailVerified           DateTime?
   
@@ -78,6 +80,18 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+/** 하루 단위 방문: IP + User-Agent 해시로 같은 날 중복 제거 (날짜는 Asia/Seoul yyyy-MM-dd) */
+model VisitorLog {
+  id        String   @id @default(cuid())
+  visitDate String
+  ipHash    String   @db.VarChar(64)
+  uaHash    String   @db.VarChar(64)
+  seenAt    DateTime @default(now())
+
+  @@unique([visitDate, ipHash, uaHash])
+  @@index([visitDate])
 }
 
 // --- 🚨 기존 기능 모델 (오류 방지를 위해 모두 포함) ---

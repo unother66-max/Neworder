@@ -10,7 +10,7 @@ import {
   fetchUserQuotaCached,
   getUserQuotaSessionKey,
 } from "@/lib/browser-user-quota-fetch"; 
-import { ChevronDown, ChevronRight, LogOut, Menu, MessageCircle, User, X } from "lucide-react";
+import { ChevronDown, ChevronRight, LogOut, Menu, MessageCircle, Shield, User, X } from "lucide-react";
 
 type TopNavProps = {
   active?: unknown;
@@ -98,6 +98,8 @@ const TopNav = (_props: TopNavProps) => {
   const [drawerAnimatingOpen, setDrawerAnimatingOpen] = useState(false);
   const [mobileExpandedSection, setMobileExpandedSection] =
     useState<MobileMenuSectionKey | null>(() => getActiveMobileSectionKey(pathname));
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileMenuFrameRef = useRef<number | null>(null);
   const mobileMenuCloseTimerRef = useRef<number | null>(null);
 
@@ -144,6 +146,20 @@ const TopNav = (_props: TopNavProps) => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    setAccountMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (accountMenuRef.current?.contains(e.target as Node)) return;
+      setAccountMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [accountMenuOpen]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -221,6 +237,8 @@ const TopNav = (_props: TopNavProps) => {
   
   const isCommunityActive = pathname.startsWith("/community");
   const isProfileActive = pathname.startsWith("/profile");
+  const sessionIsEnvAdmin = session?.user?.isAdmin === true;
+  const isAdminUsersPageActive = pathname.startsWith("/admin");
 
   const isPlaceRankActive = pathname === "/place" || pathname.startsWith("/place/");
   const isPlaceAnalysisActive = pathname.startsWith("/place-analysis");
@@ -825,12 +843,81 @@ const TopNav = (_props: TopNavProps) => {
                 </div>
               )}
 
+              <div ref={accountMenuRef} className="relative hidden md:block">
+                <button
+                  type="button"
+                  aria-expanded={accountMenuOpen}
+                  aria-haspopup="menu"
+                  onClick={() => setAccountMenuOpen((o) => !o)}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:h-auto sm:w-auto sm:p-2 ${
+                    accountMenuOpen || isProfileActive || isAdminUsersPageActive
+                      ? "bg-slate-100 text-slate-900"
+                      : ""
+                  }`}
+                  title="프로필 메뉴"
+                >
+                  <svg
+                    className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                </button>
+                <div
+                  role="menu"
+                  aria-hidden={!accountMenuOpen}
+                  className={`absolute right-0 top-full z-[130] mt-2 min-w-[12.5rem] rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-lg ring-1 ring-black/[0.04] transition-all duration-150 ${
+                    accountMenuOpen
+                      ? "pointer-events-auto translate-y-0 opacity-100"
+                      : "pointer-events-none -translate-y-1 opacity-0"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      router.push("/profile");
+                    }}
+                    className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold transition-colors hover:bg-slate-50 ${
+                      isProfileActive ? "text-[#0051FF]" : "text-slate-700"
+                    }`}
+                  >
+                    <User className="h-4 w-4 shrink-0 opacity-70" strokeWidth={2} aria-hidden />
+                    마이페이지
+                  </button>
+                  {sessionIsEnvAdmin && (
+                    <Link
+                      role="menuitem"
+                      href="/admin/users"
+                      aria-current={isAdminUsersPageActive ? "page" : undefined}
+                      onClick={() => setAccountMenuOpen(false)}
+                      className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold transition-colors hover:bg-slate-50 ${
+                        isAdminUsersPageActive ? "text-[#0051FF]" : "text-slate-700"
+                      }`}
+                    >
+                      <Shield className="h-4 w-4 shrink-0 opacity-70" strokeWidth={2} aria-hidden />
+                      관리자
+                    </Link>
+                  )}
+                </div>
+              </div>
+
               <button
+                type="button"
                 onClick={() => router.push("/profile")}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:h-auto sm:w-auto sm:p-2"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 md:hidden sm:h-auto sm:w-auto sm:p-2"
                 title="내 정보"
               >
-                  <svg className="h-4.5 w-4.5 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-4.5 w-4.5 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </button>
@@ -1092,6 +1179,33 @@ const TopNav = (_props: TopNavProps) => {
                     마이페이지
                   </span>
                 </button>
+
+                {sessionIsEnvAdmin && (
+                  <Link
+                    href="/admin/users"
+                    aria-current={isAdminUsersPageActive ? "page" : undefined}
+                    onClick={closeMobileMenu}
+                    className={`flex min-h-9 items-center gap-3 rounded-[14px] py-1.5 transition-colors ${
+                      isAdminUsersPageActive ? "text-[#0F172A]" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                      <Shield
+                        className={`h-6 w-6 object-contain ${isAdminUsersPageActive ? "opacity-100" : "opacity-80"}`}
+                        strokeWidth={1.8}
+                        aria-hidden
+                      />
+                    </span>
+                    <span
+                      className={`flex-1 text-[15px] ${
+                        isAdminUsersPageActive ? "font-bold text-[#0F172A]" : "font-semibold text-slate-600"
+                      }`}
+                    >
+                      관리자
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-current" strokeWidth={2.4} />
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => {

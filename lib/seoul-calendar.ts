@@ -1,5 +1,7 @@
 /** Korea (Asia/Seoul, fixed UTC+9) calendar boundaries for aggregates */
 
+export const SEOUL_TIMEZONE = "Asia/Seoul";
+
 function seoulMidnightUtc(y: number, month: number, day: number): Date {
   return new Date(Date.UTC(y, month - 1, day) - 9 * 60 * 60 * 1000);
 }
@@ -24,4 +26,19 @@ export function utcRangeSeoulCalendarDay(reference = new Date()): {
   const start = seoulMidnightUtc(y, m, dom);
   const endExclusive = seoulMidnightUtc(y, m, dom + 1);
   return { start, endExclusive };
+}
+
+/** Asia/Seoul 기준 날짜·시간 문자열 (Intl, ko-KR 로케일) */
+export function formatSeoulDateTime(
+  d: Date,
+  options: Intl.DateTimeFormatOptions = {
+    dateStyle: "medium",
+    timeStyle: "medium",
+    hour12: false,
+  }
+): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    ...options,
+    timeZone: SEOUL_TIMEZONE,
+  }).format(d);
 }

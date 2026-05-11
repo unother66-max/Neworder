@@ -8,6 +8,8 @@ declare module "next-auth" {
       name: string | null;
       email: string | null;
       image: string | null;
+      /** ADMIN_EMAILS(+폴백) 기준, 클라이언트 표시용 */
+      isAdmin?: boolean;
     };
   }
 
@@ -16,6 +18,7 @@ declare module "next-auth" {
     name: string | null;
     email: string | null;
     image: string | null;
+    isAdmin?: boolean;
   }
 }
 
