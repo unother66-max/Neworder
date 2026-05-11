@@ -106,145 +106,110 @@ export default function HomePage() {
 
       </section>
 
-      <section className="sr-only">
-  <h2>자주 묻는 질문</h2>
+      <section className="sr-only" aria-label="포스트랩스 서비스 설명과 자주 묻는 질문">
+        <h2>포스트랩스 네이버 마케팅 분석 도구</h2>
+        <p>
+          포스트랩스는 네이버 플레이스 순위조회, 스마트스토어 순위확인,
+          네이버 블로그 키워드 분석, 카카오맵 순위조회, 리뷰 저장수 추적을
+          한 곳에서 관리할 수 있도록 만든 노출 관리 서비스입니다.
+        </p>
+        <p>
+          로그인한 사용자는 매장과 상품을 등록해 지역 키워드의 검색 순위,
+          방문자 리뷰 변화, 저장수 추이, 블로그 키워드 데이터를 확인할 수
+          있습니다.
+        </p>
 
-  <h3>네이버 플레이스 순위조회는 어떻게 하나요?</h3>
-  <p>
-    포스트랩스에서는 네이버 플레이스 키워드 순위를 실시간으로
-    조회하고 저장할 수 있습니다.
-  </p>
+        <h2>자주 묻는 질문</h2>
 
-  <h3>스마트스토어 순위확인이 가능한가요?</h3>
-  <p>
-    상품 URL 등록 후 네이버 쇼핑 검색 순위를 추적할 수 있습니다.
-  </p>
+        <h3>네이버 플레이스 순위조회는 어떻게 하나요?</h3>
+        <p>
+          포스트랩스에서는 네이버 플레이스 키워드 순위를 실시간으로 조회하고
+          저장할 수 있습니다.
+        </p>
 
-  <h3>카카오맵 순위조회 기능이 있나요?</h3>
-  <p>
-    카카오맵 검색, 저장, 공유, 길찾기 순위를 확인할 수 있습니다.
-  </p>
+        <h3>스마트스토어 순위확인이 가능한가요?</h3>
+        <p>
+          상품 URL 등록 후 네이버 쇼핑 검색 순위를 추적할 수 있습니다.
+        </p>
 
-  <h3>네이버 블로그 키워드 분석이 가능한가요?</h3>
-  <p>
-    블로그 포스트별 키워드와 검색량 데이터를 분석할 수 있습니다.
-  </p>
+        <h3>카카오맵 순위조회 기능이 있나요?</h3>
+        <p>
+          카카오맵 검색, 저장, 공유, 길찾기 순위를 확인할 수 있습니다.
+        </p>
 
-  <h3>리뷰 저장수 추적은 어떻게 동작하나요?</h3>
-  <p>
-    네이버 플레이스 리뷰 수와 저장 수 변화를 자동으로 추적합니다.
-  </p>
+        <h3>네이버 블로그 키워드 분석이 가능한가요?</h3>
+        <p>
+          블로그 포스트별 키워드와 검색량 데이터를 분석할 수 있습니다.
+        </p>
 
-  <h2>네이버 마케팅 분석 도구</h2>
+        <h3>리뷰 저장수 추적은 어떻게 동작하나요?</h3>
+        <p>
+          네이버 플레이스 리뷰 수와 저장 수 변화를 자동으로 추적합니다.
+        </p>
 
-  <div>
-    <p>네이버 플레이스 순위조회</p>
-    <p>스마트스토어 순위확인</p>
-    <p>네이버 블로그 키워드 분석</p>
-    <p>카카오맵 순위조회</p>
-    <p>지역 키워드 분석</p>
-    <p>네이버 플레이스 저장수 추적</p>
-    <p>리뷰 변화 추적 기능</p>
-  </div>
+        <h2>내부 서비스 설명</h2>
+        <ul>
+          <li>네이버 플레이스 키워드 분석</li>
+          <li>네이버 플레이스 순위조회</li>
+          <li>네이버 플레이스 리뷰 저장수 추적</li>
+          <li>스마트스토어 순위확인</li>
+          <li>네이버 블로그 키워드 분석</li>
+          <li>카카오맵 순위조회</li>
+          <li>네이버 마케팅 커뮤니티</li>
+        </ul>
 
-  <h2>포스트랩스 주요 기능</h2>
-
-  <ul>
-    <li>
-      <a href="/place-analysis">
-        네이버 플레이스 키워드 분석
-      </a>
-    </li>
-
-    <li>
-      <a href="/place">
-        네이버 플레이스 순위조회
-      </a>
-    </li>
-
-    <li>
-      <a href="/place-review">
-        네이버 플레이스 리뷰 저장수 추적
-      </a>
-    </li>
-
-    <li>
-      <a href="/smartstore">
-        스마트스토어 순위확인
-      </a>
-    </li>
-
-    <li>
-      <a href="/top-blog">
-        네이버 블로그 키워드 분석
-      </a>
-    </li>
-
-    <li>
-      <a href="/kakao-ranking">
-        카카오맵 순위조회
-      </a>
-    </li>
-
-    <li>
-      <a href="/community">
-        네이버 마케팅 커뮤니티
-      </a>
-    </li>
-  </ul>
-
-  <script
-    type="application/ld+json"
-    dangerouslySetInnerHTML={{
-      __html: JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        mainEntity: [
-          {
-            "@type": "Question",
-            name: "네이버 플레이스 순위조회는 어떻게 하나요?",
-            acceptedAnswer: {
-              "@type": "Answer",
-              text: "포스트랩스에서는 네이버 플레이스 키워드 순위를 실시간으로 조회하고 저장할 수 있습니다.",
-            },
-          },
-          {
-            "@type": "Question",
-            name: "스마트스토어 순위확인이 가능한가요?",
-            acceptedAnswer: {
-              "@type": "Answer",
-              text: "상품 URL 등록 후 네이버 쇼핑 검색 순위를 추적할 수 있습니다.",
-            },
-          },
-          {
-            "@type": "Question",
-            name: "카카오맵 순위조회 기능이 있나요?",
-            acceptedAnswer: {
-              "@type": "Answer",
-              text: "카카오맵 검색, 저장, 공유, 길찾기 순위를 확인할 수 있습니다.",
-            },
-          },
-          {
-            "@type": "Question",
-            name: "네이버 블로그 키워드 분석이 가능한가요?",
-            acceptedAnswer: {
-              "@type": "Answer",
-              text: "블로그 포스트별 키워드와 검색량 데이터를 분석할 수 있습니다.",
-            },
-          },
-          {
-            "@type": "Question",
-            name: "리뷰 저장수 추적은 어떻게 동작하나요?",
-            acceptedAnswer: {
-              "@type": "Answer",
-              text: "네이버 플레이스 리뷰 수와 저장 수 변화를 자동으로 추적합니다.",
-            },
-          },
-        ],
-      }),
-    }}
-  />
-</section>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "FAQPage",
+              mainEntity: [
+                {
+                  "@type": "Question",
+                  name: "네이버 플레이스 순위조회는 어떻게 하나요?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "포스트랩스에서는 네이버 플레이스 키워드 순위를 실시간으로 조회하고 저장할 수 있습니다.",
+                  },
+                },
+                {
+                  "@type": "Question",
+                  name: "스마트스토어 순위확인이 가능한가요?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "상품 URL 등록 후 네이버 쇼핑 검색 순위를 추적할 수 있습니다.",
+                  },
+                },
+                {
+                  "@type": "Question",
+                  name: "카카오맵 순위조회 기능이 있나요?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "카카오맵 검색, 저장, 공유, 길찾기 순위를 확인할 수 있습니다.",
+                  },
+                },
+                {
+                  "@type": "Question",
+                  name: "네이버 블로그 키워드 분석이 가능한가요?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "블로그 포스트별 키워드와 검색량 데이터를 분석할 수 있습니다.",
+                  },
+                },
+                {
+                  "@type": "Question",
+                  name: "리뷰 저장수 추적은 어떻게 동작하나요?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "네이버 플레이스 리뷰 수와 저장 수 변화를 자동으로 추적합니다.",
+                  },
+                },
+              ],
+            }),
+          }}
+        />
+      </section>
 
 </main>
 
