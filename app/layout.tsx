@@ -90,7 +90,26 @@ export default function RootLayout({
 
         {/* 🚨 2. 여기에 톡상담 버튼 추가 (모든 페이지 공통 적용) */}
         <KakaoChatButton />
-      </body>
+
+<script
+  type="application/ld+json"
+  dangerouslySetInnerHTML={{
+    __html: JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "포스트랩스",
+      url: "https://postlabs.co.kr",
+      logo: "https://postlabs.co.kr/images/og-image-v2.png",
+      description:
+        "네이버 플레이스 순위조회, 스마트스토어 순위확인, 블로그 키워드 분석 서비스",
+      sameAs: [
+        "https://postlabs.co.kr/community",
+      ],
+    }),
+  }}
+/>
+
+</body>
     </html>
   );
 }

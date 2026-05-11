@@ -147,6 +147,52 @@ export default function HomePage() {
     <p>리뷰 변화 추적 기능</p>
   </div>
 
+  <h2>포스트랩스 주요 기능</h2>
+
+  <ul>
+    <li>
+      <a href="/place-analysis">
+        네이버 플레이스 키워드 분석
+      </a>
+    </li>
+
+    <li>
+      <a href="/place">
+        네이버 플레이스 순위조회
+      </a>
+    </li>
+
+    <li>
+      <a href="/place-review">
+        네이버 플레이스 리뷰 저장수 추적
+      </a>
+    </li>
+
+    <li>
+      <a href="/smartstore">
+        스마트스토어 순위확인
+      </a>
+    </li>
+
+    <li>
+      <a href="/top-blog">
+        네이버 블로그 키워드 분석
+      </a>
+    </li>
+
+    <li>
+      <a href="/kakao-ranking">
+        카카오맵 순위조회
+      </a>
+    </li>
+
+    <li>
+      <a href="/community">
+        네이버 마케팅 커뮤니티
+      </a>
+    </li>
+  </ul>
+
   <script
     type="application/ld+json"
     dangerouslySetInnerHTML={{
