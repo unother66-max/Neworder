@@ -10,6 +10,7 @@ import {
   loadSystemConfigNaverCookie,
   SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
 } from "@/lib/naver-smartstore-unified-fetch-headers";
+import { extractNaverSmartstoreProductId } from "@/lib/smartstore-url";
 
 /**
  * 네이버 스마트스토어·브랜드스토어 상품 상세 JSON API (HTML 없음).
@@ -119,10 +120,99 @@ function trimName(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+function normalizeMetaText(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function sanitizeCatalogName(raw: string | null): string | null {
+  if (!raw) return null;
+  const cleaned = normalizeMetaText(raw)
+    .replace(/\s*[-|:]\s*네이버\s*쇼핑\s*$/i, "")
+    .replace(/^네이버\s*쇼핑\s*[-|:]\s*/i, "")
+    .trim();
+  if (!cleaned) return null;
+  if (/^네이버\s*쇼핑$/i.test(cleaned)) return null;
+  return cleaned;
+}
+
+function isGenericCatalogName(name: string | null | undefined): boolean {
+  const t = name?.trim() ?? "";
+  if (!t) return true;
+  return /^네이버\s*쇼핑$/i.test(t);
+}
+
+function normalizeCategoryText(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = normalizeMetaText(raw)
+    .replace(/^\s*카테고리\s*[:：]\s*/i, "")
+    .replace(/\s*\/\s*/g, " > ");
+  return t || null;
+}
+
+function normalizeImageUrl(baseUrl: string, raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = raw.trim();
+  if (!t) return null;
+  try {
+    const abs = new URL(t, baseUrl);
+    if (abs.protocol !== "https:" && abs.protocol !== "http:") return null;
+    return abs.href;
+  } catch {
+    return null;
+  }
+}
+
+function decodeJsonEscapes(raw: string): string {
+  return raw
+    .replace(/\\u003c/g, "<")
+    .replace(/\\u003e/g, ">")
+    .replace(/\\u0026/g, "&")
+    .replace(/\\\//g, "/")
+    .replace(/\\"/g, '"');
+}
+
+function collectValuesByKey(root: unknown, keyNames: string[]): string[] {
+  const wanted = new Set(keyNames.map((k) => k.toLowerCase()));
+  const out: string[] = [];
+  const seen = new Set<unknown>();
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const v of node) walk(v);
+      return;
+    }
+    const rec = node as Record<string, unknown>;
+    for (const [k, v] of Object.entries(rec)) {
+      const key = k.toLowerCase();
+      if (wanted.has(key) && typeof v === "string") {
+        const t = normalizeMetaText(v);
+        if (t) out.push(t);
+      }
+      if (v && typeof v === "object") walk(v);
+    }
+  };
+  walk(root);
+  return out;
+}
+
+function looksLikeCatalogUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    return (
+      (host === "search.shopping.naver.com" || host === "shopping.naver.com") &&
+      /\/catalog\/\d+/i.test(u.pathname)
+    );
+  } catch {
+    return /search\.shopping\.naver\.com\/catalog\/\d+/i.test(url);
+  }
+}
+
 /** smartstore / brand / 모바일 등 경로의 숫자 productId */
 function extractProductId(rawUrl: string): string | null {
-  const m = rawUrl.match(/\/products\/(\d+)/i);
-  return m?.[1] ?? null;
+  return extractNaverSmartstoreProductId(rawUrl);
 }
 
 function toMobileProductUrl(productUrl: string, productId: string | null): string {
@@ -236,6 +326,189 @@ async function fetchSmartstoreProductMetaViaMobileHtml(
                     },
                   };
                 }
+
+async function fetchShoppingCatalogMetaViaHtml(
+  productUrl: string
+): Promise<FetchSmartstoreProductMetaResult> {
+  const normalized = normalizeProductUrl(productUrl);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+
+  let res: Response;
+  try {
+    await randomSmartstoreDelay("save");
+    res = await fetch(normalized, {
+      method: "GET",
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+      },
+      redirect: "follow",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+  const finalUrl = res.url || normalized;
+
+  const ogTitle = $('meta[property="og:title"]').attr("content")?.trim() ?? null;
+  const ogImage = $('meta[property="og:image"]').attr("content")?.trim() ?? null;
+  const ogDesc =
+    $('meta[property="og:description"]').attr("content")?.trim() ?? null;
+  const metaDesc = $('meta[name="description"]').attr("content")?.trim() ?? null;
+  const titleTag = $("title").first().text().trim() || null;
+
+  const breadcrumbParts: string[] = [];
+  $(
+    '[class*="breadcrumb" i] a, [class*="breadcrumb" i] li, nav[aria-label*="bread" i] a, nav[aria-label*="bread" i] li'
+  ).each((_, el) => {
+    const text = normalizeMetaText($(el).text());
+    if (text && text.length < 120) {
+      breadcrumbParts.push(text);
+    }
+  });
+  const breadcrumb = Array.from(new Set(breadcrumbParts))
+    .filter((x) => !/^홈$/.test(x))
+    .join(" > ");
+
+  let jsonName: string | null = null;
+  let jsonImage: string | null = null;
+  let jsonCategory: string | null = null;
+
+  const trySetJsonFields = (payload: string) => {
+    if (!jsonName) {
+      const m = payload.match(
+        /"(?:productName|name|title|displayName)"\s*:\s*"([^"]+)"/i
+      );
+      if (m?.[1]) jsonName = m[1];
+    }
+    if (!jsonImage) {
+      const m = payload.match(
+        /"(?:representativeImageUrl|representImage|imageUrl|thumbnailUrl|image)"\s*:\s*"([^"]+)"/i
+      );
+      if (m?.[1]) jsonImage = m[1];
+    }
+    if (!jsonCategory) {
+      const m = payload.match(
+        /"(?:wholeCategoryName|categoryName|categoryPath|category)"\s*:\s*"([^"]+)"/i
+      );
+      if (m?.[1]) jsonCategory = m[1];
+    }
+  };
+
+  $('script[type="application/ld+json"], script').each((_, el) => {
+    const raw = $(el).html();
+    if (!raw) return;
+    const text = raw.trim();
+    if (!text) return;
+    trySetJsonFields(text);
+    if (!jsonCategory && /BreadcrumbList/i.test(text)) {
+      const names = [...text.matchAll(/"name"\s*:\s*"([^"]+)"/g)]
+        .map((m) => normalizeMetaText(m[1] ?? ""))
+        .filter(Boolean);
+      if (names.length > 0) {
+        jsonCategory = names.filter((x) => !/^홈$/.test(x)).join(" > ");
+      }
+    }
+  });
+
+  const nextDataRaw = $('#__NEXT_DATA__').html()?.trim() ?? null;
+  if (nextDataRaw) {
+    try {
+      const parsed = JSON.parse(decodeJsonEscapes(nextDataRaw)) as unknown;
+      if (!jsonName) {
+        const names = collectValuesByKey(parsed, [
+          "productName",
+          "name",
+          "displayName",
+          "title",
+        ]);
+        jsonName = names.find((n) => !/^네이버\s*쇼핑$/i.test(n)) ?? names[0] ?? null;
+      }
+      if (!jsonImage) {
+        const imgs = collectValuesByKey(parsed, [
+          "imageUrl",
+          "image",
+          "thumbnail",
+          "thumbnailUrl",
+          "representativeImageUrl",
+        ]);
+        jsonImage = imgs[0] ?? null;
+      }
+      if (!jsonCategory) {
+        const cats = collectValuesByKey(parsed, [
+          "wholeCategoryName",
+          "categoryName",
+          "categoryPath",
+          "category",
+        ]);
+        jsonCategory = cats[0] ?? null;
+      }
+    } catch (e) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [catalog-meta] __NEXT_DATA__ 파싱 실패`, e);
+    }
+  }
+
+  const pickedName = sanitizeCatalogName(
+    ogTitle || jsonName || titleTag || null
+  );
+  const pickedImage = normalizeImageUrl(
+    finalUrl,
+    ogImage || jsonImage || null
+  );
+  const pickedCategory = normalizeCategoryText(
+    breadcrumb || jsonCategory || ogDesc || metaDesc || null
+  );
+
+  console.log(`${SMARTSTORE_TRACE_LOG} [catalog-meta] HTML 파싱 결과`, {
+    requestUrl: normalized,
+    responseUrl: finalUrl,
+    status: res.status,
+    name: pickedName,
+    imageUrl: pickedImage,
+    category: pickedCategory,
+    raw: {
+      ogTitle,
+      titleTag,
+      ogImage,
+      jsonName,
+      jsonImage,
+      breadcrumb,
+      jsonCategory,
+      ogDesc,
+      metaDesc,
+    },
+  });
+
+  return {
+    meta: {
+      name: pickedName,
+      imageUrl: pickedImage,
+      category: pickedCategory,
+    },
+    productPageFetch: {
+      requestUrl: normalized,
+      responseUrl: finalUrl,
+      status: res.status,
+      responseOk: res.ok,
+      contentType: res.headers.get("content-type"),
+      bodyHeadSample: html.slice(0, 500) || "(빈 본문)",
+      htmlStatus: res.status,
+      htmlResponseUrl: finalUrl,
+      htmlHeadSample: html.slice(0, 500) || "(빈 본문)",
+      apiUrl: null,
+      apiStatus: null,
+      apiHeadSample: null,
+    },
+  };
+}
 
 function mergeImageUrlsUnique(...lists: string[][]): string[] {
   const seen = new Set<string>();
@@ -842,8 +1115,55 @@ export async function fetchSmartstoreProductMeta(
       return { meta: { name: null, imageUrl: null, category: null }, productPageFetch: null };
     }
 
-    console.log(`${SMARTSTORE_TRACE_LOG} [meta] (mobile) 입력 URL`, normalized);
-    return await fetchSmartstoreProductMetaViaMobileHtml(normalized, naverProductId);
+    const isCatalog = looksLikeCatalogUrl(normalized);
+
+    console.log(`${SMARTSTORE_TRACE_LOG} [meta] 입력 URL`, {
+      normalized,
+      isCatalog,
+      naverProductId,
+    });
+
+    let fetched = isCatalog
+      ? await fetchShoppingCatalogMetaViaHtml(normalized)
+      : await fetchSmartstoreProductMetaViaMobileHtml(normalized, naverProductId);
+
+    const needsCatalogFallback =
+      isCatalog &&
+      (isGenericCatalogName(fetched.meta.name) ||
+        !fetched.meta.imageUrl ||
+        !fetched.meta.category);
+
+    if (needsCatalogFallback) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [catalog-meta] 부족 메타 감지`, {
+        stage: "html-parse",
+        name: fetched.meta.name,
+        imageUrl: fetched.meta.imageUrl,
+        category: fetched.meta.category,
+      });
+
+      console.warn(`${SMARTSTORE_TRACE_LOG} [catalog-meta] fetch 기반 수집만 사용 (Playwright 미사용)`);
+    }
+
+    if (isCatalog && !fetched.meta.category) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [catalog-meta] category 비어있음`, {
+        stage: "final",
+        url: normalized,
+      });
+    }
+    if (
+      isCatalog &&
+      (isGenericCatalogName(fetched.meta.name) || !fetched.meta.imageUrl || !fetched.meta.category)
+    ) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [catalog-meta] 최종 메타 부족`, {
+        stage: "final",
+        url: normalized,
+        name: fetched.meta.name,
+        imageUrl: fetched.meta.imageUrl,
+        category: fetched.meta.category,
+      });
+    }
+
+    return fetched;
   } catch (e) {
     console.error("[fetchSmartstoreProductMeta]", e);
     return {

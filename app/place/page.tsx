@@ -284,11 +284,7 @@ function PlaceKeywordModalSortRow({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-2.5">
-        {showTopRibbon ? (
-          <span className="max-w-[8.5rem] text-right text-[9px] font-semibold leading-snug text-[#7c3aed] sm:max-w-none md:text-[10px]">
-            전체 목록에 표시됨
-          </span>
-        ) : null}
+       
         <button
           type="button"
           onClick={onRemove}

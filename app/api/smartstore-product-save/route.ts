@@ -13,6 +13,7 @@ import {
   isSmartstoreShoppingSearchConfigured,
 } from "@/lib/fetch-smartstore-search-api";
 import {
+  extractNaverShoppingProductRef,
   extractNaverSmartstoreProductId,
   isLikelySmartstoreProductUrl,
 } from "@/lib/smartstore-url";
@@ -21,6 +22,20 @@ import { isSmartstoreNaverRateLimitedError } from "@/lib/smartstore-bot-shield";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function extractStoreSlugFromProductUrl(rawUrl: string): string | null {
+  try {
+    const u = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
+    const segs = u.pathname.split("/").filter(Boolean);
+    const pi = segs.indexOf("products");
+    if (pi > 0 && /^\d+$/.test(segs[pi + 1] ?? "")) {
+      return segs[pi - 1] ?? null;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 /**
  * POST /api/smartstore-product-save
@@ -154,6 +169,9 @@ export async function POST(req: Request) {
     })();
 
     if (!isLikelySmartstoreProductUrl(normalizedUrl)) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [save] 실패 단계: URL 형식 검증`, {
+        productUrl: normalizedUrl,
+      });
       return NextResponse.json(
         {
           error:
@@ -163,16 +181,32 @@ export async function POST(req: Request) {
       );
     }
 
-    const naverProductId = extractNaverSmartstoreProductId(normalizedUrl);
+    const productRef = extractNaverShoppingProductRef(normalizedUrl);
+    const naverProductId =
+      productRef?.productId ?? extractNaverSmartstoreProductId(normalizedUrl);
+    const productUrlType = productRef?.type ?? "unknown";
+    const metaFetchTargetUrl =
+      productUrlType === "window" || productUrlType === "shoppingCatalog"
+        ? normalizedUrl
+        : pcUrl;
 
     if (!naverProductId) {
+      console.warn(`${SMARTSTORE_TRACE_LOG} [save] 실패 단계: 상품ID 추출`, {
+        productUrl: normalizedUrl,
+        pcUrl,
+      });
       return NextResponse.json(
         { error: "상품 URL에서 상품 번호를 찾을 수 없습니다." },
         { status: 400 }
       );
     }
 
-    const fallbackName = `상품 #${naverProductId}`;
+    const storeSlug = extractStoreSlugFromProductUrl(normalizedUrl);
+    const fallbackName = (() => {
+      if (storeSlug) return `${storeSlug} 상품 #${naverProductId}`;
+      if (productUrlType === "shoppingCatalog") return `catalog #${naverProductId}`;
+      return `상품 #${naverProductId}`;
+    })();
 
     const space = (() => {
       const raw = String(body?.space ?? "").trim().toUpperCase();
@@ -229,6 +263,17 @@ export async function POST(req: Request) {
     let productPageFetch: Awaited<
       ReturnType<typeof fetchSmartstoreProductMeta>
     >["productPageFetch"] = null;
+    let searchMatchInfo: {
+      matchedProductId: string | null;
+      isStrongMatch: boolean;
+      weakMatch: boolean;
+      metaSource: string | null;
+    } = {
+      matchedProductId: null,
+      isStrongMatch: false,
+      weakMatch: false,
+      metaSource: null,
+    };
 
     const urlQueryHint = (() => {
       try {
@@ -253,14 +298,19 @@ export async function POST(req: Request) {
       userId,
       productUrl: normalizedUrl,
       pcUrl,
+      metaFetchTargetUrl,
       productId: naverProductId,
+      productUrlType,
       space,
       skipMetaFetch,
       urlQueryHint,
     });
 
     if (!skipMetaFetch) {
-      const fetched = await fetchSmartstoreProductMeta(pcUrl, naverProductId);
+      const fetched = await fetchSmartstoreProductMeta(
+        metaFetchTargetUrl,
+        naverProductId
+      );
       meta = fetched.meta;
       productPageFetch = fetched.productPageFetch;
     }
@@ -276,12 +326,27 @@ export async function POST(req: Request) {
       if (shoppingConfigured) {
         try {
           const searchMeta = await fetchSmartstoreMetaViaShoppingSearchApi({
-            productUrl: pcUrl,
+            productUrl: metaFetchTargetUrl,
             productId: naverProductId,
+            productUrlType,
             existingNameHint: existing?.name ?? null,
             ogTitle: urlQueryHint,
             pageProductNameHint: meta.name ?? null,
           });
+          console.log(`${SMARTSTORE_TRACE_LOG} [save] search fallback 결과`, {
+            inputProductId: naverProductId,
+            productUrlType,
+            matchedProductId: searchMeta.matchedProductId,
+            isStrongMatch: searchMeta.isStrongMatch,
+            weakMatch: searchMeta.weakMatch,
+            metaSource: searchMeta.metaSource,
+          });
+          searchMatchInfo = {
+            matchedProductId: searchMeta.matchedProductId,
+            isStrongMatch: searchMeta.isStrongMatch,
+            weakMatch: searchMeta.weakMatch,
+            metaSource: searchMeta.metaSource,
+          };
           if (searchMeta.searchApiMatched) {
             meta = {
               name: meta.name?.trim() ? meta.name : searchMeta.name,
@@ -302,6 +367,9 @@ export async function POST(req: Request) {
     }
 
     if (isSuspiciousSmartstoreMetaName(meta.name)) {
+      meta.name = null;
+    }
+    if (meta.name?.trim() && /^네이버\s*쇼핑$/i.test(meta.name.trim())) {
       meta.name = null;
     }
 
@@ -337,7 +405,23 @@ export async function POST(req: Request) {
 
     if (!skipMetaFetch && !gotFinalMeta) {
       const overrideProvided = Boolean(nameFromOverride) || Boolean(thumbFromOverride);
-      if (!overrideProvided) {
+      const allowMinimalSaveWhenMetaMissing =
+        productUrlType === "brand" || productUrlType === "shoppingCatalog";
+
+      console.warn(`${SMARTSTORE_TRACE_LOG} [save] 메타 부족 감지`, {
+        productId: naverProductId,
+        productUrl: normalizedUrl,
+        metaFetchTargetUrl,
+        productUrlType,
+        gotServerMeta,
+        gotFinalMeta,
+        overrideProvided,
+        allowMinimalSaveWhenMetaMissing,
+        fallbackName,
+        storeSlug,
+      });
+
+      if (!overrideProvided && !allowMinimalSaveWhenMetaMissing) {
         return NextResponse.json(
           { error: "네이버에서 정보를 가져오지 못했습니다" },
           { status: 400 }
@@ -358,6 +442,21 @@ export async function POST(req: Request) {
           : null,
       productId: naverProductId,
     };
+
+    console.log(`${SMARTSTORE_TRACE_LOG} [save] 최종 저장 payload`, {
+      inputProductId: naverProductId,
+      productUrlType,
+      matchedProductId: searchMatchInfo.matchedProductId,
+      isStrongMatch: searchMatchInfo.isStrongMatch,
+      weakMatch: searchMatchInfo.weakMatch,
+      metaSource:
+        gotServerMeta || gotFinalMeta
+          ? "fetch-meta"
+          : (searchMatchInfo.metaSource ?? "fallback-or-manual"),
+      name: data.name,
+      category: data.category,
+      thumbnailLink: data.thumbnailLink,
+    });
 
     let product: Awaited<ReturnType<typeof prisma.smartstoreProduct.upsert>>;
     try {
@@ -388,6 +487,11 @@ export async function POST(req: Request) {
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        console.error(`${SMARTSTORE_TRACE_LOG} [save] 실패 단계: DB upsert 유니크 충돌`, {
+          userId,
+          productId: naverProductId,
+          space,
+        });
         return NextResponse.json(
           {
             ok: false,
@@ -398,6 +502,11 @@ export async function POST(req: Request) {
         );
       }
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+        console.error(`${SMARTSTORE_TRACE_LOG} [save] 실패 단계: DB upsert FK 오류`, {
+          userId,
+          productId: naverProductId,
+          space,
+        });
         return NextResponse.json(
           { error: "로그인이 필요합니다." },
           { status: 401 }

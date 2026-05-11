@@ -1447,7 +1447,7 @@ export default function SmartstoreRankPage() {
             </div>
             <div className="px-6 py-5">
               <p className="text-[13px] leading-relaxed text-[#6b7280]">
-                추적할 스마트스토어·브랜드스토어 상품 페이지 주소를 입력하세요. 브라우저 주소창의{" "}
+                추적할 스마트스토어·브랜드스토어·네이버쇼핑(catalog/window) 상품 페이지 주소를 입력하세요. 브라우저 주소창의{" "}
                 <span className="font-bold text-[#374151]">상품 상세 URL</span>을 붙여넣으면 됩니다.
               </p>
 
@@ -1489,6 +1489,16 @@ export default function SmartstoreRankPage() {
                         http://shopping.naver.com/window-products/
                         <span className="text-[#7c3aed]">카테고리</span>/
                         <span className="text-[#7c3aed]">상품ID</span>?..
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                    <span>
+                      카탈로그 상품:{" "}
+                      <span className="font-semibold text-[#374151]">
+                        https://search.shopping.naver.com/catalog/
+                        <span className="text-[#7c3aed]">catalogID</span>?..
                       </span>
                     </span>
                   </li>

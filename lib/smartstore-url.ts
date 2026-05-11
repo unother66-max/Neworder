@@ -1,7 +1,35 @@
-/** 스마트스토어/브랜드스토어/쇼핑윈도우 상품 URL에서 숫자 상품 ID 추출 */
-export function extractNaverSmartstoreProductId(rawUrl: string): string | null {
+export type NaverShoppingProductUrlType =
+  | "smartstore"
+  | "brand"
+  | "window"
+  | "shoppingCatalog"
+  | "unknown";
+
+export type NaverShoppingProductRef = {
+  productId: string;
+  type: NaverShoppingProductUrlType;
+  host: string;
+};
+
+/** 스마트스토어/브랜드스토어/윈도우/카탈로그 URL에서 상품 번호 추출 */
+export function extractNaverShoppingProductRef(
+  rawUrl: string
+): NaverShoppingProductRef | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
+
+  const classify = (
+    host: string,
+    path: string
+  ): NaverShoppingProductUrlType => {
+    const h = host.toLowerCase();
+    const p = path.toLowerCase();
+    if (p.includes("/window-products/")) return "window";
+    if (p.includes("/catalog/")) return "shoppingCatalog";
+    if (h.includes("brand.naver.com")) return "brand";
+    if (h.includes("smartstore.naver.com")) return "smartstore";
+    return "unknown";
+  };
 
   try {
     const u = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
@@ -18,12 +46,24 @@ export function extractNaverSmartstoreProductId(rawUrl: string): string | null {
     ];
     for (const re of patterns) {
       const m = path.match(re);
-      if (m?.[1]) return m[1];
+      if (m?.[1]) {
+        return {
+          productId: m[1],
+          type: classify(u.hostname, path),
+          host: u.hostname.toLowerCase(),
+        };
+      }
     }
 
     // 4. 만약 위 패턴에 없는데 쿼리스트링에 nvMid(네이버상품ID)가 있는 경우도 체크
     const nvMid = u.searchParams.get("nvMid");
-    if (nvMid && /^\d+$/.test(nvMid)) return nvMid;
+    if (nvMid && /^\d+$/.test(nvMid)) {
+      return {
+        productId: nvMid,
+        type: classify(u.hostname, path),
+        host: u.hostname.toLowerCase(),
+      };
+    }
 
     return null;
   } catch {
@@ -36,10 +76,24 @@ export function extractNaverSmartstoreProductId(rawUrl: string): string | null {
     ];
     for (const re of patterns) {
       const m = trimmed.match(re);
-      if (m?.[1]) return m[1];
+      if (m?.[1]) {
+        const lowered = trimmed.toLowerCase();
+        const hostMatch = lowered.match(/^https?:\/\/([^\/?#]+)/i);
+        const host = hostMatch?.[1] ?? "";
+        return {
+          productId: m[1],
+          type: classify(host, lowered),
+          host,
+        };
+      }
     }
     return null;
   }
+}
+
+/** 스마트스토어/브랜드스토어/쇼핑윈도우 상품 URL에서 숫자 상품 ID 추출 */
+export function extractNaverSmartstoreProductId(rawUrl: string): string | null {
+  return extractNaverShoppingProductRef(rawUrl)?.productId ?? null;
 }
 
 export function isLikelySmartstoreProductUrl(rawUrl: string): boolean {

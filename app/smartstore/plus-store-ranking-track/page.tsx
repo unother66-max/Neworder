@@ -1306,6 +1306,15 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                     </span>
                   </span>
                 </li>
+                <li className="flex gap-2">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
+                  <span>
+                    카탈로그 상품:{" "}
+                    <span className="font-semibold text-[#374151]">
+                      https://search.shopping.naver.com/catalog/<span className="text-[#b91c1c]">catalogID</span>?..
+                    </span>
+                  </span>
+                </li>
               </ul>
               <p className="mt-2 text-[11px] font-semibold text-[#6b7280]">
                 * 성인상품 중 ‘윈도우 상품’은 등록할 수 없으며, 일반·브랜드 성인상품만 등록 가능합니다.

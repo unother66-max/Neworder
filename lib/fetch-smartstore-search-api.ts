@@ -13,6 +13,8 @@ const SHOP_API = "https://openapi.naver.com/v1/search/shop.json";
 const LOG_P = "[smartstore-search-api]";
 const MAX_DISPLAY = 100;
 
+type ProductUrlType = "smartstore" | "brand" | "window" | "shoppingCatalog" | "unknown";
+
 function logNaverEnvForProcess(): void {
   const id = process.env.NAVER_CLIENT_ID;
   const sec = process.env.NAVER_CLIENT_SECRET;
@@ -27,6 +29,7 @@ function logNaverEnvForProcess(): void {
 export type SmartstoreSearchApiInput = {
   productUrl: string;
   productId: string;
+  productUrlType?: ProductUrlType;
   attemptedChannelSlug?: string | null;
   /** DB에 있던 상품명 (3순위 검색어) */
   existingNameHint?: string | null;
@@ -49,6 +52,9 @@ export type SmartstoreSearchApiMetaResult = {
   price: number | null;
   matchedProductId: string | null;
   matchedLink: string | null;
+  isStrongMatch: boolean;
+  weakMatch: boolean;
+  metaSource: "search-api" | null;
   searchApiUsed: boolean;
   searchApiMatched: boolean;
 };
@@ -96,6 +102,16 @@ function extractSmartstoreSlugFromUrl(productUrl: string): string | null {
     /* ignore */
   }
   return null;
+}
+
+function extractCatalogIdFromUrl(link: string): string | null {
+  const m = link.match(/\/catalog\/(\d+)(?:[/?#]|$)/i);
+  return m?.[1] ?? null;
+}
+
+function extractProductIdFromAnyLink(link: string): string | null {
+  const m = link.match(/\/products\/(\d+)(?:[/?#]|$)/i);
+  return m?.[1] ?? extractCatalogIdFromUrl(link);
 }
 
 function stripHtmlTags(s: string): string {
@@ -360,7 +376,8 @@ async function fetchShopPage(
 
 function itemToMeta(
   it: ShopJsonItem,
-  targetProductId: string
+  targetProductId: string,
+  opts?: { isStrongMatch?: boolean; weakMatch?: boolean }
 ): SmartstoreSearchApiMetaResult {
   const title = stripHtmlTags(typeof it.title === "string" ? it.title : "");
   const image = typeof it.image === "string" && it.image.trim() ? it.image.trim() : null;
@@ -377,8 +394,11 @@ function itemToMeta(
     price,
     matchedProductId: mid || targetProductId,
     matchedLink: link,
+    isStrongMatch: opts?.isStrongMatch === true,
+    weakMatch: opts?.weakMatch === true,
+    metaSource: "search-api",
     searchApiUsed: true,
-    searchApiMatched: true,
+    searchApiMatched: opts?.isStrongMatch === true,
   };
 }
 
@@ -397,6 +417,9 @@ export async function fetchSmartstoreMetaViaShoppingSearchApi(
     price: null,
     matchedProductId: null,
     matchedLink: null,
+    isStrongMatch: false,
+    weakMatch: false,
+    metaSource: null,
     searchApiUsed: false,
     searchApiMatched: false,
   };
@@ -442,6 +465,7 @@ export async function fetchSmartstoreMetaViaShoppingSearchApi(
     labeled.unshift({ raw: `${slug} ${hint}`, source: "slug+ogTitle" });
   }
   const tried: Array<{ source: string; finalQuery: string }> = [];
+  let hadWeakMatch = false;
 
   for (const { raw, source } of labeled) {
     const finalQuery = sanitizeShoppingSearchQuery(raw);
@@ -480,7 +504,33 @@ export async function fetchSmartstoreMetaViaShoppingSearchApi(
       continue;
     }
 
-    const meta = itemToMeta(pick, pid);
+    const pickPid = String(pick.productId ?? "").trim();
+    const pickLink = typeof pick.link === "string" ? pick.link.trim() : "";
+    const pickLinkPid = extractProductIdFromAnyLink(pickLink);
+    const pickCatalogId = extractCatalogIdFromUrl(pickLink);
+    const urlType = input.productUrlType ?? "unknown";
+
+    let isStrongMatch = false;
+    if (urlType === "shoppingCatalog") {
+      isStrongMatch = pickPid === pid || pickCatalogId === pid || pickLinkPid === pid;
+    } else {
+      isStrongMatch = pickPid === pid || pickLinkPid === pid;
+    }
+
+    const weakMatch = !isStrongMatch;
+    const meta = itemToMeta(pick, pid, { isStrongMatch, weakMatch });
+    if (weakMatch) {
+      hadWeakMatch = true;
+      console.warn("[smartstore-search-api] weakMatch 감지", {
+        productUrlType: urlType,
+        inputProductId: pid,
+        matchedProductId: pickPid || null,
+        matchedLink: pickLink || null,
+        finalQuery,
+        source,
+      });
+      continue;
+    }
     console.log("[smartstore-search-api] finalPayload", meta);
     return meta;
   }
@@ -489,6 +539,7 @@ export async function fetchSmartstoreMetaViaShoppingSearchApi(
     ...empty,
     searchApiUsed: true,
     searchApiMatched: false,
+    weakMatch: hadWeakMatch,
   };
   console.log("[smartstore-search-api] finalPayload", {
     ...unmatched,
