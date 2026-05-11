@@ -1,25 +1,38 @@
 // @ts-nocheck
+import type { NextAuthOptions } from "next-auth";
 import KakaoProvider from "next-auth/providers/kakao";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { prisma } from "@/lib/prisma";
 
-export const authOptions = {
-  secret: process.env.AUTH_SECRET,
+/** NextAuth v4는 서버에서 NEXTAUTH_SECRET / AUTH_SECRET 둘 다 읽습니다. 클라이언트 번들은 NEXTAUTH_URL을 사용합니다. */
+const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
+  secret: authSecret,
   providers: [
     KakaoProvider({
       clientId: process.env.AUTH_KAKAO_ID,
       clientSecret: process.env.AUTH_KAKAO_SECRET,
+      allowDangerousEmailAccountLinking: true,
       profile(profile) {
         return {
           id: String(profile.id),
-          name: profile.properties?.nickname ?? "카카오사용자",
-          email: profile.kakao_account?.email ?? null,
-          image: profile.properties?.profile_image ?? null,
+          name:
+            profile.properties?.nickname ||
+            profile.kakao_account?.profile?.nickname ||
+            "카카오사용자",
+          email:
+            profile.kakao_account?.email ?? `${profile.id}@no-email.local`,
+          image:
+            profile.properties?.profile_image ??
+            profile.kakao_account?.profile?.profile_image_url ??
+            null,
         };
       },
     }),
   ],
-  session: {
-    strategy: "jwt",
-  },
+  session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
   },
@@ -34,7 +47,6 @@ export const authOptions = {
       return token;
     },
     async session({ session, token }) {
-      // Ensure session.user.id is always populated (fallback to token.sub)
       const id =
         typeof (token as any).id === "string" && String((token as any).id).trim()
           ? String((token as any).id).trim()
