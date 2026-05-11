@@ -11,6 +11,7 @@ datasource db {
 enum SmartstoreSpace {
   NAVER_PRICE
   PLUS_STORE
+  NAVER_REVIEW
 }
 
 enum UserTier {

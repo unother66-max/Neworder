@@ -4,7 +4,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import TopNav from "@/components/top-nav";
+import { SmartstoreProductRegisterModal } from "@/components/smartstore-product-register-modal";
 import { GripVertical, Pin, Trash2 } from "lucide-react";
+import { ADMIN_EMAIL } from "@/lib/constants";
 import {
   DndContext,
   PointerSensor,
@@ -115,6 +117,11 @@ function ProductCardThumb({
 export default function SmartstorePlusStoreRankingTrackPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const currentUserEmail = String(session?.user?.email ?? "").trim().toLowerCase();
+  const isDeveloperBuild = process.env.NODE_ENV !== "production";
+  const isPrivilegedUser =
+    status === "authenticated" &&
+    (currentUserEmail === ADMIN_EMAIL.toLowerCase() || isDeveloperBuild);
 
   const [mounted, setMounted] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -131,10 +138,6 @@ export default function SmartstorePlusStoreRankingTrackPage() {
   const [trackingLoadingId, setTrackingLoadingId] = useState<string | null>(null);
   const [pinningId, setPinningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [fallbackNoticeByProductId, setFallbackNoticeByProductId] = useState<
-    Record<string, boolean>
-  >({});
-
   const [kwModalProduct, setKwModalProduct] =
     useState<SmartstoreProductRow | null>(null);
   const [pendingKeywords, setPendingKeywords] = useState<string[]>([]);
@@ -342,7 +345,6 @@ export default function SmartstorePlusStoreRankingTrackPage() {
 
       const rankErrors: string[] = [];
       let rankConfigError: string | null = null;
-      let usedFallback = false;
       if (p.keywords.length > 0) {
         for (const kw of p.keywords) {
           const rr = await fetch("/api/smartstore-keyword-check-rank", {
@@ -358,14 +360,8 @@ export default function SmartstorePlusStoreRankingTrackPage() {
               break;
             }
             rankErrors.push(`${kw.keyword}: ${rd.error || `HTTP ${rr.status}`}`);
-          } else if (rd?.fallbackUsed === true) {
-            usedFallback = true;
           }
         }
-      }
-
-      if (usedFallback) {
-        setFallbackNoticeByProductId((prev) => ({ ...prev, [p.id]: true }));
       }
 
       await fetchProducts({ silent: true });
@@ -731,6 +727,33 @@ export default function SmartstorePlusStoreRankingTrackPage() {
     );
   }
 
+  if (!isPrivilegedUser) {
+    return (
+      <>
+        <TopNav activeSmartstoreSub="rank-price" />
+        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] px-5 pt-24">
+          <section className="w-full max-w-[620px] rounded-[20px] border border-[#e5e7eb] bg-white px-6 py-10 text-center shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+              플러스스토어 순위 추적 준비중
+            </h1>
+            <p className="mt-3 text-[13px] leading-6 text-[#6b7280] md:text-[14px]">
+              현재 정확도 이슈로 일반 사용자에게는 비공개 처리되어 있습니다.
+              <br />
+              안정화 후 다시 공개될 예정입니다.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/smartstore")}
+              className="mt-6 inline-flex h-[42px] items-center justify-center rounded-[12px] bg-[#333333] px-5 text-[13px] font-bold text-white transition hover:bg-[#2563EB]"
+            >
+              스마트스토어 순위 추적으로 이동
+            </button>
+          </section>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <TopNav activeSmartstoreSub="rank-plus-store" />
@@ -755,8 +778,8 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                   </span>
                 </div>
                 <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
-                  플러스토어 상품의 노출 순위를 추적하기 위한 페이지입니다. 상품을 등록해 두면 이후 순위 수집 기능과
-                  연동됩니다.
+                  플러스토어 상품의 노출 순위를 추적하기 위한 페이지입니다. 순위는 광고 제외 organic 기준으로
+                  수집됩니다.
                 </p>
               </div>
 
@@ -1209,7 +1232,9 @@ export default function SmartstorePlusStoreRankingTrackPage() {
 
                   <div className="border-t border-[#f3f4f6] px-3 pb-3 md:px-6 md:pb-4">
                     <div className="mb-2 mt-3">
-                      <p className="text-[11px] font-semibold text-[#6b7280]">키워드별 순위</p>
+                    <p className="text-[11px] font-semibold text-[#6b7280]">
+                      플러스스토어 순위 (광고 제외 기준)
+                    </p>
                     </div>
                     <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb]">
                       <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1237,7 +1262,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                           {p.keywords.length === 0 ? (
                             <tr>
                               <td colSpan={5} className="px-2 py-7 text-center text-[12px] text-[#9ca3af] md:px-4 md:py-6">
-                                키워드를 등록한 뒤 상단 「업데이트」로 순위를 갱신하면 네이버 쇼핑 검색 기준 순위가
+                                키워드를 등록한 뒤 상단 「업데이트」로 순위를 갱신하면 광고 제외 organic 기준 순위가
                                 표시돼요.
                                 <br />
                                 <span className="font-semibold">[키워드 관리]</span>에서 키워드를 추가하세요.
@@ -1266,6 +1291,8 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                                     className={`text-xs md:text-[13px] ${
                                       kw.latestRankLabel === "-"
                                         ? "font-bold text-[#9ca3af]"
+                                        : kw.latestRankLabel === "조회 실패"
+                                          ? "font-bold text-[#ef4444]"
                                         : kw.latestRankLabel === "1000위 밖" ||
                                             kw.latestRankLabel === "미노출"
                                           ? "font-bold text-[#94a3b8]"
@@ -1274,14 +1301,6 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                                   >
                                     {kw.latestRankLabel}
                                   </span>
-                                  {fallbackNoticeByProductId[p.id] ? (
-                                    <span
-                                      className="ml-1 text-[10px] font-semibold text-[#9ca3af]"
-                                      title="플러스스토어 전용 조회가 차단되어 일반 쇼핑 검색 순위로 대체되었습니다."
-                                    >
-                                      (일반 검색 기준)
-                                    </span>
-                                  ) : null}
                                   {kw.latestRankAt && (
                                     <p className="mt-0.5 hidden text-[10px] text-[#9ca3af] md:block">
                                       {new Date(kw.latestRankAt).toLocaleString(
@@ -1312,138 +1331,33 @@ export default function SmartstorePlusStoreRankingTrackPage() {
         </section>
       </main>
 
-      {registerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
-          <div className="w-full max-w-[520px] rounded-[24px] bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#f3f4f6] px-6 py-5">
-              <h2 className="text-[18px] font-black text-[#111827]">상품 등록</h2>
-              <button
-                type="button"
-                onClick={closeRegister}
-                className="text-[22px] leading-none text-[#9ca3af] hover:text-[#111827]"
-              >
-                ×
-              </button>
-            </div>
-            <div className="px-6 py-5">
-              <p className="text-[13px] leading-relaxed text-[#6b7280]">
-                추적할 스마트스토어·브랜드스토어·네이버쇼핑(catalog/window) 상품 페이지 주소를 입력하세요. 브라우저 주소창의{" "}
-                <span className="font-bold text-[#374151]">상품 상세 URL</span>을 붙여넣으면 됩니다.
-              </p>
-
-              <label className="mt-4 block text-[12px] font-bold text-[#4b5563]">상품 URL *</label>
-              <input
-                type="url"
-                value={regUrl}
-                onChange={(e) => setRegUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleRegisterSave()}
-                placeholder="https://smartstore.naver.com/…/products/1234567890"
-                className="mt-2 w-full rounded-[12px] border border-[#e5e7eb] px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
-              />
-
-              <p className="mt-3 text-[12px] font-bold text-[#6b7280]">
-                상품 URL 형식 (상점ID와 상품ID를 꼭 포함하여 추가해주세요.)
-              </p>
-              <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-[#6b7280]">
-                <li className="flex gap-2">
-                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                  <span>
-                    일반 상품:{" "}
-                    <span className="font-semibold text-[#374151]">
-                      http://smartstore.naver.com/<span className="text-[#b91c1c]">상점ID</span>
-                      /products/<span className="text-[#b91c1c]">상품ID</span>?..
-                    </span>
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                  <span>
-                    브랜드 상품:{" "}
-                    <span className="font-semibold text-[#374151]">
-                      http://brand.naver.com/<span className="text-[#b91c1c]">상점ID</span>
-                      /products/<span className="text-[#b91c1c]">상품ID</span>?..
-                    </span>
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                  <span>
-                    윈도우 상품:{" "}
-                    <span className="font-semibold text-[#374151]">
-                      http://shopping.naver.com/window-products/<span className="text-[#b91c1c]">카테고리</span>
-                      /<span className="text-[#b91c1c]">상품ID</span>?..
-                    </span>
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                  <span>
-                    카탈로그 상품:{" "}
-                    <span className="font-semibold text-[#374151]">
-                      https://search.shopping.naver.com/catalog/<span className="text-[#b91c1c]">catalogID</span>?..
-                    </span>
-                  </span>
-                </li>
-              </ul>
-              <p className="mt-2 text-[11px] font-semibold text-[#6b7280]">
-                * 성인상품 중 ‘윈도우 상품’은 등록할 수 없으며, 일반·브랜드 성인상품만 등록 가능합니다.
-              </p>
-
-              {regError && <p className="mt-2 text-[13px] text-[#dc2626]">{regError}</p>}
-              {showManualInput && (
-                <div className="mt-4 rounded-[16px] border border-[#fee2e2] bg-[#fff1f2] px-4 py-4">
-                  <p className="text-[12px] font-extrabold text-[#b91c1c]">
-                    자동 등록에 실패했어요. 수동으로 상품 정보를 입력해 등록할 수 있습니다.
-                  </p>
-                  <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
-                    상품명
-                  </label>
-                  <input
-                    type="text"
-                    value={manualName}
-                    onChange={(e) => setManualName(e.target.value)}
-                    placeholder="예: 아이폰 케이스"
-                    className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
-                  />
-                  <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
-                    이미지 URL
-                  </label>
-                  <input
-                    type="url"
-                    value={manualImageUrl}
-                    onChange={(e) => setManualImageUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
-                  />
-                </div>
-              )}
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeRegister}
-                  className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={showManualInput ? handleManualRegisterSave : handleRegisterSave}
-                  disabled={regSaving}
-                  className="h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60"
-                >
-                  {regSaving
-                    ? showManualInput
-                      ? "수동 등록 중..."
-                      : "상품 정보 수집 중..."
-                    : showManualInput
-                      ? "수동 등록"
-                      : "등록"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SmartstoreProductRegisterModal
+        open={registerOpen}
+        onClose={closeRegister}
+        productUrl={regUrl}
+        onProductUrlChange={setRegUrl}
+        onProductUrlKeyDown={(e) => {
+          if (e.key === "Enter") handleRegisterSave();
+        }}
+        errorMessage={regError}
+        showManualInput={showManualInput}
+        manualName={manualName}
+        onManualNameChange={setManualName}
+        manualImageUrl={manualImageUrl}
+        onManualImageUrlChange={setManualImageUrl}
+        saving={regSaving}
+        onPrimaryAction={showManualInput ? handleManualRegisterSave : handleRegisterSave}
+        primaryButtonLabel={
+          regSaving
+            ? showManualInput
+              ? "수동 등록 중..."
+              : "상품 정보 수집 중..."
+            : showManualInput
+              ? "수동 등록"
+              : "등록"
+        }
+        productUrlLabel="상품 URL *"
+      />
 
       {kwModalProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">

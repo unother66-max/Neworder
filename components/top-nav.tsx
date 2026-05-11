@@ -5,7 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Noto_Sans_KR } from "next/font/google";
-import { useSession, signOut } from "next-auth/react"; 
+import { useSession, signOut } from "next-auth/react";
+import {
+  fetchUserQuotaCached,
+  getUserQuotaSessionKey,
+} from "@/lib/browser-user-quota-fetch"; 
 import { ChevronDown, ChevronRight, LogOut, Menu, MessageCircle, User, X } from "lucide-react";
 
 type TopNavProps = {
@@ -15,6 +19,10 @@ type TopNavProps = {
 };
 
 type MobileMenuSectionKey = "smartstore" | "blog" | "place" | "kakao";
+
+/** PC 메가메뉴 드롭다운·모바일 서브메뉴 공통 duration / easing */
+const NAV_DROPDOWN_MS = 300;
+const NAV_DROPDOWN_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 const getActiveMobileSectionKey = (path: string): MobileMenuSectionKey | null => {
   if (path.startsWith("/smartstore")) return "smartstore";
@@ -100,32 +108,32 @@ const TopNav = (_props: TopNavProps) => {
     setLoginMousePos({ x, y });
   };
 
+  const sessionKey = session ? getUserQuotaSessionKey(session) : null;
+
   useEffect(() => {
-    if (!session) {
+    if (!sessionKey) {
       const clearQuotaTimer = window.setTimeout(() => setQuota(null), 0);
       return () => window.clearTimeout(clearQuotaTimer);
     }
 
-    const fetchQuota = async () => {
-      try {
-        const res = await fetch("/api/user-quota");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.ok) {
-            setQuota({
-              totalItems: data.totalItems,
-              maxLimit: data.maxLimit,
-              tier: data.tier,
-              isAdmin: data.isAdmin,
-            });
-          }
-        }
-      } catch (e) {
-        console.error("사용량 조회 실패:", e);
-      }
+    let cancelled = false;
+    (async () => {
+      const data = await fetchUserQuotaCached(sessionKey);
+      if (cancelled || !data) return;
+      setQuota({
+        totalItems: data.totalItems,
+        maxLimit: data.maxLimit,
+        tier: data.tier,
+        isAdmin: data.isAdmin,
+      });
+    })().catch(() => {
+      console.error("사용량 조회 실패");
+    });
+
+    return () => {
+      cancelled = true;
     };
-    fetchQuota();
-  }, [pathname, session]);
+  }, [sessionKey]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -192,7 +200,7 @@ const TopNav = (_props: TopNavProps) => {
     mobileMenuCloseTimerRef.current = window.setTimeout(() => {
       setMobileMenuOpen(false);
       mobileMenuCloseTimerRef.current = null;
-    }, 300);
+    }, NAV_DROPDOWN_MS);
   };
 
   const handleLogout = async () => {
@@ -221,6 +229,10 @@ const TopNav = (_props: TopNavProps) => {
   const isSmartstorePriceActive = pathname === "/smartstore";
   const isSmartstoreReviewActive = pathname.startsWith("/smartstore/review-track");
   const isSmartstorePlusActive = pathname.startsWith("/smartstore/plus-store-ranking-track");
+  const isAdminUser = Boolean(quota?.isAdmin);
+  const isDeveloperBuild = process.env.NODE_ENV !== "production";
+  const canAccessPlusStore =
+    status === "authenticated" && (isAdminUser || isDeveloperBuild);
 
   const isBlogTopActive = pathname.startsWith("/top-blog");
   const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); 
@@ -230,15 +242,23 @@ const TopNav = (_props: TopNavProps) => {
   const isKakaoRankingActive = pathname.startsWith("/kakao-ranking");
 
   const dropdownBase = "absolute top-full left-0 mt-4 w-64 z-50";
-  const dropdownStyle = (open: boolean): React.CSSProperties => ({
-    opacity: open ? 1 : 0,
-    visibility: open ? "visible" : "hidden",
-    transform: open ? "translateY(0) scale(1)" : "translateY(-12px) scale(0.96)",
-    transition:
-      "opacity 300ms cubic-bezier(0.16,1,0.3,1), transform 300ms cubic-bezier(0.16,1,0.3,1)",
-    pointerEvents: open ? "auto" : "none",
-    willChange: "opacity, transform",
-  });
+  /** 닫힐 때 visibility를 opacity/transform 이후로 미뤄 exit 애니메이션이 끊기지 않게 함 */
+  const dropdownStyle = (open: boolean): React.CSSProperties => {
+    const visDelay = open ? 0 : NAV_DROPDOWN_MS;
+    return {
+      opacity: open ? 1 : 0,
+      visibility: open ? "visible" : "hidden",
+      transform: open ? "translateY(0) scale(1)" : "translateY(-12px) scale(0.96)",
+      transition: [
+        `opacity ${NAV_DROPDOWN_MS}ms ${NAV_DROPDOWN_EASE}`,
+        `transform ${NAV_DROPDOWN_MS}ms ${NAV_DROPDOWN_EASE}`,
+        // duration 0 + delay: 닫힘 시 hidden은 애니메이션 끝난 뒤 적용
+        `visibility 0ms linear ${visDelay}ms`,
+      ].join(", "),
+      pointerEvents: open ? "auto" : "none",
+      willChange: "opacity, transform",
+    };
+  };
 
   const cancelScheduledClose = () => {
     if (closeTimerRef.current) {
@@ -267,7 +287,7 @@ const TopNav = (_props: TopNavProps) => {
   const mobileDrawerStyle: React.CSSProperties = {
     backgroundColor: "rgba(255,255,255,0.78)",
     transform: mobileDrawerTransform,
-    transition: "transform 300ms ease-out",
+    transition: `transform ${NAV_DROPDOWN_MS}ms ${NAV_DROPDOWN_EASE}`,
     willChange: "transform",
   };
 
@@ -279,7 +299,9 @@ const TopNav = (_props: TopNavProps) => {
       active: isSmartStoreActive,
       links: [
         { href: "/smartstore", label: "순위 추적", active: isSmartstorePriceActive },
-        { href: "/smartstore/plus-store-ranking-track", label: "플러스스토어 순위 추적", active: isSmartstorePlusActive },
+        ...(canAccessPlusStore
+          ? [{ href: "/smartstore/plus-store-ranking-track", label: "플러스스토어 순위 추적", active: isSmartstorePlusActive }]
+          : []),
         { href: "/smartstore/review-track", label: "리뷰 분석", active: isSmartstoreReviewActive },
       ],
     },
@@ -408,40 +430,42 @@ const TopNav = (_props: TopNavProps) => {
                      실시간 키워드 순위 확인
                     </span>
                   </Link>
-                  <Link
-                    href="/smartstore/plus-store-ranking-track"
-                    aria-current={isSmartstorePlusActive ? "page" : undefined}
-                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
-                      isSmartstorePlusActive ? "bg-blue-50/40 pl-6" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span
-                        className={`text-sm font-bold ${
-                          isSmartstorePlusActive
-                            ? "text-[#0051FF]"
-                            : "text-slate-800 group-hover/item:text-[#0051FF]"
-                        }`}
-                      >
-                        순위 추적
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-black/5">
-                        <span className="text-[11px] font-black leading-none text-[#03c75a]">
-                          N
+                  {canAccessPlusStore ? (
+                    <Link
+                      href="/smartstore/plus-store-ranking-track"
+                      aria-current={isSmartstorePlusActive ? "page" : undefined}
+                      className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                        isSmartstorePlusActive ? "bg-blue-50/40 pl-6" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span
+                          className={`text-sm font-bold ${
+                            isSmartstorePlusActive
+                              ? "text-[#0051FF]"
+                              : "text-slate-800 group-hover/item:text-[#0051FF]"
+                          }`}
+                        >
+                          순위 추적
                         </span>
-                        <img
-                          src="/naver_plus.svg"
-                          alt="플러스스토어"
-                          width={64}
-                          height={14}
-                          className="h-3.5 w-auto"
-                        />
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-black/5">
+                          <span className="text-[11px] font-black leading-none text-[#03c75a]">
+                            N
+                          </span>
+                          <img
+                            src="/naver_plus.svg"
+                            alt="플러스스토어"
+                            width={64}
+                            height={14}
+                            className="h-3.5 w-auto"
+                          />
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 mt-0.5">
+                        실시간 키워드 순위 확인
                       </span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
-                      실시간 키워드 순위 확인
-                    </span>
-                  </Link>
+                    </Link>
+                  ) : null}
                   <Link
                     href="/smartstore/review-track"
                     aria-current={isSmartstoreReviewActive ? "page" : undefined}
@@ -900,7 +924,7 @@ const TopNav = (_props: TopNavProps) => {
           className="absolute inset-0 bg-black/45"
           style={{
             opacity: mobileMenuOpen ? 0.72 : 0,
-            transition: "opacity 300ms ease-out",
+            transition: `opacity ${NAV_DROPDOWN_MS}ms ${NAV_DROPDOWN_EASE}`,
           }}
         />
 
@@ -975,10 +999,13 @@ const TopNav = (_props: TopNavProps) => {
                     style={{
                       maxHeight: isOpen ? 180 : 0,
                       opacity: isOpen ? 1 : 0,
-                      transform: isOpen ? "translateY(0)" : "translateY(-6px)",
+                      transform: isOpen ? "translateY(0)" : "translateY(-8px)",
                       overflow: "hidden",
-                      transition:
-                        "max-height 300ms ease-out, opacity 220ms ease-out, transform 300ms ease-out",
+                      transition: [
+                        `max-height ${NAV_DROPDOWN_MS}ms ${NAV_DROPDOWN_EASE}`,
+                        `opacity ${NAV_DROPDOWN_MS}ms ${NAV_DROPDOWN_EASE}`,
+                        `transform ${NAV_DROPDOWN_MS}ms ${NAV_DROPDOWN_EASE}`,
+                      ].join(", "),
                     }}
                   >
                     <div className="ml-11 flex flex-col gap-1 pb-0.5 pt-1">

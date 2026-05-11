@@ -3,30 +3,55 @@
 import React, { useEffect, useState } from "react";
 import TopNav from "@/components/top-nav";
 import { User, ShieldCheck, Database, Package, MapPin, Map as MapIcon, RefreshCcw } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
+import {
+  fetchUserQuotaCached,
+  getUserQuotaSessionKey,
+} from "@/lib/browser-user-quota-fetch";
 
 export default function ProfilePage() {
+  const { data: session, status } = useSession();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    fetch("/api/user-quota")
-      .then((res) => res.json())
+    if (status === "loading") return;
+
+    const key = getUserQuotaSessionKey(session);
+    if (!key) {
+      setLoading(false);
+      setErrorMsg("정보를 불러오지 못했습니다.");
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    fetchUserQuotaCached(key)
       .then((res) => {
-        if (res.ok) {
-          setData(res);
-        } else if (res.relogin) {
-          // DB 초기화 등으로 세션이 꼬인 경우 강제 로그아웃 처리
-          setErrorMsg(res.error);
-          setTimeout(() => signOut({ callbackUrl: "/login" }), 2000);
+        if (cancelled) return;
+        if (res) {
+          setData({
+            ...res,
+            name: session?.user?.name,
+            email: session?.user?.email,
+          });
         } else {
           setErrorMsg("정보를 불러오지 못했습니다.");
         }
       })
-      .catch(() => setErrorMsg("서버 통신 오류가 발생했습니다."))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(() => {
+        if (!cancelled) setErrorMsg("서버 통신 오류가 발생했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.email, session?.user?.id, session?.user?.name]);
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">

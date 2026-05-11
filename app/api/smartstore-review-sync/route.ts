@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import {
   fetchSmartstoreReviewSnapshot,
+  SmartstoreReviewBlockedError,
+  SmartstoreReviewParseError,
+  SmartstoreReviewProductNotFoundError,
 } from "@/lib/smartstore-review-fetcher";
 import { isSmartstoreNaverRateLimitedError } from "@/lib/smartstore-bot-shield";
 
@@ -19,6 +22,7 @@ function trackedDateKey(d = new Date()): string {
 }
 
 export async function POST(req: Request) {
+  let logContext: { targetId?: string; productId?: string; productUrl?: string } | null = null;
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
@@ -40,6 +44,11 @@ export async function POST(req: Request) {
     if (!target) {
       return NextResponse.json({ error: "리뷰 대상 상품을 찾을 수 없습니다." }, { status: 404 });
     }
+    logContext = {
+      targetId: target.id,
+      productId: target.productId,
+      productUrl: target.productUrl,
+    };
 
     // Scraping-only URL:
     // - Prefer MOBILE host (m.) for the review scraping engine
@@ -69,7 +78,9 @@ export async function POST(req: Request) {
     const storePick = snap.summary.storePickReviewCount;
     const starSummary = snap.summary.starScoreSummary;
     const starSummaryJson =
-      starSummary == null ? Prisma.JsonNull : (starSummary as Prisma.InputJsonValue);
+      starSummary == null
+        ? (target.reviewStarSummary ?? Prisma.JsonNull)
+        : (starSummary as Prisma.InputJsonValue);
 
     const today = trackedDateKey();
 
@@ -77,16 +88,16 @@ export async function POST(req: Request) {
       await tx.smartstoreReviewTarget.update({
         where: { id: target.id },
         data: {
-          reviewCount: count == null ? target.reviewCount ?? 0 : count,
-          reviewRating: rating,
+          reviewCount: count == null ? target.reviewCount : count,
+          reviewRating: rating == null ? target.reviewRating : rating,
           reviewPhotoVideoCount:
-            photoVideo == null ? target.reviewPhotoVideoCount ?? 0 : photoVideo,
+            photoVideo == null ? target.reviewPhotoVideoCount : photoVideo,
           reviewMonthlyUseCount:
-            monthlyUse == null ? target.reviewMonthlyUseCount ?? 0 : monthlyUse,
+            monthlyUse == null ? target.reviewMonthlyUseCount : monthlyUse,
           reviewRepurchaseCount:
-            repurchase == null ? target.reviewRepurchaseCount ?? 0 : repurchase,
+            repurchase == null ? target.reviewRepurchaseCount : repurchase,
           reviewStorePickCount:
-            storePick == null ? target.reviewStorePickCount ?? 0 : storePick,
+            storePick == null ? target.reviewStorePickCount : storePick,
           reviewStarSummary: starSummaryJson,
         },
       });
@@ -178,11 +189,34 @@ export async function POST(req: Request) {
       })),
     });
   } catch (e) {
-    console.error("[smartstore-review-sync]", e);
+    console.error("[smartstore-review-sync] 동기화 실패", {
+      ...logContext,
+      errorName: e instanceof Error ? e.name : "unknown",
+      errorMessage: e instanceof Error ? e.message : String(e),
+      error: e,
+    });
     if (isSmartstoreNaverRateLimitedError(e)) {
       return NextResponse.json(
         { error: "보안 차단 감지: 10초간 긴급 휴식에 들어갑니다" },
         { status: 429 }
+      );
+    }
+    if (e instanceof SmartstoreReviewBlockedError) {
+      return NextResponse.json(
+        { error: "네이버 차단/검증 페이지로 인해 리뷰 데이터를 가져오지 못했습니다." },
+        { status: 429 }
+      );
+    }
+    if (e instanceof SmartstoreReviewProductNotFoundError) {
+      return NextResponse.json(
+        { error: "상품이 존재하지 않거나 현재 URL 유형에서 리뷰 페이지를 찾지 못했습니다." },
+        { status: 404 }
+      );
+    }
+    if (e instanceof SmartstoreReviewParseError) {
+      return NextResponse.json(
+        { error: "리뷰 페이지는 열렸지만 필요한 데이터를 파싱하지 못했습니다." },
+        { status: 502 }
       );
     }
     return NextResponse.json({ error: "리뷰 동기화에 실패했습니다." }, { status: 502 });

@@ -50,6 +50,8 @@ export type SmartstoreSearchApiMetaResult = {
   mallName: string | null;
   category: string | null;
   price: number | null;
+  reviewCount: number | null;
+  reviewRating: number | null;
   matchedProductId: string | null;
   matchedLink: string | null;
   isStrongMatch: boolean;
@@ -73,6 +75,10 @@ type ShopJsonItem = {
   category4?: string;
   brand?: string;
   maker?: string;
+  reviewCount?: string | number;
+  review?: string | number;
+  rating?: string | number;
+  score?: string | number;
 };
 
 type QueryCandidate = { raw: string; source: string };
@@ -136,6 +142,17 @@ function parsePrice(l: string | undefined, h: string | undefined): number | null
   if (!raw) return null;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseOptionalNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const t = v.trim().replace(/,/g, "");
+    if (!t) return null;
+    const n = Number(t);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 /** 쇼핑 검색 쿼리용: 브랜드 접미사·괄호·특수문자 정제 */
@@ -392,6 +409,8 @@ function itemToMeta(
     mallName: mall,
     category: joinCategories(it),
     price,
+    reviewCount: parseOptionalNumber(it.reviewCount ?? it.review),
+    reviewRating: parseOptionalNumber(it.rating ?? it.score),
     matchedProductId: mid || targetProductId,
     matchedLink: link,
     isStrongMatch: opts?.isStrongMatch === true,
@@ -415,6 +434,8 @@ export async function fetchSmartstoreMetaViaShoppingSearchApi(
     mallName: null,
     category: null,
     price: null,
+    reviewCount: null,
+    reviewRating: null,
     matchedProductId: null,
     matchedLink: null,
     isStrongMatch: false,

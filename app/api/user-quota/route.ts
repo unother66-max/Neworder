@@ -27,23 +27,28 @@ export async function GET() {
     
     // 2. DB에서 유저 정보 확인
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email } 
+      where: { email: session.user.email },
+      select: { id: true, tier: true },
     });
 
     if (!user) {
-      return NextResponse.json({ 
-        ok: true, 
-        totalItems: 0, 
-        maxLimit: 5, 
-        tier: "FREE", 
-        isAdmin: false 
+      return NextResponse.json({
+        ok: true,
+        totalItems: 0,
+        maxLimit: 5,
+        tier: "FREE",
+        isAdmin: false,
       });
     }
 
-    // 3. 사용 중인 개수 세기 (스마트스토어 + 장소)
-    const smartstoreCount = await prisma.smartstoreProduct.count({ where: { userId: user.id } });
-    const placeCount = await prisma.place.count({ where: { userId: user.id } });
-    const totalItems = smartstoreCount + placeCount; 
+    // 3. 사용 중인 개수 (연결을 동시에 여러 개 잡지 않도록 순차 조회 → 풀 점유 완화)
+    const smartstoreCount = await prisma.smartstoreProduct.count({
+      where: { userId: user.id },
+    });
+    const placeCount = await prisma.place.count({
+      where: { userId: user.id },
+    });
+    const totalItems = smartstoreCount + placeCount;
 
     // 4. 권한 및 제한(Limit) 결정
     const isAdmin = userEmail === ADMIN_EMAIL.toLowerCase();

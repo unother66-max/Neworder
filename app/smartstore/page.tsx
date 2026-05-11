@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
+import { SmartstoreProductRegisterModal } from "@/components/smartstore-product-register-modal";
 import { useSession } from "next-auth/react";
 import { GripVertical, Pin, Trash2 } from "lucide-react";
 import {
@@ -1432,147 +1433,32 @@ export default function SmartstoreRankPage() {
         </section>
       </main>
 
-      {registerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
-          <div className="w-full max-w-[520px] rounded-[24px] bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#f3f4f6] px-6 py-5">
-              <h2 className="text-[18px] font-black text-[#111827]">상품 등록</h2>
-              <button
-                type="button"
-                onClick={closeRegister}
-                className="text-[22px] leading-none text-[#9ca3af] hover:text-[#111827]"
-              >
-                ×
-              </button>
-            </div>
-            <div className="px-6 py-5">
-              <p className="text-[13px] leading-relaxed text-[#6b7280]">
-                추적할 스마트스토어·브랜드스토어·네이버쇼핑(catalog/window) 상품 페이지 주소를 입력하세요. 브라우저 주소창의{" "}
-                <span className="font-bold text-[#374151]">상품 상세 URL</span>을 붙여넣으면 됩니다.
-              </p>
-
-              <div className="mt-4 rounded-[16px] border border-[#eef2f7] bg-[#f9fafb] px-4 py-3">
-                <p className="text-[12px] font-extrabold text-[#4b5563]">
-                  상품 URL 형식{" "}
-                  <span className="font-bold text-[#6b7280]">
-                    (상점ID와 상품ID를 꼭 포함하여 추가해주세요.)
-                  </span>
-                </p>
-                <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-[#6b7280]">
-                  <li className="flex gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                    <span>
-                      일반 상품:{" "}
-                      <span className="font-semibold text-[#374151]">
-                        http://smartstore.naver.com/
-                        <span className="text-[#7c3aed]">상점ID</span>/products/
-                        <span className="text-[#7c3aed]">상품ID</span>?..
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                    <span>
-                      브랜드 상품:{" "}
-                      <span className="font-semibold text-[#374151]">
-                        http://brand.naver.com/
-                        <span className="text-[#7c3aed]">상점ID</span>/products/
-                        <span className="text-[#7c3aed]">상품ID</span>?..
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                    <span>
-                      윈도우 상품:{" "}
-                      <span className="font-semibold text-[#374151]">
-                        http://shopping.naver.com/window-products/
-                        <span className="text-[#7c3aed]">카테고리</span>/
-                        <span className="text-[#7c3aed]">상품ID</span>?..
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
-                    <span>
-                      카탈로그 상품:{" "}
-                      <span className="font-semibold text-[#374151]">
-                        https://search.shopping.naver.com/catalog/
-                        <span className="text-[#7c3aed]">catalogID</span>?..
-                      </span>
-                    </span>
-                  </li>
-                </ul>
-                <p className="mt-2 text-[11px] font-semibold text-[#6b7280]">
-                  * 성인상품 중 ‘윈도우 상품’은 등록할 수 없으며, 일반·브랜드 성인상품만 등록 가능합니다.
-                </p>
-              </div>
-
-              <label className="mt-4 block text-[12px] font-bold text-[#4b5563]">상품 URL</label>
-              <input
-                type="url"
-                value={regUrl}
-                onChange={(e) => setRegUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleRegisterSave()}
-                placeholder="https://smartstore.naver.com/…/products/1234567890"
-                className="mt-2 w-full rounded-[12px] border border-[#e5e7eb] px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
-              />
-              {regError && <p className="mt-2 text-[13px] text-[#dc2626]">{regError}</p>}
-
-              {showManualInput && (
-                <div className="mt-4 rounded-[16px] border border-[#fee2e2] bg-[#fff1f2] px-4 py-4">
-                  <p className="text-[12px] font-extrabold text-[#b91c1c]">
-                    자동 등록에 실패했어요. 수동으로 상품 정보를 입력해 등록할 수 있습니다.
-                  </p>
-                  <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
-                    상품명
-                  </label>
-                  <input
-                    type="text"
-                    value={manualName}
-                    onChange={(e) => setManualName(e.target.value)}
-                    placeholder="예: 아이폰 케이스"
-                    className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
-                  />
-                  <label className="mt-3 block text-[12px] font-bold text-[#7f1d1d]">
-                    이미지 URL
-                  </label>
-                  <input
-                    type="url"
-                    value={manualImageUrl}
-                    onChange={(e) => setManualImageUrl(e.target.value)}
-                    placeholder="https://...jpg"
-                    className="mt-2 w-full rounded-[12px] border border-[#fecaca] bg-white px-4 py-3 text-[14px] focus:border-[#b91c1c] focus:outline-none"
-                  />
-                </div>
-              )}
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeRegister}
-                  className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={showManualInput ? handleManualRegisterSave : handleRegisterSave}
-                  disabled={regSaving}
-                  className="h-[46px] rounded-[14px] bg-[#b91c1c] px-5 text-[14px] font-bold text-white transition hover:bg-[#991b1b] disabled:opacity-60"
-                >
-                  {regSaving
-                    ? showManualInput
-                      ? "수동 등록 중..."
-                      : "상품 정보 수집 중..."
-                    : showManualInput
-                      ? "수동 등록"
-                      : "등록"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SmartstoreProductRegisterModal
+        open={registerOpen}
+        onClose={closeRegister}
+        productUrl={regUrl}
+        onProductUrlChange={setRegUrl}
+        onProductUrlKeyDown={(e) => {
+          if (e.key === "Enter") handleRegisterSave();
+        }}
+        errorMessage={regError}
+        showManualInput={showManualInput}
+        manualName={manualName}
+        onManualNameChange={setManualName}
+        manualImageUrl={manualImageUrl}
+        onManualImageUrlChange={setManualImageUrl}
+        saving={regSaving}
+        onPrimaryAction={showManualInput ? handleManualRegisterSave : handleRegisterSave}
+        primaryButtonLabel={
+          regSaving
+            ? showManualInput
+              ? "수동 등록 중..."
+              : "상품 정보 수집 중..."
+            : showManualInput
+              ? "수동 등록"
+              : "등록"
+        }
+      />
 
       {kwModalProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">
