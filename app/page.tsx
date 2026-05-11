@@ -17,6 +17,14 @@ export default function HomePage() {
     setCtaMousePos({ x, y });
   };
 
+  const [isBottomCtaHovered, setIsBottomCtaHovered] = useState(false);
+  const [bottomCtaMousePos, setBottomCtaMousePos] = useState({ x: 0, y: 0 });
+
+  const handleBottomCtaMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setBottomCtaMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-white text-slate-900 font-sans">
       {/* 배경 컨테이너 */}
@@ -67,7 +75,7 @@ export default function HomePage() {
                 `}
               >
                 <span className="relative z-30" style={{ color: isCtaHovered ? "#FFFFFF" : "#000000" }}>
-                  무료로 시작하기
+                  지금 시작하기
                 </span>
 
                 <div
@@ -104,6 +112,96 @@ export default function HomePage() {
           </div>
         </div>
 
+      </section>
+
+      {/* ════════════════════════════════════
+          2. 선언 섹션
+      ════════════════════════════════════ */}
+      <section className="relative z-10 bg-white px-6 py-28 md:py-40 lg:py-48">
+        <div className="mx-auto max-w-5xl">
+          <p className="mb-7 text-[0.6875rem] font-bold uppercase tracking-[0.18em] text-slate-400">
+            PostLabs
+          </p>
+          <h2 className="font-black leading-[1.07] tracking-[-0.025em] text-slate-900
+            text-[clamp(2.25rem,5.5vw,4rem)]
+            md:text-[clamp(2.5rem,5vw,4.25rem)]
+            lg:text-[4.25rem]">
+            데이터는<br />
+            매장의 흐름을<br className="hidden sm:block" />
+            말해줍니다.
+          </h2>
+          <p className="mt-9 max-w-md text-[1rem] font-medium leading-[1.85] text-slate-500 md:mt-11 md:text-[1.0625rem]">
+            감이 아닌 숫자로 판단하세요.<br />
+            순위가 오르고 내린 이유가 데이터 안에 있습니다.
+          </p>
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════
+          3. 마무리 CTA — 포스터 느낌
+      ════════════════════════════════════ */}
+      <section className="relative z-10 overflow-hidden bg-white px-6 py-32 text-center md:py-44 lg:py-56">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: "radial-gradient(ellipse 80% 60% at 50% 110%, rgba(0,41,255,0.05) 0%, transparent 70%)",
+          }}
+        />
+        <div className="relative mx-auto max-w-4xl">
+          <h2 className="font-black leading-[1.0] tracking-[-0.03em] text-slate-900
+            text-[clamp(2.5rem,7.5vw,6rem)]
+            sm:text-[clamp(2.75rem,7vw,6.5rem)]
+            lg:text-[6.5rem]">
+            지금 바로<br />
+            순위를 확인해보세요.
+          </h2>
+
+          <div className="mt-14 flex justify-center md:mt-16">
+            <Link
+              href="/place"
+              onMouseEnter={() => setIsBottomCtaHovered(true)}
+              onMouseLeave={() => setIsBottomCtaHovered(false)}
+              onMouseMove={handleBottomCtaMouseMove}
+              className={`
+                relative isolate z-20 inline-flex items-center rounded-full px-5 py-3 text-sm font-bold tracking-wide
+                bg-transparent border-2 transition-colors duration-0 ease-in-out overflow-hidden
+                md:px-8 md:py-4 md:text-base
+                ${isBottomCtaHovered ? "text-white border-[#0029FF]" : "text-black border-black"}
+              `}
+            >
+              <span className="relative z-30" style={{ color: isBottomCtaHovered ? "#FFFFFF" : "#000000" }}>
+                순위 확인하기
+              </span>
+              <div
+                className="pointer-events-none absolute inset-0 w-full h-full z-0"
+                style={{
+                  transformOrigin: "left",
+                  transform: isBottomCtaHovered ? "scaleX(1)" : "scaleX(0)",
+                  transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+                  backgroundColor: "#0029FF",
+                  opacity: 1,
+                  mixBlendMode: "normal",
+                }}
+              />
+              <div
+                className={`
+                  absolute -translate-x-1/2 -translate-y-1/2 h-28 w-28 rounded-full blur-2xl md:h-40 md:w-40
+                  transition-opacity duration-200 ease-out
+                  ${isBottomCtaHovered ? "opacity-100" : "opacity-0"}
+                `}
+                style={{
+                  left: `${bottomCtaMousePos.x}px`,
+                  top: `${bottomCtaMousePos.y}px`,
+                  pointerEvents: "none",
+                  zIndex: 25,
+                  backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.45) 38%, rgba(255,255,255,0) 72%)",
+                  mixBlendMode: "soft-light",
+                  filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+                }}
+              />
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section className="sr-only" aria-label="포스트랩스 서비스 설명과 자주 묻는 질문">
