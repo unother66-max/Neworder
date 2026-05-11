@@ -32,12 +32,40 @@ function resolvedIp(h: Headers): string {
   );
 }
 
+type VisitBody = { path?: string; referrer?: string | null };
+
+/** 내부용 시크릿 헤더 또는 동일 출처 브라우저 POST */
+function isAuthorized(req: NextRequest, selfOrigin: string, internalSecret: string) {
+  if (internalSecret && req.headers.get("x-internal-visit-secret") === internalSecret)
+    return "internal";
+
+  const origin = req.headers.get("origin");
+  const referer = req.headers.get("referer") ?? "";
+  if (origin === selfOrigin) return "client";
+  if (referer.startsWith(selfOrigin)) return "client";
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
-  const secret = process.env.VISIT_LOG_SECRET ?? process.env.NEXTAUTH_SECRET;
-  if (
-    !secret ||
-    req.headers.get("x-internal-visit-secret") !== secret
-  ) {
+  const selfOrigin = new URL(req.url).origin;
+  const internalSecret =
+    process.env.VISIT_LOG_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
+
+  let body: VisitBody = {};
+  try {
+    const raw = await req.text();
+    if (raw.trim()) body = JSON.parse(raw) as VisitBody;
+  } catch {
+    body = {};
+  }
+
+  const source = isAuthorized(req, selfOrigin, internalSecret);
+  if (!source) {
+    console.warn("[visit-log] forbidden", {
+      origin: req.headers.get("origin"),
+      hasReferer: Boolean(req.headers.get("referer")),
+    });
     return NextResponse.json({ ok: false }, { status: 403 });
   }
 
@@ -55,9 +83,17 @@ export async function POST(req: NextRequest) {
       create: { visitDate, ipHash, uaHash },
       update: { seenAt: new Date() },
     });
+    console.log("[visit-log] upsert_ok", {
+      visitDate,
+      source,
+      path: typeof body.path === "string" ? body.path : null,
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("[internal/visit]", e);
+    console.error("[visit-log] upsert_failed", {
+      visitDate,
+      message: e instanceof Error ? e.message : String(e),
+    });
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
