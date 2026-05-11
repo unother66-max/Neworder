@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import TopNav from "@/components/top-nav";
 import MeshGradient from "@/components/MeshGradient";
@@ -107,18 +106,6 @@ export default function HomePage() {
 
       </section>
 
-      {/* 하단 섹션 */}
-      <section className="relative z-10 bg-white py-10 md:py-20">
-        <div className="mx-auto max-w-6xl px-3 md:px-4">
-          <div className="relative overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-slate-200/70 md:rounded-2xl md:shadow-2xl">
-            <div className="bg-slate-50 p-2.5 sm:p-4 md:p-6">
-              <div className="overflow-hidden rounded-xl bg-white shadow-[0_10px_34px_rgba(15,23,42,0.14)] md:rounded-2xl md:shadow-[0_18px_60px_rgba(15,23,42,0.16)]">
-                <Image src="/main/hero-1.png" alt="PostLabs" width={1400} height={900} priority className="h-auto w-full object-cover" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
