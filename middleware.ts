@@ -10,6 +10,8 @@ function isLegacyAuthPath(path: string): boolean {
   if (path.startsWith("/place-analysis")) return true;
   if (path.startsWith("/place-review")) return true;
   if (path === "/place" || path.startsWith("/place/")) return true;
+  if (path === "/community" || path.startsWith("/community/")) return true;
+  if (path === "/blog-analysis" || path.startsWith("/blog-analysis/")) return true;
   return false;
 }
 

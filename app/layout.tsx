@@ -24,6 +24,9 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://postlabs.co.kr"),
 
   verification: {
+
+    google: "mauIvffyDV_eGgT0qI14KK1nY6BG0eC1px5NaTpYhoI",
+
     other: {
       "naver-site-verification":
         "ab01c328b075c3f3f917e876c6e683531c50344a",
