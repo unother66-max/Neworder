@@ -167,44 +167,85 @@ async function tryFallbackViaShoppingSearchApi(input: {
   productUrlKind: ProductUrlKind;
   failureStage: string;
   failurePageUrl: string;
+  /** DB에 저장된 상품명 — fallback 검색 쿼리에 우선 활용 */
+  existingProductName?: string | null;
+  /** DB에 저장된 스토어명 — 약매칭 보조 */
+  existingStoreName?: string | null;
 }): Promise<SmartstoreReviewSnapshot | null> {
   if (!isSmartstoreShoppingSearchConfigured()) {
     console.warn(`${LOG_P} fallback skip: search API not configured`, {
       productId: input.productId,
       failureStage: input.failureStage,
-      failurePageUrl: input.failurePageUrl,
     });
     return null;
   }
+
+  const productNameHint = input.existingProductName?.trim() || null;
+  const storeNameHint = input.existingStoreName?.trim() || null;
+
+  console.log(`${LOG_P} fallback 시작`, {
+    productId: input.productId,
+    failureStage: input.failureStage,
+    existingProductName: productNameHint,
+    existingStoreName: storeNameHint,
+  });
 
   const meta = await fetchSmartstoreMetaViaShoppingSearchApi({
     productUrl: input.productUrl,
     productId: input.productId,
     productUrlType: toSearchApiUrlType(input.productUrlKind),
+    // 상품명을 existingNameHint AND ogTitle 둘 다 넘겨
+    // → buildQueryCandidates가 "slug+name" 조합 쿼리도 생성함
+    existingNameHint: productNameHint,
+    ogTitle: productNameHint,
+    attemptedChannelSlug: storeNameHint,
   });
 
   console.log(`${LOG_P} fallback search-api 결과`, {
     productId: input.productId,
     failureStage: input.failureStage,
-    failurePageUrl: input.failurePageUrl,
     searchApiUsed: meta.searchApiUsed,
     searchApiMatched: meta.searchApiMatched,
+    weakMatch: meta.weakMatch,
     matchedProductId: meta.matchedProductId,
+    pickedTitle: meta.name,
+    pickedMallName: meta.mallName,
     reviewCount: meta.reviewCount,
     reviewRating: meta.reviewRating,
-    name: meta.name,
-    category: meta.category,
-    image: meta.thumbnailLink,
-    mallName: meta.mallName,
   });
 
-  if (!meta.searchApiMatched || meta.reviewCount == null) {
+  // 상품 매칭에 실패하면 null 반환 (다음 단계에서 throw)
+  if (!meta.searchApiMatched) {
+    console.warn(`${LOG_P} fallback 실패: 상품 매칭 불가`, {
+      productId: input.productId,
+      searchApiMatched: meta.searchApiMatched,
+      weakMatch: meta.weakMatch,
+    });
     return null;
   }
+
+  // 매칭 성공 — review 데이터 유무와 관계없이 스냅샷 반환.
+  // route.ts는 reviewCount/reviewRating이 null이면 기존 DB 값을 그대로 유지하고
+  // 히스토리 레코드도 생성하지 않으므로 데이터가 덮어쓰이지 않는다.
+  const hasReviewData = meta.reviewCount != null || meta.reviewRating != null;
+  console.log(
+    `${LOG_P} fallback ${hasReviewData ? "성공 (리뷰 데이터 포함)" : "부분성공 (메타만, 리뷰 없음 — 기존 DB 값 유지)"}`,
+    {
+      productId: input.productId,
+      failureStage: input.failureStage,
+      matchedProductId: meta.matchedProductId,
+      pickedTitle: meta.name,
+      pickedMallName: meta.mallName,
+      reviewCount: meta.reviewCount,
+      reviewRating: meta.reviewRating,
+      hasReviewData,
+    }
+  );
 
   return {
     productPageUrl: input.failurePageUrl,
     summary: {
+      // null이면 route.ts가 기존 DB 값을 유지함
       reviewCount: meta.reviewCount,
       reviewRating: meta.reviewRating,
       photoVideoReviewCount: null,
@@ -257,6 +298,10 @@ function buildCandidateProductPages(
 export async function fetchSmartstoreReviewSnapshot(input: {
   productUrl: string;
   productId: string;
+  /** DB에 저장된 상품명 — fallback 검색에 적극 활용 */
+  productName?: string | null;
+  /** DB에 저장된 스토어명 — fallback 검색 보조 */
+  storeName?: string | null;
 }): Promise<SmartstoreReviewSnapshot> {
   const productId = String(input.productId).trim();
   const parsedUrl = normalizeUrl(input.productUrl);
@@ -267,6 +312,8 @@ export async function fetchSmartstoreReviewSnapshot(input: {
     productId,
     productUrl: input.productUrl,
     productUrlKind,
+    productName: input.productName ?? null,
+    storeName: input.storeName ?? null,
     candidateUrls,
   });
 
@@ -301,15 +348,10 @@ export async function fetchSmartstoreReviewSnapshot(input: {
         productUrlKind,
         failureStage: "fetch(429)",
         failurePageUrl: pageUrl,
+        existingProductName: input.productName,
+        existingStoreName: input.storeName,
       });
-      if (fallback) {
-        console.log(`${LOG_P} fallback 성공: search-api reviewCount 사용`, {
-          productId,
-          pageUrl,
-          reviewCount: fallback.summary.reviewCount,
-        });
-        return fallback;
-      }
+      if (fallback) return fallback;
       await cooldownOn429();
       throw new SmartstoreNaverRateLimitedError("네이버 IP 차단 발생 (429)");
     }
@@ -400,6 +442,36 @@ export async function fetchSmartstoreReviewSnapshot(input: {
       recentReviews: [],
     };
   }
+
+  // 모든 후보 URL이 실패한 경우, 상품명 기반 검색 fallback을 마지막으로 시도
+  const failureStage = sawBlocked
+    ? "all-blocked"
+    : sawNotFound
+    ? "all-not-found"
+    : "all-parse-failed";
+
+  console.warn(`${LOG_P} 모든 HTML 수집 실패, 검색 API fallback 마지막 시도`, {
+    productId,
+    failureStage,
+    sawBlocked,
+    sawNotFound,
+    existingProductName: input.productName ?? null,
+  });
+
+  const lastFallback = await tryFallbackViaShoppingSearchApi({
+    productUrl: input.productUrl,
+    productId,
+    productUrlKind,
+    failureStage,
+    failurePageUrl: input.productUrl,
+    existingProductName: input.productName,
+    existingStoreName: input.storeName,
+  }).catch((e) => {
+    console.error(`${LOG_P} fallback 자체 오류`, { productId, error: String(e) });
+    return null;
+  });
+
+  if (lastFallback) return lastFallback;
 
   if (sawBlocked) {
     throw new SmartstoreReviewBlockedError(

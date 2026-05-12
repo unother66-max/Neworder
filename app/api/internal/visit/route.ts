@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 
 import { prisma } from "@/lib/prisma";
 import { seoulCalendarDateString } from "@/lib/seoul-calendar";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const DEDUP_WINDOW_MS = 30_000;
+const authSecret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
 
 function sha256Hex(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
@@ -42,6 +44,23 @@ function resolvedIp(h: Headers): string {
 }
 
 type VisitBody = { path?: string; referrer?: string | null };
+
+async function visitorUserIdFromRequest(req: NextRequest): Promise<string | null> {
+  if (!authSecret) return null;
+  try {
+    const token = await getToken({ req, secret: authSecret });
+    const t = token as { id?: unknown; sub?: unknown } | null;
+    const id =
+      typeof t?.id === "string" && t.id.trim()
+        ? t.id.trim()
+        : typeof t?.sub === "string" && t.sub.trim()
+          ? t.sub.trim()
+          : null;
+    return id;
+  } catch {
+    return null;
+  }
+}
 
 /** 내부용 시크릿 헤더 또는 동일 출처 브라우저 POST */
 function isAuthorized(req: NextRequest, selfOrigin: string, internalSecret: string) {
@@ -102,6 +121,8 @@ export async function POST(req: NextRequest) {
       ? categorizeReferrer(referrerStored)
       : "direct";
 
+    const visitorUserId = await visitorUserIdFromRequest(req);
+
     await prisma.$transaction(async (tx) => {
       await tx.visitorLog.upsert({
         where: {
@@ -133,6 +154,7 @@ export async function POST(req: NextRequest) {
           referrerCategory,
           ipHash,
           uaSnippet: snippetFromUserAgent(uaPlain, 256),
+          userId: visitorUserId,
         },
       });
     });

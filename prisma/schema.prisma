@@ -43,7 +43,8 @@ model User {
   smartstoreProducts      SmartstoreProduct[]
   smartstoreReviewTargets SmartstoreReviewTarget[]
   posts                   Post[]
-  comments  Comment[]
+  comments                Comment[]
+  visitorEvents           VisitorEvent[]
 }
 
 // --- 🚨 인증 필수 모델 ---
@@ -108,12 +109,16 @@ model VisitorEvent {
   referrerCategory   String   @default("other")
   ipHash             String   @db.VarChar(64)
   uaSnippet          String?  @db.VarChar(256)
+  /** 로그인 세션 있을 때만 기록 (익명 방문은 null) */
+  userId             String?
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([visitDate])
   @@index([createdAt])
   @@index([referrerCategory])
   @@index([createdAt, ipHash])
   @@index([ipHash, path, createdAt])
+  @@index([userId])
 }
 
 /** 관리자용 운영 알림 (수집/크론 실패 등) */

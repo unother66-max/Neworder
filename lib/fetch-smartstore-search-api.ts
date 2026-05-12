@@ -525,6 +525,25 @@ export async function fetchSmartstoreMetaViaShoppingSearchApi(
       continue;
     }
 
+    // 검색 API 원문 필드 디버그 로그 (review 관련 필드 유무 확인)
+    {
+      const rawKeys = Object.keys(pick);
+      const reviewKeys = rawKeys.filter((k) => /review|rating|score|평점/i.test(k));
+      console.log("[smartstore-search-api] matched-item-raw", {
+        finalQuery,
+        allKeys: rawKeys,
+        reviewRelatedKeys: reviewKeys,
+        rawReviewCount: (pick as Record<string, unknown>).reviewCount ?? null,
+        rawReview: (pick as Record<string, unknown>).review ?? null,
+        rawRating: (pick as Record<string, unknown>).rating ?? null,
+        rawScore: (pick as Record<string, unknown>).score ?? null,
+        productId: pick.productId ?? null,
+        mallName: pick.mallName ?? null,
+        title: stripHtmlTags(typeof pick.title === "string" ? pick.title : "").slice(0, 80),
+        link: typeof pick.link === "string" ? pick.link.slice(0, 120) : null,
+      });
+    }
+
     const pickPid = String(pick.productId ?? "").trim();
     const pickLink = typeof pick.link === "string" ? pick.link.trim() : "";
     const pickLinkPid = extractProductIdFromAnyLink(pickLink);

@@ -205,6 +205,7 @@ export default function SmartstoreReviewTrackPage() {
   const [loading, setLoading] = useState(true);
   const [targets, setTargets] = useState<TargetRow[]>([]);
   const [error, setError] = useState("");
+  const [syncWarning, setSyncWarning] = useState("");
 
   const [addOpen, setAddOpen] = useState(false);
   const [addUrl, setAddUrl] = useState("");
@@ -412,6 +413,7 @@ export default function SmartstoreReviewTrackPage() {
   const syncOne = useCallback(async (t: TargetRow) => {
     setSyncingTargetId(t.id);
     setError("");
+    setSyncWarning("");
     try {
       const res = await fetch("/api/smartstore-review-sync", {
         method: "POST",
@@ -424,6 +426,16 @@ export default function SmartstoreReviewTrackPage() {
       }
       if (!res.ok) {
         throw new Error(typeof data?.error === "string" ? data.error : "동기화 실패");
+      }
+      // 차단으로 인한 partial 응답 (status 200, ok: false, partial: true)
+      if (data?.partial === true) {
+        setSyncWarning(
+          typeof data?.message === "string"
+            ? data.message
+            : "네이버 차단으로 최신 리뷰 수를 갱신하지 못했습니다. 기존 데이터를 유지합니다."
+        );
+        await fetchTargets();
+        return;
       }
       if (Array.isArray(data?.recentReviews)) {
         setRecentByProductId((prev) => ({ ...prev, [t.target.id]: data.recentReviews }));
@@ -440,6 +452,7 @@ export default function SmartstoreReviewTrackPage() {
     if (targets.length === 0) return;
     setSyncAllLoading(true);
     setError("");
+    setSyncWarning("");
     try {
       for (const t of targets) {
         // stop early if user navigates
@@ -584,6 +597,11 @@ export default function SmartstoreReviewTrackPage() {
         {error ? (
           <div className="mt-2.5 rounded-[14px] border border-[#fecaca] bg-[#fff1f2] px-3 py-2.5 text-[12px] font-bold text-[#b91c1c] md:mt-4 md:p-3 md:text-[13px]">
             {error}
+          </div>
+        ) : null}
+        {syncWarning ? (
+          <div className="mt-2.5 rounded-[14px] border border-[#fde68a] bg-[#fffbeb] px-3 py-2.5 text-[12px] font-bold text-[#92400e] md:mt-4 md:p-3 md:text-[13px]">
+            ⚠ {syncWarning}
           </div>
         ) : null}
 

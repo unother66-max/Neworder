@@ -23,6 +23,9 @@ function trackedDateKey(d = new Date()): string {
 
 export async function POST(req: Request) {
   let logContext: { targetId?: string; productId?: string; productUrl?: string } | null = null;
+  // target을 catch 블록에서도 접근할 수 있도록 스코프 호이스팅
+  let resolvedTarget: Awaited<ReturnType<typeof prisma.smartstoreReviewTarget.findFirst>> | null = null;
+
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
@@ -40,6 +43,7 @@ export async function POST(req: Request) {
     const target = await prisma.smartstoreReviewTarget.findFirst({
       where: targetId ? { id: targetId, userId } : { productId, userId },
     });
+    resolvedTarget = target;
 
     if (!target) {
       return NextResponse.json({ error: "리뷰 대상 상품을 찾을 수 없습니다." }, { status: 404 });
@@ -68,6 +72,8 @@ export async function POST(req: Request) {
     const snap = await fetchSmartstoreReviewSnapshot({
       productUrl: cleanMobileUrl,
       productId: target.productId,
+      productName: target.name ?? null,
+      storeName: target.storeName ?? null,
     });
 
     const count = snap.summary.reviewCount;
@@ -193,15 +199,49 @@ export async function POST(req: Request) {
       ...logContext,
       errorName: e instanceof Error ? e.name : "unknown",
       errorMessage: e instanceof Error ? e.message : String(e),
-      error: e,
     });
-    if (isSmartstoreNaverRateLimitedError(e)) {
+
+    // 네이버 차단(429) / 봇 필터 감지 → 기존 DB 값 유지하며 partial 응답(200)
+    const isRateLimit = isSmartstoreNaverRateLimitedError(e);
+    const isBlocked = e instanceof SmartstoreReviewBlockedError;
+    if ((isRateLimit || isBlocked) && resolvedTarget) {
+      const msg = isRateLimit
+        ? "네이버 요청 차단(429)으로 최신 리뷰를 갱신하지 못했습니다. 기존 데이터를 유지합니다."
+        : "네이버 차단/검증 감지. 기존 리뷰 데이터를 유지합니다.";
+      console.warn("[smartstore-review-sync] partial 응답 반환", {
+        ...logContext,
+        isRateLimit,
+        existingReviewCount: resolvedTarget.reviewCount,
+        existingReviewRating: resolvedTarget.reviewRating,
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          partial: true,
+          blocked: true,
+          targetId: resolvedTarget.id,
+          message: msg,
+          summary: {
+            reviewCount: resolvedTarget.reviewCount,
+            reviewRating: resolvedTarget.reviewRating,
+            photoVideoReviewCount: resolvedTarget.reviewPhotoVideoCount,
+            monthlyUseReviewCount: resolvedTarget.reviewMonthlyUseCount,
+            repurchaseReviewCount: resolvedTarget.reviewRepurchaseCount,
+            storePickReviewCount: resolvedTarget.reviewStorePickCount,
+            starScoreSummary: resolvedTarget.reviewStarSummary,
+          },
+        },
+        { status: 200 }
+      );
+    }
+    // target을 못 찾기 전에 차단된 경우 (resolvedTarget == null)
+    if (isRateLimit) {
       return NextResponse.json(
         { error: "보안 차단 감지: 10초간 긴급 휴식에 들어갑니다" },
         { status: 429 }
       );
     }
-    if (e instanceof SmartstoreReviewBlockedError) {
+    if (isBlocked) {
       return NextResponse.json(
         { error: "네이버 차단/검증 페이지로 인해 리뷰 데이터를 가져오지 못했습니다." },
         { status: 429 }

@@ -48,7 +48,6 @@ interface RecentUserRow {
   id: string;
   name: string | null;
   email: string | null;
-  image: string | null;
   createdAt: Date;
   createdAtReliable: boolean;
   adminMemo: string | null;
@@ -236,7 +235,6 @@ export default async function AdminUsersPage() {
         id: true,
         name: true,
         email: true,
-        image: true,
         createdAt: true,
         createdAtReliable: true,
         adminMemo: true,
@@ -310,6 +308,25 @@ export default async function AdminUsersPage() {
     [] as AdminAlertListItem[],
     "adminAlert.findMany"
   );
+
+  const recentUserIds = recentUsers.map((u) => u.id);
+  const lastVisitByUserId = new Map<string, Date>();
+  if (recentUserIds.length > 0) {
+    try {
+      const lastVisitRows = await prisma.visitorEvent.groupBy({
+        by: ["userId"],
+        where: { userId: { in: recentUserIds } },
+        _max: { createdAt: true },
+      });
+      for (const row of lastVisitRows) {
+        const uid = row.userId;
+        const at = row._max.createdAt;
+        if (uid && at) lastVisitByUserId.set(uid, at);
+      }
+    } catch (err) {
+      console.error("[admin/users] visitorEvent last-visit groupBy failed", err);
+    }
+  }
 
   const visitorByDayMap = Object.fromEntries(
     visitorLogByDay.map((r: VisitorLogDailyCountRow) => [
@@ -445,10 +462,9 @@ export default async function AdminUsersPage() {
               </h2>
               <ul className="grid gap-2.5 sm:gap-3">
                 {recentUsers.map((u: RecentUserRow) => {
-                  const hasImage =
-                    typeof u.image === "string" && u.image.trim().length > 0;
                   const displayEmail = u.email?.trim() || "—";
                   const displayName = u.name?.trim() || "이름 미등록";
+                  const lastVisitAt = lastVisitByUserId.get(u.id);
 
                   return (
                     <li
@@ -457,12 +473,18 @@ export default async function AdminUsersPage() {
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1 space-y-1">
-                          <p className="truncate text-sm font-bold text-slate-900">
+                          <Link
+                            href={`/admin/users/${u.id}`}
+                            className="block truncate text-sm font-bold text-slate-900 decoration-slate-300 underline-offset-2 hover:text-blue-700 hover:underline"
+                          >
                             {displayName}
-                          </p>
-                          <p className="truncate font-mono text-[11px] text-slate-600 sm:text-xs">
+                          </Link>
+                          <Link
+                            href={`/admin/users/${u.id}`}
+                            className="block truncate font-mono text-[11px] text-slate-600 decoration-slate-300 underline-offset-2 hover:text-blue-700 hover:underline sm:text-xs"
+                          >
                             {displayEmail}
-                          </p>
+                          </Link>
                         </div>
                         <dl className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-slate-600 sm:flex sm:w-auto sm:flex-col sm:gap-1 sm:text-right sm:text-xs">
                           <div className="col-span-2 sm:text-right">
@@ -486,18 +508,18 @@ export default async function AdminUsersPage() {
                           </div>
                           <div className="col-span-2 sm:text-right">
                             <dt className="inline text-slate-500 sm:block">
-                              프로필 이미지
+                              마지막 접속
                             </dt>{" "}
                             <dd className="inline sm:block">
-                              <span
-                                className={
-                                  hasImage
-                                    ? "inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800"
-                                    : "inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600"
-                                }
-                              >
-                                {hasImage ? "있음" : "없음"}
-                              </span>
+                              {lastVisitAt ? (
+                                <span className="font-medium tabular-nums text-slate-800">
+                                  {formatSeoulDateTime(lastVisitAt)}
+                                </span>
+                              ) : (
+                                <span className="font-medium text-slate-500">
+                                  활동 기록 없음
+                                </span>
+                              )}
                             </dd>
                           </div>
                         </dl>
