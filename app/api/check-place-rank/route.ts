@@ -220,7 +220,7 @@ export async function POST(req: Request) {
       try {
         const { batch, mode } = await timedNaverFetch(() =>
           withTimeout(
-            fetchBestPcmapBusinessesBatchJson(actualKeyword),
+            fetchBestPcmapBusinessesBatchJson(actualKeyword, targetName),
             PCMAP_FETCH_TIMEOUT_MS,
             `[check-place-rank pcmap] timeout ${PCMAP_FETCH_TIMEOUT_MS}ms`
           )

@@ -59,13 +59,42 @@ type FetchSinglePageResult =
   | { kind: "end"; count: 0 }
   | { kind: "failed" };
 
+function normalizeForPcmapTarget(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "object") return "";
+  const s = String(value).trim();
+  if (!s) return "";
+  return s
+    .toLowerCase()
+    .replace(/\s/g, "")
+    .replace(/&/g, "and")
+    .replace(/앤/g, "and")
+    .replace(/[()[\]{}'"`.,·•\-_/]/g, "")
+    .trim();
+}
+
+function hasExactTargetInItems(
+  items: unknown[],
+  normalizedTargetName: string
+): boolean {
+  if (!normalizedTargetName) return false;
+  return items.some((item) => {
+    const name =
+      item && typeof item === "object" && "name" in item
+        ? (item as { name?: unknown }).name
+        : "";
+    return normalizeForPcmapTarget(name) === normalizedTargetName;
+  });
+}
+
 async function fetchRawBatchOnce(
   keyword: string,
   coordAnchorKeyword?: string,
-  opts?: { mapReferer?: boolean; pages?: number }
+  opts?: { mapReferer?: boolean; pages?: number; targetName?: string }
 ): Promise<unknown[] | null> {
   const q = String(keyword ?? "").trim();
   if (!q) return null;
+  const normalizedTargetName = normalizeForPcmapTarget(opts?.targetName);
 
   const anchor =
     coordAnchorKeyword == null
@@ -193,6 +222,23 @@ async function fetchRawBatchOnce(
 
     if (pageResult.kind === "success") {
       finalBatch.push(pageResult.part);
+
+      const items = getPlacesItemsFromBatchPart(pageResult.part);
+      if (hasExactTargetInItems(items, normalizedTargetName)) {
+        console.log(
+          "[pcmap single page] target found → remaining pages skipped",
+          {
+            keyword: q,
+            targetName: opts?.targetName ?? null,
+            pageIndex,
+            start,
+            fetchedPages: finalBatch.length,
+            skippedPages: Math.max(0, pageCount - (pageIndex + 1)),
+          }
+        );
+        break;
+      }
+
       await new Promise((r) => setTimeout(r, 250));
       continue;
     }
@@ -229,7 +275,8 @@ async function fetchRawBatchOnce(
  * businesses GraphQL 배치(JSON 배열)를 가져온다.
  */
 export async function fetchBestPcmapBusinessesBatchJson(
-  originalKeyword: string
+  originalKeyword: string,
+  targetName?: string
 ): Promise<{ batch: unknown[] | null; mode: string }> {
   const okKeyword = String(originalKeyword ?? "").trim();
   if (!okKeyword) return { batch: null, mode: "empty" };
@@ -237,7 +284,7 @@ export async function fetchBestPcmapBusinessesBatchJson(
   const fallback = buildLocationFallbackSearchKeyword(okKeyword);
 
   if (fallback) {
-    const b0 = await fetchRawBatchOnce(okKeyword);
+    const b0 = await fetchRawBatchOnce(okKeyword, undefined, { targetName });
     if (b0 && countBusinessesItemsInBatch(b0) > 0) {
       return { batch: b0, mode: "original" };
     }
@@ -246,6 +293,7 @@ export async function fetchBestPcmapBusinessesBatchJson(
     await new Promise((r) => setTimeout(r, 420));
     const m0 = await fetchRawBatchOnce(okKeyword, undefined, {
       mapReferer: true,
+      targetName,
     });
     if (m0 && countBusinessesItemsInBatch(m0) > 0) {
       return { batch: m0, mode: "original+mapReferer" };
@@ -254,13 +302,14 @@ export async function fetchBestPcmapBusinessesBatchJson(
     return { batch: null, mode: "empty" };
   }
 
-  const b = await fetchRawBatchOnce(okKeyword);
+  const b = await fetchRawBatchOnce(okKeyword, undefined, { targetName });
   if (b && countBusinessesItemsInBatch(b) > 0) {
     return { batch: b, mode: "single" };
   }
   await new Promise((r) => setTimeout(r, 420));
   const m = await fetchRawBatchOnce(okKeyword, undefined, {
     mapReferer: true,
+    targetName,
   });
   if (m && countBusinessesItemsInBatch(m) > 0) {
     return { batch: m, mode: "single+mapReferer" };
