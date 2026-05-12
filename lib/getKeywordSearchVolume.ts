@@ -24,6 +24,26 @@ export type KeywordVolumeResult = {
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const volumeCache = new Map<string, { value: KeywordVolumeResult; timestamp: number }>();
 
+/** SearchAD keywordstool 동시 호출 상한(429 완화). 조정 시 2~3 권장. */
+const KEYWORD_SEARCH_VOLUME_API_CONCURRENCY = 2;
+
+let volumeSearchAdPermits = KEYWORD_SEARCH_VOLUME_API_CONCURRENCY;
+const volumeSearchAdWaiters: Array<() => void> = [];
+
+async function acquireVolumeSearchAdSlot(): Promise<void> {
+  if (volumeSearchAdPermits > 0) {
+    volumeSearchAdPermits -= 1;
+    return;
+  }
+  await new Promise<void>((resolve) => volumeSearchAdWaiters.push(resolve));
+}
+
+function releaseVolumeSearchAdSlot(): void {
+  const next = volumeSearchAdWaiters.shift();
+  if (next) next();
+  else volumeSearchAdPermits += 1;
+}
+
 const isDevLogs = process.env.NODE_ENV !== "production";
 
 /** 입력 문자열 통일용 (NFKC, 제로폭 제거, trim) */
@@ -329,13 +349,18 @@ export async function getKeywordSearchVolume(
     return { ...hit.value };
   }
 
-  const value = await fetchKeywordSearchVolumeUncached(
-    kwInput,
-    accessKey,
-    secretKey,
-    customerId
-  );
+  await acquireVolumeSearchAdSlot();
+  try {
+    const value = await fetchKeywordSearchVolumeUncached(
+      kwInput,
+      accessKey,
+      secretKey,
+      customerId
+    );
 
-  volumeCache.set(cacheKey, { value, timestamp: Date.now() });
-  return { ...value };
+    volumeCache.set(cacheKey, { value, timestamp: Date.now() });
+    return { ...value };
+  } finally {
+    releaseVolumeSearchAdSlot();
+  }
 }
