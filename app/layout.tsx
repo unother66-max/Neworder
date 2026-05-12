@@ -84,10 +84,12 @@ export default function RootLayout({
           <ScrollTracker />
         </Suspense>
 
-        {/* 실제 콘텐츠 */}
+        {/* 실제 콘텐츠: flex-1로 주 영역을 채워 footer가 항상 뷰포트 하단에 고정되도록 함 */}
         <Providers>
-          <div className="relative z-20">{children}</div>
-          <SiteFooter />
+          <div className="flex min-h-dvh flex-col">
+            <main className="relative z-20 flex-1">{children}</main>
+            <SiteFooter />
+          </div>
         </Providers>
 
         {/* 🚨 2. 여기에 톡상담 버튼 추가 (모든 페이지 공통 적용) */}

@@ -129,26 +129,26 @@ export default function CommunityDetailClient() {
   };
 
   if (isLoading) return (
-    <>
+    <div className="min-h-[70dvh]">
       <TopNav />
       <div className="pt-40 text-center text-slate-400 font-bold">불러오는 중...</div>
-    </>
+    </div>
   );
   
   if (!post) return (
-    <>
+    <div className="min-h-[70dvh]">
       <TopNav />
       <div className="pt-40 text-center">
         <p className="text-slate-400 font-bold mb-4">글을 찾을 수 없습니다.</p>
         <button onClick={() => router.push('/community')} className="text-blue-500 font-bold">목록으로</button>
       </div>
-    </>
+    </div>
   );
 
   const canEditOrDelete = session?.user?.email === post.author?.email || session?.user?.email === ADMIN_EMAIL;
 
   return (
-    <>
+    <div className="min-h-[70dvh]">
       <TopNav />
       <main className="min-h-screen bg-white pb-[72px] pt-16 md:pb-20 md:pt-24">
         <div className="mx-auto max-w-[850px] px-5 sm:px-6">
@@ -266,6 +266,6 @@ export default function CommunityDetailClient() {
           </div>
         </div>
       </main>
-    </>
+    </div>
   );
 }

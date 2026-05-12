@@ -12,7 +12,7 @@ const legalPillClass =
 export default function SiteFooter() {
   return (
     <footer
-      className={`${notoSansKr.className} relative z-100 bg-black text-white`}
+      className={`${notoSansKr.className} relative z-10 bg-black text-white`}
     >
      <div className="mx-auto max-w-7xl px-4 py-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
         <div className="min-w-0 max-w-xl">

@@ -12,7 +12,7 @@ export function GlobalLoading({
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className="fixed inset-0 z-[22000] flex min-h-dvh w-screen flex-col items-center justify-center bg-white px-6"
+      className="fixed inset-0 z-[99999] flex min-h-screen min-h-dvh w-screen flex-col items-center justify-center bg-white px-6"
     >
       <div className="flex flex-col items-center text-center">
         <img
@@ -22,7 +22,7 @@ export function GlobalLoading({
           height={200}
           className="h-[200px] w-[200px]"
         />
-        <p className="mt-4 text-[15px] font-medium text-slate-700">{message}</p>
+       
       </div>
     </div>
   );
