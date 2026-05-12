@@ -296,7 +296,7 @@ export default function CommunityPage() {
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
                               <span className="text-[14px] font-black text-slate-900 group-hover:text-blue-600 transition-colors">{post.title}</span>
-                              <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded font-bold tracking-wider">필독</span>
+                              <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded font-bold tracking-wider"></span>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-center text-[13px] text-slate-800 font-bold">

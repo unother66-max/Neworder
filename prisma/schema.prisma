@@ -47,6 +47,7 @@ model User {
   posts                   Post[]
   comments                Comment[]
   visitorEvents           VisitorEvent[]
+  blogAnalysisHistories BlogAnalysisHistory[]
 }
 
 // --- 🚨 인증 필수 모델 ---
@@ -371,6 +372,53 @@ model SystemConfig {
   id          String   @id
   naverCookie String?
   updatedAt   DateTime @updatedAt
+}
+
+/** 블로그 채널 분석 결과 히스토리 (우리 서비스 기준 순위 계산용) */
+model BlogAnalysisHistory {
+  id                      String    @id @default(cuid())
+  userId                  String?
+  user                    User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  blogId                  String
+  blogName                String?
+  nickname                String?
+  profileImage            String?   @db.Text
+  blogTopic               String?
+
+  visitorCount            Int?
+  postCount               Int?
+  subscriberCount         Int?
+  postingFrequency        Float?
+
+  validKeywordCount       Int?
+
+  level                   Int?
+  grade                   String?
+  totalScore              Float?
+  influenceScore          Float?
+  keywordInfluenceScore   Float?
+  contentInfluenceScore   Float?
+
+  /** 최근 포스팅 패턴 분석 평균·점수 (저장 시점 스냅샷) */
+  averageTitleLength      Float?
+  averageContentLength    Float?
+  averageImageCount       Float?
+  titleLengthScore        Float?
+  contentLengthScore      Float?
+  imageCountScore         Float?
+
+  totalRank               Int?
+  topicRank               Int?
+
+  analyzedAt              DateTime  @default(now())
+  createdAt               DateTime  @default(now())
+
+  @@index([blogId])
+  @@index([blogTopic])
+  @@index([totalScore])
+  @@index([analyzedAt])
+  @@index([blogTopic, totalScore])
 }
 
 model Post {

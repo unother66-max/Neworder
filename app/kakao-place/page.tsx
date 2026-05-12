@@ -450,7 +450,7 @@ export default function KakaoPlacePage() {
               </div>
 
               <div className="flex w-full flex-col gap-2 sm:flex-row md:gap-3 lg:w-auto lg:items-center">
-                <div className="relative w-full sm:w-[320px]">
+              <div className="relative hidden w-full sm:block sm:w-[320px]">
                   <input
                     type="text"
                     value={searchText}

@@ -37,7 +37,7 @@ export default function HomePage() {
         <TopNav showBreadcrumb={false} />
       </div>
 
-      <section className="relative z-10 h-[100svh] min-h-[600px] w-full overflow-hidden md:h-screen">
+      <section className="relative z-10 h-[100svh] min-h-[600px] w-full overflow-hidden md:h-screen md:min-h-[640px]">
         
         {/* 💡 1층 (z-10): 지구본 영역 (스크린샷 24번 기준 완벽 복구) */}
         {/* 기존의 absolute right 설정과 calc(100vw - 994px) 연산을 그대로 가져왔습니다. */}
@@ -140,13 +140,17 @@ export default function HomePage() {
       {/* ════════════════════════════════════
           3. 마무리 CTA — 포스터 느낌
       ════════════════════════════════════ */}
-      <section className="relative z-10 overflow-hidden bg-white px-6 py-32 text-center md:py-44 lg:py-56">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: "radial-gradient(ellipse 80% 60% at 50% 110%, rgba(0,41,255,0.05) 0%, transparent 70%)",
-          }}
-        />
+     <section className="relative z-10 overflow-hidden bg-white px-6 pt-56 pb-32 text-center md:pt-72 md:pb-44 lg:pt-96 lg:pb-56">
+     <div
+  className="pointer-events-none absolute inset-0 opacity-100"
+  style={{
+    backgroundImage: "url('/images/bg-culture.png')",
+    backgroundSize: "cover",
+    backgroundPosition: "center 80px",
+    backgroundRepeat: "no-repeat",
+  }}
+/>
+
         <div className="relative mx-auto max-w-4xl">
           <h2 className="font-black leading-[1.0] tracking-[-0.03em] text-slate-900
             text-[clamp(2.5rem,7.5vw,6rem)]

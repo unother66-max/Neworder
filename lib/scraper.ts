@@ -1,3 +1,5 @@
+import type { BlogAnalysisRecentPost } from "./blog-analysis-types";
+
 export type ScrapedPost = {
   title: string;
   link: string;
@@ -14,7 +16,7 @@ function normalizeUrl(input: string) {
   return trimmed;
 }
 
-function extractBlogId(inputUrl: string) {
+export function extractBlogId(inputUrl: string) {
   const safeUrl = normalizeUrl(inputUrl);
 
   try {
@@ -52,10 +54,15 @@ function decodeXmlText(text: string) {
     .replace(/&#39;/g, "'");
 }
 
-function getTagValue(block: string, tagName: string) {
+function getRawTagInner(block: string, tagName: string) {
   const regex = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, "i");
   const match = block.match(regex);
-  return match ? decodeXmlText(match[1].trim()) : "";
+  return match ? match[1].trim() : "";
+}
+
+function getTagValue(block: string, tagName: string) {
+  const inner = getRawTagInner(block, tagName);
+  return inner ? decodeXmlText(inner) : "";
 }
 
 function formatPubDate(pubDate: string) {
@@ -70,6 +77,88 @@ function formatPubDate(pubDate: string) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function normalizeMediaUrl(src: string | null | undefined): string | null {
+  if (!src) return null;
+  const t = src.trim();
+  if (!t) return null;
+  if (t.startsWith("//")) return `https:${t}`;
+  if (t.startsWith("http://") || t.startsWith("https://")) return t;
+  return null;
+}
+
+function extractMediaThumbnail(item: string): string | null {
+  const m = item.match(/<media:thumbnail[^>]*\burl\s*=\s*["']([^"']+)["']/i);
+  return m ? normalizeMediaUrl(m[1]) : null;
+}
+
+function extractThumbnailFromDescription(descriptionRaw: string): string | null {
+  if (!descriptionRaw) return null;
+  const decoded = decodeXmlText(descriptionRaw.trim());
+  const imgMatch = decoded.match(/<img[^>]+\bsrc\s*=\s*["']([^"']+)["']/i);
+  return normalizeMediaUrl(imgMatch?.[1]);
+}
+
+function isoFromPubDate(pubRaw: string): string | null {
+  const date = new Date(pubRaw.trim());
+  if (isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+/** Parses public Naver blog RSS XML into up to `limit` posts (no network). */
+export function parseBlogRssItems(xmlText: string, limit = 20): BlogAnalysisRecentPost[] {
+  const itemBlocks = Array.from(xmlText.matchAll(/<item>([\s\S]*?)<\/item>/gi)).map(
+    (match) => match[1]
+  );
+
+  const out: BlogAnalysisRecentPost[] = [];
+
+  for (const item of itemBlocks) {
+    const title = getTagValue(item, "title").trim();
+    const link = getTagValue(item, "link").trim();
+    const pubRaw = getRawTagInner(item, "pubDate");
+    const descriptionRaw = getRawTagInner(item, "description");
+
+    if (!title || !link) continue;
+
+    const createdAt = pubRaw ? isoFromPubDate(decodeXmlText(pubRaw.trim())) : null;
+    const thumbnail =
+      extractMediaThumbnail(item) ?? extractThumbnailFromDescription(descriptionRaw);
+
+    out.push({
+      title,
+      url: link,
+      createdAt,
+      thumbnail,
+    });
+
+    if (out.length >= limit) break;
+  }
+
+  return out;
+}
+
+export function computePostingFrequency7d(
+  recentPosts: { createdAt?: string | null }[]
+): number | null {
+  if (!recentPosts.length) return null;
+
+  let validDates = 0;
+  let countInWindow = 0;
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  for (const p of recentPosts) {
+    if (!p.createdAt) continue;
+    const t = new Date(p.createdAt).getTime();
+    if (isNaN(t)) continue;
+    validDates += 1;
+    if (t >= cutoff) countInWindow += 1;
+  }
+
+  if (validDates === 0) return null;
+
+  return Math.round((countInWindow / 7) * 100) / 100;
 }
 
 export async function getRecentLinksFromPage(

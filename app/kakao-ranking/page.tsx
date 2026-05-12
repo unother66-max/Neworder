@@ -281,7 +281,7 @@ export default function KakaoRankingPage() {
                 <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">카카오맵에서 제공하는 지역별 인기 순위를 기준으로 분석된 데이터입니다.</p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:flex-row md:gap-3 lg:w-auto lg:items-center">
-                <div className="relative w-full sm:w-[320px]">
+              <div className="relative hidden w-full sm:block sm:w-[320px]">
                   <input
                     type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)}
                     placeholder="등록된 매장 검색"

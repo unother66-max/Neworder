@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/kakao-keyword-tracking",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/blog-analysis-light",
+      "schedule": "0 19 * * *"
     }
   ]
 }

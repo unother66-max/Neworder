@@ -3,7 +3,7 @@
  * fixed + 높은 z-index + 불투명 배경으로 이전 화면/모달 블러 잔상이 비치지 않게 합니다.
  */
 export function GlobalLoading({
-  message = "글로벌 데이터를 분석 중입니다...",
+  message = "데이터를 분석 중입니다...",
 }: {
   message?: string;
 }) {

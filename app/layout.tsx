@@ -5,6 +5,7 @@ import "./globals.css";
 import ScrollTracker from "./components/ScrollTracker";
 import Providers from "./providers";
 import KakaoChatButton from "@/components/kakao-chat-button";
+import SiteFooter from "@/components/site-footer";
 
 // 1️⃣ Poppins 폰트 설정
 const poppins = localFont({
@@ -86,6 +87,7 @@ export default function RootLayout({
         {/* 실제 콘텐츠 */}
         <Providers>
           <div className="relative z-20">{children}</div>
+          <SiteFooter />
         </Providers>
 
         {/* 🚨 2. 여기에 톡상담 버튼 추가 (모든 페이지 공통 적용) */}
