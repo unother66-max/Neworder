@@ -65,6 +65,7 @@ export default function ScrollTracker() {
     fetch("/api/internal/visit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({
         path,
         referrer: ref && ref.length > 0 ? ref : null,

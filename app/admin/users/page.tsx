@@ -512,7 +512,7 @@ export default async function AdminUsersPage() {
                             </dt>{" "}
                             <dd className="inline sm:block">
                               {lastVisitAt ? (
-                                <span className="font-medium tabular-nums text-slate-800">
+                                <span className="font-bold tabular-nums text-red-500">
                                   {formatSeoulDateTime(lastVisitAt)}
                                 </span>
                               ) : (

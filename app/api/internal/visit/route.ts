@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { getServerSession } from "next-auth/next";
 
+import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { seoulCalendarDateString } from "@/lib/seoul-calendar";
 import { categorizeReferrer } from "@/lib/referrer-category";
@@ -16,7 +17,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const DEDUP_WINDOW_MS = 30_000;
-const authSecret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
 
 function sha256Hex(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
@@ -45,18 +45,14 @@ function resolvedIp(h: Headers): string {
 
 type VisitBody = { path?: string; referrer?: string | null };
 
-async function visitorUserIdFromRequest(req: NextRequest): Promise<string | null> {
-  if (!authSecret) return null;
+type SessionWithUserId = { user?: { id?: string | null } };
+
+async function visitorUserIdFromSession(): Promise<string | null> {
   try {
-    const token = await getToken({ req, secret: authSecret });
-    const t = token as { id?: unknown; sub?: unknown } | null;
+    const session = (await getServerSession(authOptions as never)) as SessionWithUserId | null;
     const id =
-      typeof t?.id === "string" && t.id.trim()
-        ? t.id.trim()
-        : typeof t?.sub === "string" && t.sub.trim()
-          ? t.sub.trim()
-          : null;
-    return id;
+      typeof session?.user?.id === "string" ? session.user.id.trim() : "";
+    return id.length > 0 ? id : null;
   } catch {
     return null;
   }
@@ -121,7 +117,7 @@ export async function POST(req: NextRequest) {
       ? categorizeReferrer(referrerStored)
       : "direct";
 
-    const visitorUserId = await visitorUserIdFromRequest(req);
+    const visitorUserId = await visitorUserIdFromSession();
 
     await prisma.$transaction(async (tx) => {
       await tx.visitorLog.upsert({
@@ -138,6 +134,7 @@ export async function POST(req: NextRequest) {
         where: {
           ipHash,
           path: pathStored,
+          userId: visitorUserId,
           createdAt: {
             gt: new Date(Date.now() - DEDUP_WINDOW_MS),
           },
