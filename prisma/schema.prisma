@@ -236,15 +236,17 @@ model PlaceReviewHistory {
 }
 
 model SmartstoreProduct {
-  id            String          @id @default(cuid())
-  userId        String
-  productId     String
-  space         SmartstoreSpace @default(NAVER_PRICE)
-  productUrl    String
-  name          String
-  category      String?
-  thumbnailLink String?
-  imageUrl      String?
+  id              String          @id @default(cuid())
+  userId          String
+  productId       String
+  space           SmartstoreSpace @default(NAVER_PRICE)
+  productUrl      String
+  name            String
+  category        String?
+  /** 네이버 스토어 카탈로그 리프 카테고리 번호 — 리뷰 product-summary API에 사용 */
+  leafCategoryId  Int?
+  thumbnailLink   String?
+  imageUrl        String?
   mallName      String?
   sellerTags    String[]        @default([])
   rankPinned    Boolean         @default(false)
@@ -270,6 +272,8 @@ model SmartstoreReviewTarget {
   name                  String
   imageUrl              String?
   storeName             String?
+  /** 리뷰 요약 JSON API(leafCategoryId 쿼리) — 미확보 시 HTML·검색 fallback */
+  leafCategoryId        Int?
   reviewCount           Int?     @default(0)
   reviewRating          Float?
   reviewPhotoVideoCount Int?     @default(0)

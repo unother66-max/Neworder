@@ -6,6 +6,8 @@ import {
 import {
   buildSmartstoreMobileDocumentFetchHeaders,
   loadSystemConfigNaverCookie,
+  SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
+  SMARTSTORE_UNIFIED_USER_AGENT,
 } from "@/lib/naver-smartstore-unified-fetch-headers";
 import {
   fetchSmartstoreMetaViaShoppingSearchApi,
@@ -73,6 +75,153 @@ export type SmartstoreReviewSnapshot = {
   };
   recentReviews: SmartstoreRecentReview[];
 };
+
+function jsonRecord(v: unknown): Record<string, unknown> | null {
+  if (v !== null && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  return null;
+}
+
+function finiteNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  return null;
+}
+
+function normalizePcProductReferer(productUrl: string): string {
+  try {
+    const u = new URL(productUrl.startsWith("http") ? productUrl : `https://${productUrl}`);
+    u.search = "";
+    u.hash = "";
+    const h = u.hostname.toLowerCase().replace(/^www\./, "");
+    if (h === "m.smartstore.naver.com") {
+      u.hostname = "smartstore.naver.com";
+    } else if (h === "m.brand.naver.com") {
+      u.hostname = "brand.naver.com";
+    }
+    return u.toString();
+  } catch {
+    return String(productUrl).split("?")[0]!.split("#")[0]!;
+  }
+}
+
+/** 쿠키 없음 — HTML 수집 전 1순위. 실패 시 null → 기존 HTML·fallback. */
+async function trySmartstoreReviewProductSummaryApi(input: {
+  productId: string;
+  leafCategoryId: number;
+  refererPcUrl: string;
+}): Promise<SmartstoreReviewSnapshot | null> {
+  try {
+    const leaf = Math.trunc(input.leafCategoryId);
+    if (!Number.isFinite(leaf) || leaf <= 0) return null;
+
+    const url = new URL(
+      `https://smartstore.naver.com/i/v1/contents/reviews/product-summary/${encodeURIComponent(
+        input.productId
+      )}`
+    );
+    url.searchParams.set("leafCategoryId", String(leaf));
+
+    const refererPc = normalizePcProductReferer(input.refererPcUrl);
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
+        Referer: refererPc,
+        "User-Agent": SMARTSTORE_UNIFIED_USER_AGENT,
+        "X-Client-Version": "20260429185405",
+        "X-Service-Type": "NONE",
+      },
+    });
+
+    if (res.status === 429) {
+      console.warn(`${LOG_P} product-summary rate-limit`, {
+        productId: input.productId,
+        leafCategoryId: leaf,
+        status: res.status,
+      });
+      return null;
+    }
+
+    if (!res.ok) {
+      console.warn(`${LOG_P} product-summary non-OK`, {
+        productId: input.productId,
+        leafCategoryId: leaf,
+        status: res.status,
+      });
+      return null;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await res.text()) as unknown;
+    } catch {
+      console.warn(`${LOG_P} product-summary JSON parse fail`, { productId: input.productId });
+      return null;
+    }
+
+    const info = jsonRecord(jsonRecord(parsed)?.productReviewInfo);
+    if (!info) {
+      console.warn(`${LOG_P} product-summary missing productReviewInfo`, {
+        productId: input.productId,
+      });
+      return null;
+    }
+
+    const reviewCount = finiteNumber(info.reviewCount);
+    const avg = finiteNumber(info.averageReviewScore);
+    if (reviewCount == null && avg == null) {
+      console.warn(`${LOG_P} product-summary no summary signal`, { productId: input.productId });
+      return null;
+    }
+
+    const photo = finiteNumber(info.photoReviewCount);
+    const video = finiteNumber(info.videoReviewCount);
+    const photoVideoReviewCount =
+      photo == null && video == null ? null : Math.trunc((photo ?? 0) + (video ?? 0));
+
+    const monthlyRaw = finiteNumber(info.afterUseReviewCount);
+    const monthlyUseReviewCount =
+      monthlyRaw == null ? null : Math.max(0, Math.trunc(monthlyRaw));
+
+    const starScoreSummary: Record<"1" | "2" | "3" | "4" | "5", number> = {
+      "1": Math.max(0, Math.trunc(finiteNumber(info.score1ReviewCount) ?? 0)),
+      "2": Math.max(0, Math.trunc(finiteNumber(info.score2ReviewCount) ?? 0)),
+      "3": Math.max(0, Math.trunc(finiteNumber(info.score3ReviewCount) ?? 0)),
+      "4": Math.max(0, Math.trunc(finiteNumber(info.score4ReviewCount) ?? 0)),
+      "5": Math.max(0, Math.trunc(finiteNumber(info.score5ReviewCount) ?? 0)),
+    };
+
+    console.log(`${LOG_P} product-summary 성공`, {
+      productId: input.productId,
+      leafCategoryId: leaf,
+      reviewCount,
+      avg,
+    });
+
+    return {
+      productPageUrl: refererPc,
+      summary: {
+        reviewCount:
+          reviewCount == null ? null : Math.max(0, Math.trunc(reviewCount)),
+        reviewRating: avg,
+        photoVideoReviewCount,
+        monthlyUseReviewCount,
+        repurchaseReviewCount: null,
+        storePickReviewCount: null,
+        starScoreSummary,
+      },
+      recentReviews: [],
+    };
+  } catch (e) {
+    console.warn(`${LOG_P} product-summary exception`, {
+      productId: input.productId,
+      error: String(e),
+    });
+    return null;
+  }
+}
 
 /**
  * 🎯 [스나이퍼 로직] HTML 원본에서 정규식으로 데이터를 낚아챕니다.
@@ -302,11 +451,20 @@ export async function fetchSmartstoreReviewSnapshot(input: {
   productName?: string | null;
   /** DB에 저장된 스토어명 — fallback 검색 보조 */
   storeName?: string | null;
+  /** 네이버 리뷰 요약 JSON API용 leafCategoryId (없으면 HTML·검색만 사용) */
+  leafCategoryId?: number | null;
 }): Promise<SmartstoreReviewSnapshot> {
   const productId = String(input.productId).trim();
   const parsedUrl = normalizeUrl(input.productUrl);
   const productUrlKind = classifyProductUrl(parsedUrl);
   const candidateUrls = buildCandidateProductPages(productUrlKind, parsedUrl, productId);
+
+  const trimmedLeaf =
+    typeof input.leafCategoryId === "number" &&
+    Number.isFinite(input.leafCategoryId) &&
+    Math.trunc(input.leafCategoryId) > 0
+      ? Math.trunc(input.leafCategoryId)
+      : null;
 
   console.log(`${LOG_P} 리뷰 요약 수집 시작`, {
     productId,
@@ -314,13 +472,27 @@ export async function fetchSmartstoreReviewSnapshot(input: {
     productUrlKind,
     productName: input.productName ?? null,
     storeName: input.storeName ?? null,
+    leafCategoryId: trimmedLeaf,
     candidateUrls,
   });
 
   // 1. 실제 사람처럼 보이게 딜레이 살짝 (봇 방패 우회)
   await randomSmartstoreDelay("ranking");
 
-  // 2. 소장님의 네이버 신분증(쿠키) 로드
+  if (
+    trimmedLeaf != null &&
+    (productUrlKind === "SMARTSTORE" || productUrlKind === "BRAND") &&
+    /^\d+$/.test(productId)
+  ) {
+    const viaApi = await trySmartstoreReviewProductSummaryApi({
+      productId,
+      leafCategoryId: trimmedLeaf,
+      refererPcUrl: input.productUrl,
+    });
+    if (viaApi) return viaApi;
+  }
+
+  // 2. 소장님의 네이버 신분증(쿠키) 로드 — HTML 페이지용 (product-summary API는 비쿠키)
   const naverCookie = await loadSystemConfigNaverCookie();
   let sawBlocked = false;
   let sawNotFound = false;

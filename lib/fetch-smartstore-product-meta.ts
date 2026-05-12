@@ -22,6 +22,7 @@ export type SmartstoreProductMeta = {
   name: string | null;
   imageUrl: string | null;
   category: string | null;
+  leafCategoryId: number | null;
 };
 
 export type SmartstoreProductFetchResult = {
@@ -29,6 +30,7 @@ export type SmartstoreProductFetchResult = {
   category: string | null;
   imageUrl: string | null;
   imageUrls: string[];
+  leafCategoryId: number | null;
 };
 
 export const SMARTSTORE_PRODUCT_IMAGE_FALLBACK = "/file.svg";
@@ -101,6 +103,7 @@ type MetaFieldSources = {
   imageUrl: string | null;
   category: string | null;
   imageUrlsSource: string | null;
+  leafCategoryId: number | null;
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -169,6 +172,31 @@ function decodeJsonEscapes(raw: string): string {
     .replace(/\\u0026/g, "&")
     .replace(/\\\//g, "/")
     .replace(/\\"/g, '"');
+}
+
+/** HTML·스크립트에 박혀 있는 leafCategoryId (리뷰 요약 API 쿼리용) */
+function extractLeafCategoryIdFromEmbeddedJson(html: string): number | null {
+  const patterns = [/"leafCategoryId"\s*:\s*"?(\d+)"?/i, /"leafCategoryNo"\s*:\s*"?(\d+)"?/i];
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m?.[1]) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+    }
+  }
+  return null;
+}
+
+function pickPositiveLeafCategoryId(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    const t = Math.trunc(v);
+    return t > 0 ? t : null;
+  }
+  if (typeof v === "string" && /^\d+$/.test(v.trim())) {
+    const n = Number(v.trim());
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
 }
 
 function collectValuesByKey(root: unknown, keyNames: string[]): string[] {
@@ -301,32 +329,34 @@ async function fetchSmartstoreProductMetaViaMobileHtml(
   const imageUrl = snip(/<meta property="og:image" content="([^"]+)"/i) || 
                    snip(/"representativeImageUrl"\s*:\s*"([^"]+)"/i);
 
-  const category = snip(/"categoryName"\s*:\s*"([^"]+)"/i) || 
-                   snip(/"wholeCategoryName"\s*:\s*"([^"]+)"/i);
+  const category =
+    snip(/"categoryName"\s*:\s*"([^"]+)"/i) || snip(/"wholeCategoryName"\s*:\s*"([^"]+)"/i);
 
-                   return {
-                    meta: {
-                      name: name ? trimName(name) : null,
-                      imageUrl: imageUrl ?? null,
-                      category: category ?? null,
-                    },
-                    productPageFetch: {
-                      requestUrl: mobileUrl,
-                      responseUrl: res.url || mobileUrl,
-                      status: res.status,
-                      responseOk: res.ok,
-                      contentType: res.headers.get("content-type"),
-                      bodyHeadSample: html.slice(0, 500) || "(빈 본문)",
-                      htmlStatus: res.status,
-                      htmlResponseUrl: res.url || mobileUrl,
-                      htmlHeadSample: html.slice(0, 500) || "(빈 본문)",
-                      apiUrl: null,
-                      apiStatus: null,
-                      apiHeadSample: null,
-                    },
-                  };
-                }
+  const leafCategoryId = extractLeafCategoryIdFromEmbeddedJson(html);
 
+  return {
+    meta: {
+      name: name ? trimName(name) : null,
+      imageUrl: imageUrl ?? null,
+      category: category ?? null,
+      leafCategoryId,
+    },
+    productPageFetch: {
+      requestUrl: mobileUrl,
+      responseUrl: res.url || mobileUrl,
+      status: res.status,
+      responseOk: res.ok,
+      contentType: res.headers.get("content-type"),
+      bodyHeadSample: html.slice(0, 500) || "(빈 본문)",
+      htmlStatus: res.status,
+      htmlResponseUrl: res.url || mobileUrl,
+      htmlHeadSample: html.slice(0, 500) || "(빈 본문)",
+      apiUrl: null,
+      apiStatus: null,
+      apiHeadSample: null,
+    },
+  };
+}
 async function fetchShoppingCatalogMetaViaHtml(
   productUrl: string
 ): Promise<FetchSmartstoreProductMetaResult> {
@@ -467,6 +497,8 @@ async function fetchShoppingCatalogMetaViaHtml(
     breadcrumb || jsonCategory || ogDesc || metaDesc || null
   );
 
+  const leafCategoryId = extractLeafCategoryIdFromEmbeddedJson(html);
+
   console.log(`${SMARTSTORE_TRACE_LOG} [catalog-meta] HTML 파싱 결과`, {
     requestUrl: normalized,
     responseUrl: finalUrl,
@@ -492,6 +524,7 @@ async function fetchShoppingCatalogMetaViaHtml(
       name: pickedName,
       imageUrl: pickedImage,
       category: pickedCategory,
+      leafCategoryId,
     },
     productPageFetch: {
       requestUrl: normalized,
@@ -754,6 +787,7 @@ function extractProductFieldsFromJson(
     imageUrl: null,
     category: null,
     imageUrlsSource: null,
+    leafCategoryId: null,
   };
 
   const inner = resolveInnerProductFromApiRoot(data);
@@ -763,6 +797,7 @@ function extractProductFieldsFromJson(
       category: null,
       imageUrl: null,
       imageUrls: [],
+      leafCategoryId: null,
       sources,
     };
   }
@@ -778,6 +813,16 @@ function extractProductFieldsFromJson(
   else if (n) sources.name = "name";
 
   const catObj = asRecord(inner.category);
+  let leafCategoryId: number | null =
+    pickPositiveLeafCategoryId(inner.leafCategoryId) ??
+    pickPositiveLeafCategoryId(inner.leafCategoryNo);
+  if (leafCategoryId == null && catObj) {
+    leafCategoryId =
+      pickPositiveLeafCategoryId(catObj.leafCategoryId) ??
+      pickPositiveLeafCategoryId(catObj.leafCategoryNo);
+  }
+  if (leafCategoryId != null) sources.leafCategoryId = leafCategoryId;
+
   const wcRaw =
     typeof catObj?.wholeCategoryName === "string" && catObj.wholeCategoryName.trim()
       ? catObj.wholeCategoryName.trim()
@@ -815,6 +860,7 @@ function extractProductFieldsFromJson(
     category: categoryStr,
     imageUrl,
     imageUrls,
+    leafCategoryId,
     sources,
   };
 }
@@ -835,6 +881,7 @@ async function fetchSmartstoreProductCore(
     category: null,
     imageUrl: null,
     imageUrls: [],
+    leafCategoryId: null,
   };
 
   const normalized = normalizeProductUrl(url);
@@ -893,6 +940,9 @@ async function fetchSmartstoreProductCore(
     if (!acc.name.trim() && extracted.name.trim()) acc.name = extracted.name;
     if (!acc.imageUrl && extracted.imageUrl) acc.imageUrl = extracted.imageUrl;
     if (!acc.category && extracted.category) acc.category = extracted.category;
+    if (acc.leafCategoryId == null && extracted.leafCategoryId != null) {
+      acc.leafCategoryId = extracted.leafCategoryId;
+    }
     acc.imageUrls = mergeImageUrlsUnique(acc.imageUrls, extracted.imageUrls);
   };
 
@@ -902,6 +952,7 @@ async function fetchSmartstoreProductCore(
       category: null,
       imageUrl: null,
       imageUrls: [],
+      leafCategoryId: null,
     };
     for (const apiUrl of apiCandidates) {
       lastApiUrl = apiUrl;
@@ -1017,7 +1068,8 @@ async function fetchSmartstoreProductCore(
       !merged.name.trim() &&
       !merged.imageUrl &&
       !merged.category &&
-      merged.imageUrls.length === 0
+      merged.imageUrls.length === 0 &&
+      merged.leafCategoryId == null
     ) {
       console.error("[smartstore] 모든 API 후보 실패 또는 빈 메타", {
         candidates: apiCandidates,
@@ -1068,6 +1120,7 @@ export async function fetchSmartstoreProduct(url: string): Promise<SmartstorePro
       category: null,
       imageUrl: null,
       imageUrls: [],
+      leafCategoryId: null,
     };
   } finally {
     clearTimeout(t);
@@ -1079,6 +1132,7 @@ const EMPTY_FETCH_RESULT: SmartstoreProductFetchResult = {
   category: null,
   imageUrl: null,
   imageUrls: [],
+  leafCategoryId: null,
 };
 
 /**
@@ -1099,6 +1153,7 @@ function toMeta(r: SmartstoreProductFetchResult): SmartstoreProductMeta {
     name: r.name.trim() ? r.name.trim() : null,
     imageUrl: r.imageUrl,
     category: r.category,
+    leafCategoryId: r.leafCategoryId,
   };
 }
 
@@ -1112,7 +1167,10 @@ export async function fetchSmartstoreProductMeta(
     try {
       new URL(normalized);
     } catch {
-      return { meta: { name: null, imageUrl: null, category: null }, productPageFetch: null };
+      return {
+        meta: { name: null, imageUrl: null, category: null, leafCategoryId: null },
+        productPageFetch: null,
+      };
     }
 
     const isCatalog = looksLikeCatalogUrl(normalized);
@@ -1167,7 +1225,7 @@ export async function fetchSmartstoreProductMeta(
   } catch (e) {
     console.error("[fetchSmartstoreProductMeta]", e);
     return {
-      meta: { name: null, imageUrl: null, category: null },
+      meta: { name: null, imageUrl: null, category: null, leafCategoryId: null },
       productPageFetch: null,
     };
   }

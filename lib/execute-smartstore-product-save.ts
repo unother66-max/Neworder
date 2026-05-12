@@ -262,11 +262,13 @@ export async function executeSmartstoreProductSavePost(req: Request): Promise<Re
       name: string | null;
       imageUrl: string | null;
       category: string | null;
+      leafCategoryId: number | null;
       mallName?: string | null;
     } = {
       name: null,
       imageUrl: null,
       category: null,
+      leafCategoryId: null,
     };
 
     let searchMatchInfo: {
@@ -351,6 +353,7 @@ export async function executeSmartstoreProductSavePost(req: Request): Promise<Re
           };
           if (searchMeta.searchApiMatched) {
             meta = {
+              ...meta,
               name: meta.name?.trim() ? meta.name : searchMeta.name,
               imageUrl: meta.imageUrl?.trim()
                 ? meta.imageUrl
@@ -392,6 +395,13 @@ export async function executeSmartstoreProductSavePost(req: Request): Promise<Re
     const thumbRaw = (thumbFromOverride || thumbFromMeta || "").trim();
     const thumbnailLink = thumbRaw.length > 0 ? thumbRaw : null;
     const imageUrl = thumbnailLink;
+
+    const leafCategoryIdFromMeta = ((): number | null => {
+      const v = meta.leafCategoryId;
+      if (typeof v !== "number" || !Number.isFinite(v)) return null;
+      const t = Math.trunc(v);
+      return t > 0 ? t : null;
+    })();
 
     const gotFinalMeta =
       !skipMetaFetch &&
@@ -467,6 +477,7 @@ export async function executeSmartstoreProductSavePost(req: Request): Promise<Re
           thumbnailLink,
           imageUrl,
           mallName: data.mallName,
+          ...(leafCategoryIdFromMeta != null ? { leafCategoryId: leafCategoryIdFromMeta } : {}),
         },
         create: {
           userId,
@@ -478,6 +489,7 @@ export async function executeSmartstoreProductSavePost(req: Request): Promise<Re
           thumbnailLink,
           imageUrl,
           mallName: data.mallName,
+          ...(leafCategoryIdFromMeta != null ? { leafCategoryId: leafCategoryIdFromMeta } : {}),
         },
         include: { keywords: true },
       });
@@ -517,6 +529,7 @@ export async function executeSmartstoreProductSavePost(req: Request): Promise<Re
           name: nameFinal,
           imageUrl,
           storeName: storeNameForReview,
+          ...(leafCategoryIdFromMeta != null ? { leafCategoryId: leafCategoryIdFromMeta } : {}),
         },
         create: {
           userId,
@@ -525,6 +538,7 @@ export async function executeSmartstoreProductSavePost(req: Request): Promise<Re
           name: nameFinal,
           imageUrl,
           storeName: storeNameForReview,
+          ...(leafCategoryIdFromMeta != null ? { leafCategoryId: leafCategoryIdFromMeta } : {}),
         },
       });
     }

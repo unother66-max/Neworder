@@ -1,8 +1,16 @@
 import { prisma } from "@/lib/prisma";
-import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * 렌더링(UI) 목적의 GET 라우트 — DB 조회 전용.
+ *
+ * - Prisma로 저장된 매장·키워드·순위 히스토리만 조회해 내려준다.
+ * - 여기에 getKeywordSearchVolume, 네이버 등 외부 메타 fetch,
+ *   순위조회(check-place-rank 등), 리뷰수집 같은 네트워크 요청을 다시 넣지 말 것.
+ * - 외부 요청은 매장 등록·수동 업데이트·cron·별도 action 라우트에서만 실행한다.
+ */
 
 type RankHistoryItem = {
   id: string;
@@ -89,28 +97,6 @@ export async function GET(req: Request) {
     const rankHistory = (place.rankHistory || []) as RankHistoryItem[];
     const keywords = (place.keywords || []) as PlaceKeywordItem[];
 
-    // 검색량이 비어 있는 키워드는 서버에서 보정(최대 10개)
-    // - 화면에서 '-'가 뜨는 문제 해결 목적
-    // - 레이트리밋 고려해 순차 처리
-    for (const kw of keywords) {
-      const needs =
-        kw.mobileVolume == null || kw.pcVolume == null || kw.totalVolume == null;
-      if (!needs) continue;
-      const vol = await getKeywordSearchVolume(String(kw.keyword || ""));
-      await prisma.placeKeyword.update({
-        where: { id: kw.id },
-        data: {
-          mobileVolume: kw.mobileVolume ?? vol.mobile,
-          pcVolume: kw.pcVolume ?? vol.pc,
-          totalVolume: kw.totalVolume ?? vol.total,
-        },
-      });
-      kw.mobileVolume = kw.mobileVolume ?? vol.mobile;
-      kw.pcVolume = kw.pcVolume ?? vol.pc;
-      kw.totalVolume = kw.totalVolume ?? vol.total;
-      await new Promise((r) => setTimeout(r, 120));
-    }
-
     const normalizedKeywords = keywords.map((item: PlaceKeywordItem) => {
       const mobileVolume = toNumber(item.mobileVolume ?? 0);
       const pcVolume = toNumber(item.pcVolume ?? 0);
@@ -160,25 +146,6 @@ export async function GET(req: Request) {
     placeMonthlyVolume = placeMonthlyVolumeDb;
     placeMobileVolume = placeMobileVolumeDb;
     placePcVolume = placePcVolumeDb;
-
-    if (!placeMonthlyVolume) {
-      // 1) 매장명으로 조회 시도
-      const vol = await getKeywordSearchVolume(String(place.name || ""));
-      if (vol.total || vol.mobile || vol.pc) {
-        placeMobileVolume = vol.mobile;
-        placePcVolume = vol.pc;
-        placeMonthlyVolume = vol.total || vol.mobile + vol.pc;
-
-        await prisma.place.update({
-          where: { id: place.id },
-          data: {
-            placeMonthlyVolume,
-            placeMobileVolume,
-            placePcVolume,
-          },
-        });
-      }
-    }
 
     return Response.json({
       ok: true,

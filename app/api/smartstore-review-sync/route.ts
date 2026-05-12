@@ -74,6 +74,7 @@ export async function POST(req: Request) {
       productId: target.productId,
       productName: target.name ?? null,
       storeName: target.storeName ?? null,
+      leafCategoryId: target.leafCategoryId ?? null,
     });
 
     const count = snap.summary.reviewCount;
