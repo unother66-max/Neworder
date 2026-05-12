@@ -25,6 +25,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { PostlabsSlideHoverButton } from "@/components/postlabs-slide-hover-button";
 import { debugFetchBrowserAllSearchJson } from "@/lib/browser-allsearch-debug";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
+import {
+  logPlaceRankKeywordBlockingResponse,
+  mapWithConcurrencyLimit,
+  PLACE_RANK_KEYWORD_CHECK_CONCURRENCY,
+} from "@/lib/place-rank-keyword-concurrency";
 
 type KeywordItem = {
   keyword: string;
@@ -113,15 +118,6 @@ type PlaceItem = {
 
 const PAGE_SIZE = 15;
 const MAX_KEYWORDS_PER_STORE = 10;
-const RANK_CHECK_BATCH_SIZE = 3;
-
-function chunkArray<T>(items: T[], size: number) {
-  const result: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    result.push(items.slice(i, i + size));
-  }
-  return result;
-}
 
 function formatKST(date: Date) {
   return new Intl.DateTimeFormat("ko-KR", {
@@ -1292,75 +1288,92 @@ useEffect(() => {
     setCheckingStoreIndex(realIndex);
 
     try {
-      // 🔥 전체 키워드(target.keywords) 대신 필터링된(keywordsToProcess) 키워드만 조회합니다.
-      const batches = chunkArray(keywordsToProcess, RANK_CHECK_BATCH_SIZE);
+      await mapWithConcurrencyLimit(
+        keywordsToProcess,
+        PLACE_RANK_KEYWORD_CHECK_CONCURRENCY,
+        async (item, index) => {
+          const started = Date.now();
+          console.log("[place rank-check] 시작", { index, keyword: item.keyword });
+          try {
+            let browserAllSearchJson: unknown | undefined;
+            if (isIntentMixedKeyword(item.keyword)) {
+              try {
+                const dbg = await debugFetchBrowserAllSearchJson({
+                  keyword: item.keyword,
+                  x: target.x,
+                  y: target.y,
+                });
+                if (dbg.ok) {
+                  browserAllSearchJson = dbg.json;
+                }
+              } catch {
+                /* 브라우저 allSearch 디버그 실패는 순위 조회에 영향 없음 */
+              }
+            }
 
-      for (const batch of batches) {
-        
-        for (const item of batch) {
-          let browserAllSearchJson: unknown | undefined;
-          if (isIntentMixedKeyword(item.keyword)) {
-            try {
-              const dbg = await debugFetchBrowserAllSearchJson({
+            const response = await fetch("/api/check-place-rank", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
                 keyword: item.keyword,
+                targetName: target.name,
+                placeId: target.placeId,
                 x: target.x,
                 y: target.y,
-              });
-              if (dbg.ok) {
-                browserAllSearchJson = dbg.json;
-              }
-            } catch {
-              /* 브라우저 allSearch 디버그 실패는 순위 조회에 영향 없음 */
-            }
-          }
+                ...(item.placeKeywordId
+                  ? { placeKeywordId: item.placeKeywordId }
+                  : {}),
+                ...(browserAllSearchJson !== undefined
+                  ? { browserAllSearchJson }
+                  : {}),
+              }),
+            });
 
-          const response = await fetch("/api/check-place-rank", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
+            const data = await response.json();
+
+            logPlaceRankKeywordBlockingResponse({
+              context: "place rank-check",
               keyword: item.keyword,
-              targetName: target.name,
-              placeId: target.placeId,
-              x: target.x,
-              y: target.y,
-              ...(item.placeKeywordId
-                ? { placeKeywordId: item.placeKeywordId }
-                : {}),
-              ...(browserAllSearchJson !== undefined
-                ? { browserAllSearchJson }
-                : {}),
-            }),
-          });
+              httpStatus: response.status,
+              failureCode: (data as { failureCode?: string })?.failureCode,
+              message: (data as { message?: string })?.message,
+            });
 
-          const data = await response.json();
-
-          if (!response.ok) {
-            console.error("rank check error:", item.keyword, data);
-            continue;
-          }
-
-          if (item.placeKeywordId && data.rank && data.rank !== "-") {
-            try {
-              await fetch("/api/place-rank-history-save", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  placeKeywordId: item.placeKeywordId,
-                  rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
-                }),
-              });
-            } catch (historyError) {
-              console.error("rank history save error", historyError);
+            if (!response.ok) {
+              console.error("rank check error:", item.keyword, data);
+              return;
             }
+
+            if (item.placeKeywordId && data.rank && data.rank !== "-") {
+              try {
+                await fetch("/api/place-rank-history-save", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    placeKeywordId: item.placeKeywordId,
+                    rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+                  }),
+                });
+              } catch (historyError) {
+                console.error("rank history save error", historyError);
+              }
+            }
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.floor(Math.random() * 1000) + 2000)
+            );
+          } finally {
+            console.log("[place rank-check] 완료", {
+              index,
+              keyword: item.keyword,
+              ms: Date.now() - started,
+            });
           }
-          // 🚨 [추가된 부분] 키워드 하나를 처리한 후 2~3초(2000ms~3000ms) 사이의 랜덤 딜레이를 줍니다.
-          await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 1000) + 2000));
         }
-      }
+      );
 
       await fetchPlaces();
     } catch (error) {

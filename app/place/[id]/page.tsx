@@ -6,6 +6,11 @@ import TopNav from "@/components/top-nav";
 import { debugFetchBrowserAllSearchJson } from "@/lib/browser-allsearch-debug";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 import {
+  logPlaceRankKeywordBlockingResponse,
+  mapWithConcurrencyLimit,
+  PLACE_RANK_KEYWORD_CHECK_CONCURRENCY,
+} from "@/lib/place-rank-keyword-concurrency";
+import {
   LineChart,
   Line,
   XAxis,
@@ -228,111 +233,140 @@ export default function PlaceDetailPage() {
     try {
       setUpdating(true);
 
-      const keywordResults: any[] = [];
-
       console.log("전송 좌표 확인", {
         placeName: place.name,
         x: place.x,
         y: place.y,
       });
 
-      for (const keyword of place.keywords) {
-        let browserAllSearchJson: unknown | undefined;
-        if (isIntentMixedKeyword(keyword.keyword)) {
+      const keywordResults = await mapWithConcurrencyLimit(
+        place.keywords,
+        PLACE_RANK_KEYWORD_CHECK_CONCURRENCY,
+        async (keyword, index) => {
+          const started = Date.now();
+          console.log("[place-detail rank-check] 시작", {
+            index,
+            keyword: keyword.keyword,
+          });
           try {
-            const dbg = await debugFetchBrowserAllSearchJson({
-              keyword: keyword.keyword,
-              x: place.x ?? undefined,
-              y: place.y ?? undefined,
-            });
-            if (dbg.ok) {
-              browserAllSearchJson = dbg.json;
+            let browserAllSearchJson: unknown | undefined;
+            if (isIntentMixedKeyword(keyword.keyword)) {
+              try {
+                const dbg = await debugFetchBrowserAllSearchJson({
+                  keyword: keyword.keyword,
+                  x: place.x ?? undefined,
+                  y: place.y ?? undefined,
+                });
+                if (dbg.ok) {
+                  browserAllSearchJson = dbg.json;
+                }
+              } catch {
+                /* 브라우저 allSearch 디버그 실패는 순위 조회에 영향 없음 */
+              }
             }
-          } catch {
-            /* 브라우저 allSearch 디버그 실패는 순위 조회에 영향 없음 */
+
+            const response = await fetch("/api/check-place-rank", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                keyword: keyword.keyword,
+                targetName: place.name,
+                x: place.x,
+                y: place.y,
+                placeKeywordId: keyword.id,
+                ...(browserAllSearchJson !== undefined
+                  ? { browserAllSearchJson }
+                  : {}),
+              }),
+            });
+
+            let data: Record<string, unknown> | null = null;
+
+            try {
+              data = (await response.json()) as Record<string, unknown>;
+            } catch (e) {
+              console.error("JSON 파싱 실패:", e);
+              logPlaceRankKeywordBlockingResponse({
+                context: "place-detail rank-check",
+                keyword: keyword.keyword,
+                httpStatus: response.status,
+              });
+              return {
+                keywordId: keyword.id,
+                monthly: keyword.totalVolume,
+                mobile: keyword.mobileVolume,
+                pc: keyword.pcVolume,
+                currentRank: "오류",
+              };
+            }
+
+            logPlaceRankKeywordBlockingResponse({
+              context: "place-detail rank-check",
+              keyword: keyword.keyword,
+              httpStatus: response.status,
+              failureCode: data?.failureCode,
+              message: data?.message,
+            });
+
+            if (!response.ok) {
+              return {
+                keywordId: keyword.id,
+                monthly: keyword.totalVolume,
+                mobile: keyword.mobileVolume,
+                pc: keyword.pcVolume,
+                currentRank: "오류",
+              };
+            }
+
+            if (keyword.id && data?.rank && data.rank !== "-") {
+              await fetch("/api/place-rank-history-save", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  placeKeywordId: keyword.id,
+                  rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
+                }),
+              });
+            }
+
+            const row = {
+              keywordId: keyword.id,
+              monthly:
+                data?.monthly === undefined ||
+                data?.monthly === null ||
+                data?.monthly === "-"
+                  ? keyword.totalVolume
+                  : Number(String(data.monthly).replace(/,/g, "")),
+              mobile:
+                data?.mobile === undefined ||
+                data?.mobile === null ||
+                data?.mobile === "-"
+                  ? keyword.mobileVolume
+                  : Number(String(data.mobile).replace(/,/g, "")),
+              pc:
+                data?.pc === undefined ||
+                data?.pc === null ||
+                data?.pc === "-"
+                  ? keyword.pcVolume
+                  : Number(String(data.pc).replace(/,/g, "")),
+              currentRank: (data?.rank as string | undefined) ?? "-",
+            };
+
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            return row;
+          } finally {
+            console.log("[place-detail rank-check] 완료", {
+              index,
+              keyword: keyword.keyword,
+              ms: Date.now() - started,
+            });
           }
         }
-
-        const response = await fetch("/api/check-place-rank", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            keyword: keyword.keyword,
-            targetName: place.name,
-            x: place.x,
-            y: place.y,
-            placeKeywordId: keyword.id,
-            ...(browserAllSearchJson !== undefined
-              ? { browserAllSearchJson }
-              : {}),
-          }),
-        });
-
-        let data = null;
-
-        try {
-          data = await response.json();
-        } catch (e) {
-          console.error("JSON 파싱 실패:", e);
-          keywordResults.push({
-            keywordId: keyword.id,
-            monthly: keyword.totalVolume,
-            mobile: keyword.mobileVolume,
-            pc: keyword.pcVolume,
-            currentRank: "오류",
-          });
-          continue;
-        }
-
-        if (!response.ok) {
-          keywordResults.push({
-            keywordId: keyword.id,
-            monthly: keyword.totalVolume,
-            mobile: keyword.mobileVolume,
-            pc: keyword.pcVolume,
-            currentRank: "오류",
-          });
-          continue;
-        }
-
-        if (keyword.id && data?.rank && data.rank !== "-") {
-          await fetch("/api/place-rank-history-save", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              placeKeywordId: keyword.id,
-              rank: Number(String(data.rank).match(/\d+/)?.[0] ?? 0),
-            }),
-          });
-        }
-
-        keywordResults.push({
-          keywordId: keyword.id,
-          monthly:
-            data?.monthly === undefined ||
-            data?.monthly === null ||
-            data?.monthly === "-"
-              ? keyword.totalVolume
-              : Number(String(data.monthly).replace(/,/g, "")),
-          mobile:
-            data?.mobile === undefined ||
-            data?.mobile === null ||
-            data?.mobile === "-"
-              ? keyword.mobileVolume
-              : Number(String(data.mobile).replace(/,/g, "")),
-          pc:
-            data?.pc === undefined || data?.pc === null || data?.pc === "-"
-              ? keyword.pcVolume
-              : Number(String(data.pc).replace(/,/g, "")),
-          currentRank: data?.rank ?? "-",
-        });
-
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
+      );
 
       setPlace((prev) => {
         if (!prev) return prev;
