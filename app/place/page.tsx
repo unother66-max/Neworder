@@ -119,6 +119,10 @@ type PlaceItem = {
 const PAGE_SIZE = 15;
 const MAX_KEYWORDS_PER_STORE = 10;
 
+/** `handleCheckRanks` 병렬 워커: check-place-rank·저장 후 랜덤 딜레이(ms), 양 끝 포함 */
+const PLACE_RANK_CHECK_POST_DELAY_MS_MIN = 800;
+const PLACE_RANK_CHECK_POST_DELAY_MS_MAX = 1500;
+
 function formatKST(date: Date) {
   return new Intl.DateTimeFormat("ko-KR", {
     timeZone: "Asia/Seoul",
@@ -1286,13 +1290,19 @@ useEffect(() => {
     }
 
     setCheckingStoreIndex(realIndex);
+    const placeRankCheckStartedAt = performance.now();
 
     try {
       await mapWithConcurrencyLimit(
         keywordsToProcess,
         PLACE_RANK_KEYWORD_CHECK_CONCURRENCY,
         async (item, index) => {
-          const started = Date.now();
+          const slotStarted = performance.now();
+          let checkPlaceRankMs = 0;
+          let historySaveMs = 0;
+          let delayMs = 0;
+          let plannedDelayMs: number | null = null;
+
           console.log("[place rank-check] 시작", { index, keyword: item.keyword });
           try {
             let browserAllSearchJson: unknown | undefined;
@@ -1311,6 +1321,7 @@ useEffect(() => {
               }
             }
 
+            const checkRankStart = performance.now();
             const response = await fetch("/api/check-place-rank", {
               method: "POST",
               headers: {
@@ -1332,6 +1343,7 @@ useEffect(() => {
             });
 
             const data = await response.json();
+            checkPlaceRankMs = performance.now() - checkRankStart;
 
             logPlaceRankKeywordBlockingResponse({
               context: "place rank-check",
@@ -1347,6 +1359,7 @@ useEffect(() => {
             }
 
             if (item.placeKeywordId && data.rank && data.rank !== "-") {
+              const historyStart = performance.now();
               try {
                 await fetch("/api/place-rank-history-save", {
                   method: "POST",
@@ -1360,20 +1373,88 @@ useEffect(() => {
                 });
               } catch (historyError) {
                 console.error("rank history save error", historyError);
+              } finally {
+                historySaveMs = performance.now() - historyStart;
               }
             }
+
+            const plannedDelayDrawMs =
+              PLACE_RANK_CHECK_POST_DELAY_MS_MIN +
+              Math.floor(
+                Math.random() *
+                  (PLACE_RANK_CHECK_POST_DELAY_MS_MAX -
+                    PLACE_RANK_CHECK_POST_DELAY_MS_MIN +
+                    1)
+              );
+            plannedDelayMs = plannedDelayDrawMs;
+            console.log(
+              "[place rank-check] worker 슬롯: 랜덤 딜레이 대기 시작 (이 태스크가 mapWithConcurrencyLimit 슬롯을 점유한 채로 sleep)",
+              { index, keyword: item.keyword, plannedDelayMs }
+            );
+            const delayStart = performance.now();
             await new Promise((resolve) =>
-              setTimeout(resolve, Math.floor(Math.random() * 1000) + 2000)
+              setTimeout(resolve, plannedDelayDrawMs)
+            );
+            delayMs = performance.now() - delayStart;
+            console.log(
+              "[place rank-check] worker 슬롯: 랜덤 딜레이 대기 종료 (슬롯 반환, plannedDelayMs와 delayMs 비교로 타이머 정확도 확인)",
+              {
+                index,
+                keyword: item.keyword,
+                plannedDelayMs,
+                delayMs,
+              }
             );
           } finally {
+            const configuredPostDelayRange = `${PLACE_RANK_CHECK_POST_DELAY_MS_MIN}~${PLACE_RANK_CHECK_POST_DELAY_MS_MAX}`;
+
+            let compareThrottleVsSave: string;
+            if (plannedDelayMs == null && historySaveMs === 0 && delayMs === 0) {
+              compareThrottleVsSave =
+                "순위조회 실패 등 — place-rank-history-save·저장 후 딜레이 구간 미실행";
+            } else if (historySaveMs === 0 && plannedDelayMs != null) {
+              compareThrottleVsSave =
+                "place-rank-history-save 미호출(또는 미저장 조건) — 저장 후 랜덤 딜레이만 슬롯 점유";
+            } else if (historySaveMs > delayMs) {
+              compareThrottleVsSave = `저장 API 구간이 더 김: historySaveMs(${historySaveMs}) > delayMs(${delayMs}), 차 ${historySaveMs - delayMs}ms`;
+            } else if (delayMs > historySaveMs) {
+              compareThrottleVsSave = `저장 후 랜덤 딜레이가 더 김: delayMs(${delayMs}) > historySaveMs(${historySaveMs}), 차 ${delayMs - historySaveMs}ms`;
+            } else {
+              compareThrottleVsSave = `저장 API와 랜덤 딜레이 유사: 각 ${historySaveMs}ms`;
+            }
+
+            if (historySaveMs >= 1000) {
+              console.warn(
+                "[place rank-check] historySaveMs>=1000 — place-rank-history-save 병목 가능성 (서버/DB/네트워크 별도 프로파일 권장)",
+                { index, keyword: item.keyword, historySaveMs }
+              );
+            }
+
+            console.log("[place rank-check] 키워드 타이밍(ms)", {
+              index,
+              keyword: item.keyword,
+              checkPlaceRankMs,
+              historySaveMs,
+              delayMs,
+              plannedDelayMs,
+              placeRankHistorySaveMs: historySaveMs,
+              postSaveRandomDelayMs: delayMs,
+              postDelayConfiguredRangeMs: configuredPostDelayRange,
+              compareThrottleVsSave,
+            });
             console.log("[place rank-check] 완료", {
               index,
               keyword: item.keyword,
-              ms: Date.now() - started,
+              slotTotalMs: performance.now() - slotStarted,
             });
           }
         }
       );
+
+      console.log("[place rank-check total]", {
+        totalMs: performance.now() - placeRankCheckStartedAt,
+        keywordCount: keywordsToProcess.length,
+      });
 
       await fetchPlaces();
     } catch (error) {

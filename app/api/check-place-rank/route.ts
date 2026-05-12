@@ -208,11 +208,59 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2) 추천형 키워드: allSearch 우선
-    // 무토큰 + position-preserving 먼저 시도 → 실패 시 token 기반 fallback
-    // ※ pcmap-graphql은 일반 업종 순위에 최적화되어 있어 추천형 키워드 순위가 부정확함
+    // 2) pcmap-graphql: 추천형·일반 공통 기본 경로 (운영에서 allSearch 선시도 없음 → NCAPTCHA/CE_EMPTY_TOKEN 감소)
+    if (fullList.length === 0) {
+      if (shouldPreferAllSearch) {
+        console.log(
+          "[check-place-rank] 추천형: 서버 allSearch 선시도 생략 → pcmap-graphql 우선"
+        );
+      }
+      usedSource = "pcmap-graphql";
+
+      try {
+        const { batch, mode } = await timedNaverFetch(() =>
+          withTimeout(
+            fetchBestPcmapBusinessesBatchJson(actualKeyword),
+            PCMAP_FETCH_TIMEOUT_MS,
+            `[check-place-rank pcmap] timeout ${PCMAP_FETCH_TIMEOUT_MS}ms`
+          )
+        );
+
+        if (batch) {
+          const merged = mergePcmapGraphqlBatch(batch);
+
+          const mapped = mapPcmapItemsToCheckPlaceRankList(
+            merged.items,
+            SEARCH_CAP
+          );
+
+          if (mapped.length > 0) {
+            fullList = mapped;
+
+            console.log("[check-place-rank pcmap]", {
+              mode,
+              mergedCount: merged.items.length,
+              parsed: mapped.length,
+              gqlErrors: merged.graphqlErrors,
+              intentMixedKeyword: shouldPreferAllSearch,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[check-place-rank pcmap] 실패/timeout -> allSearch fallback",
+          e
+        );
+      }
+    }
+
+    // 3) 서버 allSearch fallback — pcmap 실패(또는 결과 0) 시에만 호출
     if (fullList.length === 0 && shouldPreferAllSearch) {
+      fallbackUsed = true;
       usedSource = "allSearch";
+      console.warn(
+        "[check-place-rank] 추천형: pcmap 결과 없음 → allSearch fallback 시도"
+      );
 
       const tokenless = await timedNaverFetch(() =>
         fetchAllSearchPlacesForIntentKeyword(actualKeyword, { x, y })
@@ -247,9 +295,7 @@ export async function POST(req: Request) {
         }
       }
 
-      // tokenless 실패 시 → token 기반 allSearch (filtered, stubs 미포함)
       if (fullList.length === 0) {
-        fallbackUsed = true;
         const auto = await timedNaverFetch(() =>
           fetchAllSearchPlacesAutoDetailed(actualKeyword, {
             x,
@@ -282,49 +328,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3) pcmap-graphql: 일반 키워드 기본 경로 + 추천형(allSearch 실패 시) 추정 순위 fallback
-    if (fullList.length === 0) {
-      if (shouldPreferAllSearch) fallbackUsed = true;
-      usedSource = "pcmap-graphql";
-
-      try {
-        const { batch, mode } = await timedNaverFetch(() =>
-          withTimeout(
-            fetchBestPcmapBusinessesBatchJson(actualKeyword),
-            PCMAP_FETCH_TIMEOUT_MS,
-            `[check-place-rank pcmap] timeout ${PCMAP_FETCH_TIMEOUT_MS}ms`
-          )
-        );
-
-        if (batch) {
-          const merged = mergePcmapGraphqlBatch(batch);
-
-          const mapped = mapPcmapItemsToCheckPlaceRankList(
-            merged.items,
-            SEARCH_CAP
-          );
-
-          if (mapped.length > 0) {
-            fullList = mapped;
-
-            console.log("[check-place-rank pcmap]", {
-              mode,
-              mergedCount: merged.items.length,
-              parsed: mapped.length,
-              gqlErrors: merged.graphqlErrors,
-              intentFallbackEstimate: shouldPreferAllSearch,
-            });
-          }
-        }
-      } catch (e) {
-        console.warn(
-          "[check-place-rank pcmap] 실패/timeout -> allSearch fallback",
-          e
-        );
-      }
-    }
-
-    // 4) 최종 fallback: 서버 allSearch(auto) — 일반 키워드 pcmap 실패 시
     if (fullList.length === 0 && !shouldPreferAllSearch) {
       fallbackUsed = true;
       usedSource = "allSearch";
