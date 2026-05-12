@@ -51,6 +51,7 @@ interface RecentUserRow {
   createdAt: Date;
   createdAtReliable: boolean;
   adminMemo: string | null;
+  lastVisitAt: Date | null;
 }
 
 interface VisitorLogDailyCountRow {
@@ -238,6 +239,7 @@ export default async function AdminUsersPage() {
         createdAt: true,
         createdAtReliable: true,
         adminMemo: true,
+        lastVisitAt: true,
       },
     }),
     prisma.adminAlert.findMany({
@@ -464,7 +466,13 @@ export default async function AdminUsersPage() {
                 {recentUsers.map((u: RecentUserRow) => {
                   const displayEmail = u.email?.trim() || "—";
                   const displayName = u.name?.trim() || "이름 미등록";
-                  const lastVisitAt = lastVisitByUserId.get(u.id);
+                  const fromEvent = lastVisitByUserId.get(u.id);
+                  const lastVisitAt =
+                    u.lastVisitAt != null
+                      ? fromEvent != null
+                        ? new Date(Math.max(u.lastVisitAt.getTime(), fromEvent.getTime()))
+                        : u.lastVisitAt
+                      : fromEvent ?? null;
 
                   return (
                     <li

@@ -33,7 +33,9 @@ model User {
   adminMemo               String?                  @db.Text
   tier                    UserTier                 @default(FREE)
   emailVerified           DateTime?
-  
+  /** 로그인 세션으로 확인된 페이지 방문 시 /api/internal/visit 에서 갱신 */
+  lastVisitAt             DateTime?
+
   // 인증 관련 연결
   accounts                Account[]
   sessions                Session[]

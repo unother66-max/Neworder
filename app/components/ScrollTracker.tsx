@@ -5,14 +5,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 import { shouldPersistVisitorEvent } from "@/lib/visit-path-eligibility";
 
-function seoulCalendarDateKey(now = new Date()): string {
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
+/**
+ * 클라 전역 트래킹: 페이지 경로 변경·최초 마운트(새로고침 포함)마다 POST.
+ * 세션별 / 일별 세션 저장소로 차단하면 새로고침 시 재요청이 나가지 않아 lastVisit 등이 멈춤.
+ */
 
 export default function ScrollTracker() {
   const pathname = usePathname();
@@ -42,30 +38,18 @@ export default function ScrollTracker() {
   }, []);
 
   useEffect(() => {
+    if (typeof pathname !== "string" || pathname.length === 0) return;
     if (!shouldPersistVisitorEvent(pathname)) return;
-    if (typeof window === "undefined" || typeof sessionStorage === "undefined")
-      return;
+    if (typeof window === "undefined") return;
 
     const qs = queryString;
     const path = qs ? `${pathname}?${qs}` : pathname;
-    /** 달력일+path 기준 1회 생략; `?forceVisitLog=1` 또는 localStorage `postlabs_visit_log_force=1`이면 재전송 가능 */
-    const storageKey = `visit_logged_${seoulCalendarDateKey()}_${path}`;
 
-    const forceFromQuery =
-      new URLSearchParams(queryString).get("forceVisitLog") === "1";
-    const forceFromStorage =
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("postlabs_visit_log_force") === "1";
-    const force = forceFromQuery || forceFromStorage;
-
-    if (!force && sessionStorage.getItem(storageKey)) return;
-    if (!force) sessionStorage.setItem(storageKey, "1");
-
-    const ref = document.referrer?.trim();
+    const ref = typeof document !== "undefined" ? document.referrer?.trim() : "";
     fetch("/api/internal/visit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
+      credentials: "include",
       body: JSON.stringify({
         path,
         referrer: ref && ref.length > 0 ? ref : null,

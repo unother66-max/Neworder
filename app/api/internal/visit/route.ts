@@ -68,6 +68,11 @@ function isAuthorized(req: NextRequest, selfOrigin: string, internalSecret: stri
   if (origin === selfOrigin) return "client";
   if (referer.startsWith(selfOrigin)) return "client";
 
+  // 같은 출처로 보낸 fetch에서는 Origin 헤더가 없을 수 있음(브라우저 정책).
+  // Sec-Fetch-* 는 JS에서 설정 불가하여 위조 불가로 간주.
+  const secSite = (req.headers.get("sec-fetch-site") ?? "").toLowerCase();
+  if (secSite === "same-origin") return "client";
+
   return null;
 }
 
@@ -127,6 +132,13 @@ export async function POST(req: NextRequest) {
         create: { visitDate, ipHash, uaHash },
         update: { seenAt: new Date() },
       });
+
+      if (visitorUserId) {
+        await tx.user.updateMany({
+          where: { id: visitorUserId },
+          data: { lastVisitAt: new Date() },
+        });
+      }
 
       if (!recordVisitorEvent) return;
 
