@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { getLimit } from "@/lib/constants"; // 🚨 1. 중앙 통제실 불러오기
+import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "이미 순위 추적에 등록된 매장입니다." }, { status: 400 });
     }
 
+    let placeVolumeData: {
+      placeMonthlyVolume: number;
+      placeMobileVolume: number;
+      placePcVolume: number;
+    } | null = null;
+    try {
+      const volume = await getPlaceNameSearchVolume(String(name));
+      const volTotal =
+        (volume?.total ?? 0) ||
+        (volume?.mobile ?? 0) + (volume?.pc ?? 0);
+      if (volume?.ok === true && volTotal > 0) {
+        placeVolumeData = {
+          placeMonthlyVolume: volTotal,
+          placeMobileVolume: volume.mobile,
+          placePcVolume: volume.pc,
+        };
+      }
+    } catch (err) {
+      console.warn("[place-volume] rank register: search volume fetch failed (save continues)", {
+        name,
+        error: err instanceof Error ? err.message : err,
+      });
+    }
+
     // 4. 매장 저장
     const place = await prisma.place.create({
       data: {
@@ -103,6 +128,7 @@ export async function POST(req: Request) {
         jibunAddress: jibunAddress || null,
         x,
         y,
+        ...(placeVolumeData ?? {}),
       },
     });
 

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
-import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
+import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,17 +78,41 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ 매장 이름 기준 검색량 — 도구에 정확 행이 없으면 0으로 덮어쓰지 않고 기존 DB 값 유지
-    const volume = await getKeywordSearchVolume(place.name);
+    // ✅ 매장 이름 기준 검색량 — 성공·합계 > 0일 때만 갱신, 아니면 기존 DB 값 유지
+    const volume = await getPlaceNameSearchVolume(place.name);
     const prevMobile = place.placeMobileVolume ?? 0;
     const prevPc = place.placePcVolume ?? 0;
     const prevTotal = place.placeMonthlyVolume ?? prevMobile + prevPc;
-    const volTotal = (volume?.mobile ?? 0) + (volume?.pc ?? 0);
-    const placeMobileVolume =
-      volTotal > 0 ? (volume?.mobile ?? 0) : prevMobile;
-    const placePcVolume = volTotal > 0 ? (volume?.pc ?? 0) : prevPc;
-    const placeMonthlyVolume =
-      volTotal > 0 ? volTotal : prevTotal;
+    const volTotal =
+      (volume?.total ?? 0) ||
+      (volume?.mobile ?? 0) + (volume?.pc ?? 0);
+    const shouldUpdatePlaceVolume =
+      volume?.ok === true && volTotal > 0;
+
+    const placeMobileVolume = shouldUpdatePlaceVolume
+      ? (volume?.mobile ?? 0)
+      : prevMobile;
+    const placePcVolume = shouldUpdatePlaceVolume
+      ? (volume?.pc ?? 0)
+      : prevPc;
+    const placeMonthlyVolume = shouldUpdatePlaceVolume
+      ? volTotal
+      : prevTotal;
+
+    if (!shouldUpdatePlaceVolume) {
+      console.warn("[place-volume] keep previous volume (manual track)", {
+        placeId,
+        placeName: place.name,
+        reason: volume?.reason,
+        volTotal,
+        previous: {
+          total: place.placeMonthlyVolume,
+          mobile: place.placeMobileVolume,
+          pc: place.placePcVolume,
+        },
+        received: volume,
+      });
+    }
 
     const visitorReviewCount = snapshot.visitorReviewCount ?? 0;
     const blogReviewCount = snapshot.blogReviewCount ?? 0;
@@ -144,13 +168,13 @@ export async function POST(req: Request) {
     });
 
     await prisma.place.update({
-  where: { id: placeId },
-  data: {
-    placeMobileVolume,
-    placePcVolume,
-    placeMonthlyVolume,
-  },
-});
+      where: { id: placeId },
+      data: {
+        placeMobileVolume,
+        placePcVolume,
+        placeMonthlyVolume,
+      },
+    });
 
     return NextResponse.json({
       ok: true,

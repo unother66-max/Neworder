@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { createAdminAlert } from "@/lib/admin-alert";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
-import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
+import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -135,10 +135,36 @@ export async function GET(req: Request) {
         const totalReviewCount = visitorReviewCount + blogReviewCount;
         const saveCount = snapshot.saveCountText ?? "0";
 
-        const volume = await getKeywordSearchVolume(place.name);
-        const placeMobileVolume = volume?.mobile ?? 0;
-        const placePcVolume = volume?.pc ?? 0;
-        const placeMonthlyVolume = placeMobileVolume + placePcVolume;
+        const volume = await getPlaceNameSearchVolume(place.name);
+        const volTotal =
+          (volume?.total ?? 0) ||
+          (volume?.mobile ?? 0) + (volume?.pc ?? 0);
+        const shouldUpdatePlaceVolume =
+          volume?.ok === true && volTotal > 0;
+
+        const placeMobileVolume = shouldUpdatePlaceVolume
+          ? volume.mobile
+          : (place.placeMobileVolume ?? 0);
+        const placePcVolume = shouldUpdatePlaceVolume
+          ? volume.pc
+          : (place.placePcVolume ?? 0);
+        const placeMonthlyVolume = shouldUpdatePlaceVolume
+          ? volTotal
+          : (place.placeMonthlyVolume ?? 0);
+
+        if (!shouldUpdatePlaceVolume) {
+          console.warn("[place-volume] keep previous volume", {
+            placeId: place.id,
+            placeName: place.name,
+            reason: volume?.reason,
+            previous: {
+              total: place.placeMonthlyVolume,
+              mobile: place.placeMobileVolume,
+              pc: place.placePcVolume,
+            },
+            received: volume,
+          });
+        }
 
         await prisma.placeReviewHistory.upsert({
           where: {
