@@ -67,7 +67,13 @@ function formatKeywordDelta(prev: number | null | undefined, curr: number | null
   return `${sign}${delta.toLocaleString()}개 ${delta > 0 ? "상승" : "하락"}`;
 }
 
-export function BlogAnalysisHistoryPanel({ points }: { points: BlogAnalysisHistoryPoint[] }) {
+export function BlogAnalysisHistoryPanel({
+  points,
+  trendNarrative,
+}: {
+  points: BlogAnalysisHistoryPoint[];
+  trendNarrative?: string | null;
+}) {
   const rows = chartRows(points);
   const hasAnyPoint = rows.length > 0;
   const canDelta = points.length >= 2;
@@ -76,14 +82,19 @@ export function BlogAnalysisHistoryPanel({ points }: { points: BlogAnalysisHisto
 
   return (
     <div className="rounded-[24px] border border-[#e5e7eb] bg-white p-6 shadow-sm">
-      <h4 className="text-[13px] font-bold text-gray-400 mb-1 tracking-tighter">● 순위 변동 히스토리</h4>
-      <p className="text-[11px] text-gray-400 mb-4">최근 분석 기록 기준 · 순위 축은 낮을수록 위쪽이 좋음</p>
+      <h4 className="text-[13px] font-bold text-gray-500 mb-1 tracking-tighter">● 순위 변동 히스토리</h4>
+      <p className="text-[11px] text-gray-400 mb-2">최근 분석 기록 기준 · 순위 축은 낮을수록 위쪽이 좋음</p>
+      {trendNarrative != null && String(trendNarrative).trim() !== "" ? (
+        <p className="text-[12px] font-semibold text-slate-800 mb-4 leading-relaxed rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+          {trendNarrative}
+        </p>
+      ) : null}
 
       {!hasAnyPoint ? (
         <p className="text-sm text-gray-400 py-8 text-center">히스토리가 없습니다.</p>
       ) : (
         <>
-          <div className="h-[220px] w-full min-h-[180px]">
+          <div className="h-[200px] w-full min-h-[160px] sm:h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={rows} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -192,8 +203,8 @@ export function BlogAnalysisHistoryPanel({ points }: { points: BlogAnalysisHisto
             </ResponsiveContainer>
           </div>
 
-          <div className="mt-5 pt-4 border-t border-gray-100">
-            <p className="text-[11px] font-bold text-gray-500 mb-3">직전 분석 대비</p>
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <p className="text-[11px] font-bold text-gray-500 mb-2">직전 분석 대비</p>
             {!canDelta ? (
               <p className="text-[13px] text-gray-400 text-center py-2">변동 데이터 부족</p>
             ) : (

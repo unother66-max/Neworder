@@ -6,33 +6,61 @@ export type ScrapedPost = {
   date: string;
 };
 
-function normalizeUrl(input: string) {
-  const trimmed = input.trim();
+const NAVER_BLOG_HOSTS = new Set(["blog.naver.com", "m.blog.naver.com"]);
 
-  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-    return `https://${trimmed}`;
-  }
-
-  return trimmed;
+function isValidBlogIdSegment(segment: string): boolean {
+  return /^[a-zA-Z0-9_-]{2,}$/.test(segment);
 }
 
-export function extractBlogId(inputUrl: string) {
-  const safeUrl = normalizeUrl(inputUrl);
+/** URL 경로 `[blogId]` 검증용 (extractBlogId 결과와 동일 규칙) */
+export function isValidNaverBlogId(id: string): boolean {
+  return isValidBlogIdSegment(id.trim());
+}
+
+/**
+ * 네이버 블로그 식별자 추출 (아이디 단독 입력·각종 URL·글 번호 경로 지원).
+ * 공백 trim, URL 끝 슬래시 제거, /PostView.naver?blogId= 형태는 쿼리에서 보조 추출.
+ */
+export function extractBlogId(inputUrl: string): string {
+  const trimmed = inputUrl.trim();
+  if (!trimmed) return "";
+
+  const noTrailingSlashes = trimmed.replace(/\/+$/, "");
+
+  const lower = noTrailingSlashes.toLowerCase();
+  const looksLikePlainBlogId =
+    !noTrailingSlashes.includes("/") &&
+    !noTrailingSlashes.includes(":") &&
+    !lower.includes("naver") &&
+    isValidBlogIdSegment(noTrailingSlashes);
+  if (looksLikePlainBlogId) return noTrailingSlashes;
+
+  let href = noTrailingSlashes;
+  if (!/^https?:\/\//i.test(href)) {
+    href = `https://${href}`;
+  }
 
   try {
-    const url = new URL(safeUrl);
+    const url = new URL(href);
+    const host = url.hostname.toLowerCase();
 
-    if (url.hostname.includes("blog.naver.com")) {
-      const pathname = url.pathname.replace(/^\/+/, "");
-      const firstSegment = pathname.split("/")[0];
-
-      if (firstSegment) {
-        return firstSegment;
+    if (NAVER_BLOG_HOSTS.has(host)) {
+      const pathname = url.pathname.replace(/^\/+|\/+$/g, "");
+      const segments = pathname.split("/").filter(Boolean);
+      const first = segments[0];
+      if (first && isValidBlogIdSegment(first)) {
+        return first;
+      }
+      const fromQuery = url.searchParams.get("blogId")?.trim();
+      if (fromQuery && isValidBlogIdSegment(fromQuery)) {
+        return fromQuery;
       }
     }
 
-    const blogId = url.searchParams.get("blogId");
-    if (blogId) return blogId;
+    const blogIdParam = url.searchParams.get("blogId")?.trim();
+    if (blogIdParam && isValidBlogIdSegment(blogIdParam)) {
+      return blogIdParam;
+    }
   } catch {
     return "";
   }

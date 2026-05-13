@@ -2,23 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-
-function extractBlogId(input: string) {
-  try {
-    const url = new URL(input);
-
-    if (
-      url.hostname === "blog.naver.com" ||
-      url.hostname === "m.blog.naver.com"
-    ) {
-      return url.pathname.replace(/^\/+/, "").split("/")[0] || "";
-    }
-
-    return "";
-  } catch {
-    return "";
-  }
-}
+import { extractBlogId } from "@/lib/scraper";
 
 function parseVisitorXml(xml: string) {
   const matches = [...xml.matchAll(/<visitorcnt\s+id="(\d+)"\s+cnt="(\d+)"\s*\/>/g)];

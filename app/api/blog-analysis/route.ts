@@ -8,6 +8,7 @@ import {
   rankPlace1Based,
   sortBlogAnalysisSnapshotsForRank,
 } from "@/lib/blog-analysis-history-rank";
+import { computeBlogKeywordInsights } from "@/lib/blog-keyword-insight";
 import { fetchValidBlogKeywordsFromCandidates } from "@/lib/blog-keyword-volume";
 import { extractKeywordCandidatesFromTitles } from "@/lib/blog-keywords";
 import { computeBlogScore } from "@/lib/blog-score";
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
     const blogId = extractBlogId(String(blogUrl || ""));
 
     if (!blogId) {
-      return NextResponse.json({ error: "올바른 네이버 블로그 주소를 입력해주세요." }, { status: 400 });
+      return NextResponse.json({ error: "올바른 네이버 블로그 아이디 또는 주소를 입력해주세요." }, { status: 400 });
     }
 
     const mHtml =
@@ -182,6 +183,14 @@ export async function POST(request: Request) {
       console.warn("[blog-analysis] 유효 키워드 수집 실패:", e);
       validKeywords = [];
       validKeywordCount = null;
+    }
+
+    let keywordInsights: BlogAnalysisResult["keywordInsights"] = [];
+    try {
+      keywordInsights = computeBlogKeywordInsights(recentPosts, validKeywords);
+    } catch (e) {
+      console.warn("[blog-analysis] 키워드 인사이트 계산 실패:", e);
+      keywordInsights = [];
     }
 
     let blogTopic: string | null = null;
@@ -346,6 +355,7 @@ export async function POST(request: Request) {
       postingFrequency,
       profileImage: profileImageBase64,
       validKeywords,
+      keywordInsights,
       validKeywordCount,
       blogTopic,
       totalRank,

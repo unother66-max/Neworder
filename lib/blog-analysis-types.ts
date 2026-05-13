@@ -12,6 +12,17 @@ export type BlogValidKeyword = {
   pcVolume?: number | null;
 };
 
+export interface BlogKeywordInsight {
+  keyword: string;
+  totalVolume: number | null;
+  mobileVolume: number | null;
+  pcVolume: number | null;
+  keywordScore: number;
+  matchedPostCount: number;
+  lastAppearedAt: string | null;
+  competitionLevel: "낮음" | "보통" | "높음";
+}
+
 /** 순위 변동 차트용 분석 히스토리 포인트 */
 export type BlogAnalysisHistoryPoint = {
   analyzedAt: string;
@@ -54,6 +65,21 @@ export type BlogTopicAverageComparison = {
   myAverageImageCount?: number | null;
 };
 
+export type BlogAnalysisSavedListItem = {
+  blogId: string;
+  nickname: string | null;
+  blogName: string | null;
+  profileImage: string | null;
+  blogTopic: string | null;
+  validKeywordCount: number | null;
+  analyzedAt: string;
+  totalRank: number | null;
+  topicRank: number | null;
+  level: number | null;
+  grade: string | null;
+  isPinned: boolean;
+};
+
 export type BlogAnalysisResult = {
   nickname: string;
   blogId: string;
@@ -66,6 +92,7 @@ export type BlogAnalysisResult = {
   subscriberCount?: number | null;
   validKeywordCount?: number | null;
   validKeywords?: BlogValidKeyword[];
+  keywordInsights?: BlogKeywordInsight[];
   blogTopic?: string | null;
   /** 우리 서비스 DB 히스토리 기준 전체 순위 */
   totalRank?: number | null;

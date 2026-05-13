@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import type { BlogAnalysisHistoryPoint } from "@/lib/blog-analysis-types";
 import { prisma } from "@/lib/prisma";
 
+function kstDateKey(d: Date): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -35,7 +39,34 @@ export async function GET(req: Request) {
       },
     });
 
-    const points: BlogAnalysisHistoryPoint[] = rows.map((r) => ({
+    /** KST 기준 하루당 analyzedAt이 가장 최근인 행만 유지 */
+    const latestPerKstDay = new Map<
+      string,
+      {
+        analyzedAt: Date;
+        totalRank: number | null;
+        topicRank: number | null;
+        validKeywordCount: number | null;
+        totalScore: number | null;
+        visitorCount: number | null;
+        postCount: number | null;
+        subscriberCount: number | null;
+      }
+    >();
+
+    for (const r of rows) {
+      const dayKey = kstDateKey(r.analyzedAt);
+      const prev = latestPerKstDay.get(dayKey);
+      if (!prev || r.analyzedAt.getTime() > prev.analyzedAt.getTime()) {
+        latestPerKstDay.set(dayKey, r);
+      }
+    }
+
+    const dedupedAsc = [...latestPerKstDay.values()].sort(
+      (a, b) => a.analyzedAt.getTime() - b.analyzedAt.getTime()
+    );
+
+    const points: BlogAnalysisHistoryPoint[] = dedupedAsc.map((r) => ({
       analyzedAt: r.analyzedAt.toISOString(),
       totalRank: r.totalRank,
       topicRank: r.topicRank,

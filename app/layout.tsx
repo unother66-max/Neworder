@@ -66,6 +66,15 @@ export const metadata: Metadata = {
       "플레이스 순위조회, 스마트스토어 순위추적, 키워드 분석 기능 제공",
     images: ["https://postlabs.co.kr/images/og-image-v2.png"],
   },
+
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

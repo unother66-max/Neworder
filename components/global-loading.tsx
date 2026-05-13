@@ -22,7 +22,7 @@ export function GlobalLoading({
           height={200}
           className="h-[200px] w-[200px]"
         />
-       
+        <p className="mt-4 text-[15px] font-semibold text-gray-700">{message}</p>
       </div>
     </div>
   );
