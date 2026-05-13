@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { BarChart3, KeyRound, FileText, Type, AlignLeft, ImageIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import TopNav from "@/components/top-nav";
 import { GlobalLoading } from "@/components/global-loading";
 import { HistoryTabChartCard, VisitorMetricsChartCard } from "@/components/blog-analysis-detail-mini-charts";
@@ -212,112 +215,208 @@ function CompactCompareRow({
   const diffStr = formatSignedDiff(myRaw, avgRaw, diffDecimals);
   const extra = pctVsAvgPhrase(myRaw, avgRaw);
   return (
-    <div className="py-2.5 border-b border-gray-50 last:border-b-0">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] font-bold text-gray-500">{label}</span>
-        {band ? <span className={`text-[10px] ${band.className}`}>{band.label}</span> : <span className="text-[10px] text-gray-400">—</span>}
+    <div className="py-2 border-b border-slate-100/90 last:border-b-0">
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <span className="text-xs font-semibold text-slate-500">{label}</span>
+        {band ? <span className={`text-[10px] font-medium ${band.className}`}>{band.label}</span> : <span className="text-[10px] text-gray-400">—</span>}
       </div>
-      <p className="text-[15px] font-black text-[#111827] mt-0.5 tabular-nums">{myDisplay}</p>
-      <p className="text-[11px] text-gray-500 mt-0.5">
+      <p className="text-sm font-bold text-[#111827] mt-0.5 tabular-nums">{myDisplay}</p>
+      <p className="text-xs text-gray-500 mt-0.5">
         평균 <span className="font-semibold text-slate-700 tabular-nums">{avgDisplay}</span>
         <span className="mx-1 text-gray-300">·</span>
         차이 <span className="font-semibold text-[#2563EB] tabular-nums">{diffStr}</span>
       </p>
-      {extra ? <p className="text-[11px] font-semibold text-slate-700 mt-1 leading-snug">{extra}</p> : null}
+      {extra ? <p className="text-xs font-medium text-slate-600 mt-0.5 leading-snug">{extra}</p> : null}
     </div>
   );
 }
 
-/** 블톡식: 회색=주제 평균, 색상=나 (동일 0~100 눈금) */
-function PeerMeDualBar({
-  title,
-  peerScore,
-  myScore,
-  peerDisplay,
-  myDisplay,
+// ─── Premium UI helpers ────────────────────────────────────────────────────
+
+type TierStyle = { color: string; bg: string; dot: string; gradient: string };
+
+function getTierStyle(label: string): TierStyle {
+  if (label === "매우 우수")
+    return {
+      color: "text-indigo-600",
+      bg: "bg-indigo-50",
+      dot: "bg-indigo-500",
+      gradient: "bg-gradient-to-r from-indigo-500 to-cyan-400",
+    };
+  if (label === "우수")
+    return {
+      color: "text-cyan-700",
+      bg: "bg-cyan-50",
+      dot: "bg-cyan-500",
+      gradient: "bg-gradient-to-r from-cyan-500 to-teal-400",
+    };
+  if (label === "양호")
+    return {
+      color: "text-emerald-700",
+      bg: "bg-emerald-50",
+      dot: "bg-emerald-500",
+      gradient: "bg-gradient-to-r from-emerald-400 to-teal-500",
+    };
+  if (label === "평균")
+    return {
+      color: "text-amber-700",
+      bg: "bg-amber-50",
+      dot: "bg-amber-500",
+      gradient: "bg-gradient-to-r from-amber-400 to-orange-400",
+    };
+  return {
+    color: "text-rose-600",
+    bg: "bg-rose-50",
+    dot: "bg-rose-500",
+    gradient: "bg-gradient-to-r from-rose-400 to-pink-500",
+  };
+}
+
+function PremiumStatCol({
+  name,
+  tier,
+  delay = 0,
 }: {
-  title: string;
-  peerScore: number | null;
-  myScore: number;
-  peerDisplay: string;
-  myDisplay: string;
+  name: string;
+  tier: { label: string; className: string };
+  delay?: number;
 }) {
-  const pp = peerScore != null && Number.isFinite(peerScore) ? clampPct(peerScore) : 0;
-  const mp = clampPct(myScore);
-  const meBetter = peerScore == null || !Number.isFinite(peerScore) || myScore >= peerScore - 0.25;
+  const s = getTierStyle(tier.label);
   return (
-    <div className="py-2 border-b border-gray-100 last:border-b-0">
-      <p className="text-[11px] font-bold text-slate-800 mb-1">{title}</p>
-      <div className="space-y-1.5">
-        <div>
-          <div className="flex justify-between text-[9px] text-gray-400">
-            <span>주제 평균</span>
-            <span className="tabular-nums text-slate-600">{peerDisplay}</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100 mt-0.5 overflow-hidden">
-            <div className="h-full rounded-full bg-slate-400" style={{ width: `${pp}%` }} />
-          </div>
-        </div>
-        <div>
-          <div className="flex justify-between text-[9px] text-gray-400">
-            <span>나</span>
-            <span className="tabular-nums font-bold text-[#111827]">{myDisplay}</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100 mt-0.5 overflow-hidden">
-            <div className={`h-full rounded-full ${meBetter ? "bg-emerald-500" : "bg-rose-500"}`} style={{ width: `${mp}%` }} />
-          </div>
-        </div>
-      </div>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay, ease: "easeOut" }}
+      className="flex flex-col items-center justify-center text-center px-2 sm:px-3 py-3 sm:py-4 border-r border-slate-100 last:border-r-0 flex-1 min-w-0 select-none"
+    >
+      <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 tracking-wide uppercase mb-2 leading-none whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
+        {name}
+      </p>
+      <span
+        className={`inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.color}`}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${s.dot}`} />
+        {tier.label}
+      </span>
+    </motion.div>
   );
 }
 
-function PatternPeerMeDualBar({
+function PremiumCompareBar({
+  Icon,
   title,
-  caption,
-  myScore,
-  peerScore,
-  myMetricLabel,
-  peerMetricLabel,
+  peerLabel,
+  peerText,
+  peerPct,
+  myLabel,
+  myText,
+  myPct,
+  tierLabel,
+  delay = 0,
 }: {
+  Icon: LucideIcon;
   title: string;
-  caption?: string;
-  myScore: number;
-  peerScore: number | null;
-  myMetricLabel: string;
-  peerMetricLabel: string;
+  peerLabel: string;
+  peerText: string;
+  peerPct: number | null;
+  myLabel: string;
+  myText: string;
+  myPct: number | null;
+  tierLabel: string;
+  delay?: number;
 }) {
-  const pp = peerScore != null ? clampPct(peerScore) : 0;
-  const mp = clampPct(myScore);
-  const meBetter = peerScore == null || myScore >= peerScore - 1;
+  const s = getTierStyle(tierLabel);
+  const pp = peerPct != null && Number.isFinite(peerPct) ? clampPct(peerPct) : null;
+  const mp = myPct != null && Number.isFinite(myPct) ? clampPct(myPct) : null;
+  const hasPeerBar = peerText !== "-" && pp != null;
+  const hasMyBar = myText !== "-" && mp != null;
+  const peerW = hasPeerBar && pp != null ? Math.max(pp, 6) : 0;
+  const myW = hasMyBar && mp != null ? Math.max(mp, 6) : 0;
+
   return (
-    <div className="py-2 border-b border-gray-100 last:border-b-0">
-      <p className="text-[11px] font-bold text-slate-800">{title}</p>
-      {caption ? <p className="text-[9px] text-gray-400 mt-0.5 mb-1 leading-snug">{caption}</p> : null}
-      <div className="space-y-1.5 mt-1">
-        <div>
-          <div className="flex justify-between text-[9px] text-gray-400">
-            <span>주제 평균</span>
-            <span className="tabular-nums text-slate-700">{peerMetricLabel}</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100 mt-0.5 overflow-hidden">
-            <div className="h-full rounded-full bg-slate-400" style={{ width: `${pp}%` }} />
-          </div>
+    <motion.div
+      initial={{ opacity: 0, x: -4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3, delay, ease: "easeOut" }}
+      className="py-3 border-b border-slate-100/70 last:border-0 flex gap-3 min-w-0"
+    >
+      <div className="shrink-0 mt-0.5">
+        <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200/60 flex items-center justify-center">
+          <Icon size={13} className="text-slate-600" strokeWidth={2} />
         </div>
-        <div>
-          <div className="flex justify-between text-[9px] text-gray-400">
-            <span>나</span>
-            <span className="tabular-nums font-bold text-[#111827]">{myMetricLabel}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] font-semibold text-slate-700 mb-2 tracking-tight leading-none">{title}</p>
+        <div className="space-y-2">
+          <div>
+            <div className="flex items-baseline justify-between mb-[3px]">
+              <span className="text-[9px] font-medium text-slate-400 uppercase tracking-widest">{peerLabel}</span>
+              <span className="text-[10px] font-semibold text-slate-500 tabular-nums">{hasPeerBar ? peerText : "—"}</span>
+            </div>
+            <div className="h-[7px] rounded-full bg-slate-100 overflow-hidden">
+              {hasPeerBar && (
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${peerW}%` }}
+                  transition={{ duration: 0.7, ease: "easeOut", delay: delay + 0.1 }}
+                  className="h-full rounded-full bg-slate-300/90 backdrop-blur-[1px]"
+                  style={{ maxWidth: "100%" }}
+                />
+              )}
+            </div>
           </div>
-          <div className="h-2 rounded-full bg-slate-100 mt-0.5 overflow-hidden">
-            <div className={`h-full rounded-full ${meBetter ? "bg-emerald-500" : "bg-rose-500"}`} style={{ width: `${mp}%` }} />
+          <div>
+            <div className="flex items-baseline justify-between mb-[3px]">
+              <span className="text-[9px] font-medium text-slate-400 uppercase tracking-widest">{myLabel}</span>
+              <span className="text-[10px] font-bold text-slate-800 tabular-nums tracking-tight">{hasMyBar ? myText : "—"}</span>
+            </div>
+            <div className="h-[7px] rounded-full bg-slate-100 overflow-hidden">
+              {hasMyBar && (
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${myW}%` }}
+                  transition={{ duration: 0.85, ease: "easeOut", delay: delay + 0.25 }}
+                  className={`h-full rounded-full ${s.gradient}`}
+                  style={{ maxWidth: "100%", boxShadow: "0 0 6px rgba(0,0,0,0.08)" }}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
-      <p className="text-[9px] text-slate-500 mt-1 tabular-nums">패턴 점수 {Math.round(myScore)}점</p>
-    </div>
+    </motion.div>
   );
 }
+
+function finiteOrNull(v: number | null | undefined): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function influencePeerSentence(metricLabel: string, my: number, peer: number | null): string {
+  if (peer == null) return "비교 데이터가 부족해요.";
+  const d = my - peer;
+  if (Math.abs(d) < 0.05) return `${metricLabel}이(가) 주제 평균과 비슷해요.`;
+  if (d < 0) return `${metricLabel}이(가) 주제 평균 대비 ${Math.abs(d).toFixed(2)}점 낮아요.`;
+  return `${metricLabel}이(가) 주제 평균 대비 ${d.toFixed(2)}점 높아요.`;
+}
+
+function patternPeerSentence(kind: "title" | "body" | "image", myRaw: number | null, peerRaw: number | null): string {
+  if (myRaw == null || peerRaw == null) return "비교 데이터가 부족해요.";
+  const m = myRaw;
+  const p = peerRaw;
+  const d = Math.round(m - p);
+  const label = kind === "title" ? "제목 길이" : kind === "body" ? "본문 길이" : "이미지 수";
+  if (d === 0) return `${label}이(가) 동일한 카테고리의 상위권 평균과 같아요.`;
+  if (kind === "image") {
+    if (d > 0) return `${label}이(가) 동일한 카테고리의 상위권 평균 대비 ${Math.abs(d)}장 많아요.`;
+    return `${label}이(가) 동일한 카테고리의 상위권 평균 대비 ${Math.abs(d)}장 적어요.`;
+  }
+  if (d > 0) return `${label}이(가) 동일한 카테고리의 상위권 평균 대비 ${Math.abs(d)}자 길어요.`;
+  return `${label}이(가) 동일한 카테고리의 상위권 평균 대비 ${Math.abs(d)}자 짧아요.`;
+}
+
 
 type Props = { blogId: string };
 
@@ -466,9 +565,56 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
       ? Number(topicAverageComparison.averageTotalScore)
       : null;
   const peerTotalForBar = peerTotalScore != null ? clampPct(peerTotalScore) : null;
-  const peerTotalDisplay = peerTotalScore != null ? `${peerTotalScore.toFixed(1)}점` : null;
   const peerKeywordInfl = estimatePeerKeywordInfluence(topicAverageComparison?.averageValidKeywordCount ?? null);
   const peerContentInfl = estimatePeerContentInfluence(topicAverageComparison?.averagePostingFrequency ?? null);
+
+  const influenceSummaryLines = useMemo(() => {
+    if (!blogScoreResult) return [] as string[];
+    const lines: string[] = [];
+    if (peerTotalScore != null) {
+      lines.push(influencePeerSentence("영향력 점수", blogScoreResult.influenceScore, peerTotalScore));
+    }
+    if (peerKeywordInfl != null) {
+      lines.push(influencePeerSentence("키워드 영향력 점수", blogScoreResult.keywordInfluenceScore, peerKeywordInfl));
+    }
+    if (peerContentInfl != null) {
+      lines.push(influencePeerSentence("콘텐츠 영향력 점수", blogScoreResult.contentInfluenceScore, peerContentInfl));
+    }
+    if (lines.length === 0) return ["비교 데이터가 부족해요."];
+    return lines;
+  }, [blogScoreResult, peerTotalScore, peerKeywordInfl, peerContentInfl]);
+
+  const influenceHasAnyPeerBar = peerTotalScore != null || peerKeywordInfl != null || peerContentInfl != null;
+
+  const patternSummaryLines = useMemo(() => {
+    if (!patternAnalysis) return [] as string[];
+    const lines: string[] = [];
+    const pt = finiteOrNull(topicAverageComparison?.averageTitleLength);
+    const mt = finiteOrNull(patternAnalysis.averageTitleLength);
+    if (pt != null && mt != null) {
+      lines.push(patternPeerSentence("title", mt, pt));
+    }
+    const pb = finiteOrNull(topicAverageComparison?.averageContentLength);
+    const mb = finiteOrNull(patternAnalysis.averageContentLength);
+    if (pb != null && mb != null) {
+      lines.push(patternPeerSentence("body", mb, pb));
+    }
+    const pi = finiteOrNull(topicAverageComparison?.averageImageCount);
+    const mi = finiteOrNull(patternAnalysis.averageImageCount);
+    if (pi != null && mi != null) {
+      lines.push(patternPeerSentence("image", mi, pi));
+    }
+    if (lines.length === 0) return ["비교 데이터가 부족해요."];
+    return lines;
+  }, [patternAnalysis, topicAverageComparison]);
+
+  const patternHasAnyPeerBar = useMemo(() => {
+    if (!patternAnalysis) return false;
+    const t = roughTitleScoreFromPeerChars(topicAverageComparison?.averageTitleLength);
+    const c = roughContentScoreFromPeerChars(topicAverageComparison?.averageContentLength);
+    const i = roughImageScoreFromPeerCount(topicAverageComparison?.averageImageCount);
+    return t != null || c != null || i != null;
+  }, [patternAnalysis, topicAverageComparison]);
 
   const blogInfoItems = [
     { label: "블로그 주제", value: blogTopic != null && blogTopic.trim() !== "" ? blogTopic : "-" },
@@ -552,16 +698,16 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-[#f8fafc] pt-24 pb-20">
+    <main className="min-h-screen bg-[#f8fafc] pt-24 pb-12">
       <TopNav />
-      <section className="mx-auto max-w-[1180px] px-4 sm:px-5 py-6 sm:py-8">
-        <p className="mb-3">
-          <Link href="/blog-analysis" className="text-sm font-semibold text-[#2563EB] hover:underline">
+      <section className="mx-auto max-w-[1024px] px-3 sm:px-4 py-4 sm:py-5">
+        <p className="mb-2">
+          <Link href="/blog-analysis" className="text-xs sm:text-sm font-semibold text-[#2563EB] hover:underline">
             ← 블로그 분석 검색
           </Link>
         </p>
 
-        <div className="mb-4 rounded-2xl border border-[#e5e7eb] bg-white p-3 shadow-sm">
+        <div className="mb-3 rounded-2xl border border-slate-200/90 bg-white p-2.5 shadow-sm">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               type="text"
@@ -571,19 +717,19 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                 if (e.key === "Enter") handleSearchAnother();
               }}
               placeholder="블로그 아이디 또는 주소를 입력해주세요."
-              className="h-10 flex-1 rounded-xl border border-[#d8dde6] px-3 text-sm outline-none focus:border-[#2563EB]"
+              className="h-9 flex-1 rounded-xl border border-slate-200 px-2.5 text-sm outline-none focus:border-[#2563EB]"
             />
             <div className="flex flex-wrap gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => void handleSearchAnother()}
-                className="h-10 min-w-[100px] rounded-xl bg-[#333] px-4 text-sm font-bold text-white hover:bg-[#2563EB]"
+                className="h-9 min-w-[92px] rounded-xl bg-[#333] px-3 text-xs font-bold text-white hover:bg-[#2563EB]"
               >
                 분석 시작
               </button>
               <Link
                 href="/blog-analysis"
-                className="h-10 inline-flex items-center justify-center rounded-xl border border-[#e5e7eb] bg-slate-50 px-4 text-sm font-bold text-slate-600 hover:bg-slate-100"
+                className="h-9 inline-flex items-center justify-center rounded-xl border border-slate-200/90 bg-slate-50 px-3 text-xs font-bold text-slate-600 hover:bg-slate-100"
               >
                 검색 기록
               </Link>
@@ -591,88 +737,92 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
           </div>
         </div>
 
-        <div className="mb-3">
-          <h1 className="text-lg sm:text-xl font-black text-[#111827] tracking-tight">블로그 채널 분석</h1>
-          <p className="mt-0.5 text-[11px] sm:text-[12px] text-gray-500">
+        <div className="mb-2">
+          <h1 className="text-base sm:text-lg font-bold text-[#111827] tracking-tight">블로그 채널 분석</h1>
+          <p className="mt-0.5 text-xs text-gray-500">
             <span className="font-semibold text-[#111827]">{nickname}</span>
             <span className="text-gray-400"> · @{resolvedBlogId}</span>
           </p>
           {analyzedAt ? (
-            <p className="text-[9px] text-gray-400 mt-0.5 tabular-nums">분석 시각 · {formatAnalyzedAt(analyzedAt)}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">분석 시각 · {formatAnalyzedAt(analyzedAt)}</p>
           ) : null}
         </div>
 
         <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {/* 1행: 프로필 + 최신 순위 + 블로그 정보 */}
           <div className="flex flex-col lg:flex-row gap-3 items-stretch">
-            <div className="w-full lg:w-[240px] shrink-0 order-1">
-              <div className="rounded-2xl border border-[#e5e7eb] bg-white p-3 shadow-sm text-center h-full">
-                <div className="h-14 w-14 rounded-full bg-gray-100 mx-auto mb-2 flex items-center justify-center text-xl overflow-hidden border border-[#e5e7eb]">
+            <div className="w-full lg:w-[210px] shrink-0 order-1">
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-sm text-center h-full flex flex-col justify-center">
+                <div className="h-12 w-12 rounded-full bg-gray-100 mx-auto mb-2 flex items-center justify-center text-lg overflow-hidden border border-slate-200/60 shadow-sm">
                   {profileImage ? <img src={profileImage} alt="" className="w-full h-full object-cover" /> : <span className="text-gray-300">👤</span>}
                 </div>
-                <h3 className="text-[15px] font-bold text-[#111827] leading-tight">{nickname}</h3>
-                <p className="text-[10px] text-gray-400">@{resolvedBlogId}</p>
-                <div className="mt-3 pt-2 border-t border-gray-50 text-left space-y-1.5">
-                  <div className="flex justify-between text-[10px] text-gray-500">
+                <h3 className="text-sm font-semibold text-slate-800 leading-tight tracking-tight">{nickname}</h3>
+                <p className="text-[10px] text-slate-400 truncate px-1 mt-0.5">@{resolvedBlogId}</p>
+                <div className="mt-3 pt-2.5 border-t border-slate-100 text-left space-y-1.5">
+                  <div className="flex justify-between items-center text-[10px] text-slate-500">
                     <span>운영 등급</span>
-                    <span className={`font-black ${blogScoreResult.grade === "S" || blogScoreResult.grade === "A" ? "text-[#2563EB]" : "text-[#f59e0b]"}`}>
+                    <span className={`font-bold text-xs ${blogScoreResult.grade === "S" || blogScoreResult.grade === "A" ? "text-indigo-600" : "text-amber-600"}`}>
                       {blogScoreResult.grade}
                     </span>
                   </div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] text-gray-500">레벨</span>
-                    <span className="text-xl font-black text-[#111827]">Lv.{blogScoreResult.level}</span>
+                  <div className="flex justify-between items-baseline gap-2">
+                    <span className="text-[10px] text-slate-500 shrink-0">레벨</span>
+                    <span className="text-base font-bold tabular-nums tracking-tight text-slate-800">Lv.{blogScoreResult.level}</span>
                   </div>
-                  <div className="flex justify-between text-[10px] text-gray-500">
-                    <span>영향력 지수</span>
-                    <span className="font-black text-[#111827] tabular-nums">{blogScoreResult.totalScore.toFixed(2)}</span>
+                  <div className="flex justify-between items-center text-[10px] text-slate-500 gap-2">
+                    <span className="shrink-0">영향력 지수</span>
+                    <span className="font-semibold text-slate-800 tabular-nums">{blogScoreResult.totalScore.toFixed(2)}</span>
                   </div>
-                  <div className="h-1.5 w-full bg-gray-100 rounded-full">
-                    <div className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full" style={{ width: `${clampPct(blogScoreResult.totalScore)}%` }} />
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-indigo-400 to-cyan-400 rounded-full transition-all duration-700" style={{ width: `${clampPct(blogScoreResult.totalScore)}%` }} />
                   </div>
-                  <p className="text-[8px] text-gray-400">다음 레벨까지 {blogScoreResult.nextLevelRemaining.toFixed(2)}</p>
+                  <p className="text-[9px] text-slate-400 leading-tight">다음 레벨까지 {blogScoreResult.nextLevelRemaining.toFixed(2)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col gap-2 min-w-0 order-2">
-              <div className="rounded-2xl border border-[#e5e7eb] bg-white shadow-sm overflow-hidden">
-                <div className="bg-slate-600 px-3 py-1.5">
-                  <span className="text-[10px] font-bold text-white tracking-tight">최신 순위</span>
+            <div className="flex-1 flex flex-col gap-3 min-w-0 order-2">
+              <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-3 py-1.5">
+                  <span className="text-[10px] font-semibold text-white/90 tracking-wider uppercase">최신 순위</span>
                 </div>
-                <div className="p-2 sm:p-3">
-                  <div className="grid grid-cols-3 gap-2 divide-x divide-gray-100">
-                    <div className="text-center px-1 first:pl-0">
-                      <p className="text-[9px] text-gray-400">유효 키워드</p>
-                      <p className="text-base sm:text-lg font-black text-red-600 tabular-nums mt-0.5">
+                <div className="p-2 sm:p-2.5">
+                  <div className="grid grid-cols-3 gap-0 divide-x divide-slate-100/80">
+                    <div className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1">
+                      <p className="text-xl sm:text-2xl font-bold text-indigo-600 tabular-nums leading-none tracking-tight">
                         {validKeywordCount != null ? `${validKeywordCount.toLocaleString()}개` : "—"}
                       </p>
-                      <p className="text-[8px] text-gray-400 mt-0.5">검색량 0 초과</p>
+                      <p className="text-[9px] font-medium text-slate-500 leading-none">유효 키워드</p>
+                      <p className="text-[8px] text-slate-400 leading-tight">검색량 0 초과</p>
                     </div>
-                    <div className="text-center px-1">
-                      <p className="text-[9px] text-gray-400">전체 순위</p>
-                      <p className="text-base sm:text-lg font-black text-orange-500 tabular-nums mt-0.5">{formatRankDisplay(totalRank)}</p>
-                      <p className="text-[8px] text-gray-400 mt-0.5">히스토리 기준</p>
+                    <div className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1">
+                      <p className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums leading-none tracking-tight break-all">
+                        {formatRankDisplay(totalRank)}
+                      </p>
+                      <p className="text-[9px] font-medium text-slate-500 leading-none">전체 순위</p>
+                      <p className="text-[8px] text-slate-400 leading-tight">히스토리 기준</p>
                     </div>
-                    <div className="text-center px-1 last:pr-0">
-                      <p className="text-[9px] text-gray-400">주제 순위</p>
-                      <p className="text-base sm:text-lg font-black text-orange-500 tabular-nums mt-0.5">{formatRankDisplay(topicRank)}</p>
-                      <p className="text-[8px] text-gray-400 mt-0.5">같은 주제 안</p>
+                    <div className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1">
+                      <p className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums leading-none tracking-tight break-all">
+                        {formatRankDisplay(topicRank)}
+                      </p>
+                      <p className="text-[9px] font-medium text-slate-500 leading-none">주제 순위</p>
+                      <p className="text-[8px] text-slate-400 leading-tight">같은 주제 안</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#e5e7eb] bg-white shadow-sm overflow-hidden">
-                <div className="bg-slate-600 px-3 py-1.5">
-                  <span className="text-[10px] font-bold text-white tracking-tight">블로그 정보</span>
+              <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-3 py-1.5">
+                  <span className="text-[10px] font-semibold text-white/90 tracking-wider uppercase">블로그 정보</span>
                 </div>
-                <div className="p-2 sm:p-3">
+                <div className="p-2 sm:p-2.5">
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-center">
                     {blogInfoItems.map((o, i) => (
-                      <div key={i} className="rounded-lg bg-slate-50/80 py-1.5 px-0.5 min-h-[52px] flex flex-col justify-center">
-                        <p className="font-bold text-[11px] sm:text-[12px] text-[#111827] tabular-nums truncate">{o.value}</p>
-                        <p className="text-[8px] text-gray-400 mt-0.5 leading-tight">{o.label}</p>
+                      <div key={i} className="rounded-xl bg-slate-50/80 py-1.5 px-1 min-h-[50px] sm:min-h-[52px] flex flex-col items-center justify-center gap-1 border border-slate-100/60">
+                        <p className="font-semibold text-xs sm:text-sm text-slate-800 tabular-nums truncate max-w-full leading-none">{o.value}</p>
+                        <p className="text-[8px] text-slate-400 leading-tight">{o.label}</p>
                       </div>
                     ))}
                   </div>
@@ -696,151 +846,213 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
           </div>
 
           {/* AI 요약 (컴팩트) */}
-          <div className="rounded-2xl border border-[#2563EB]/20 bg-gradient-to-b from-[#f8fafc] to-white p-3 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[9px] font-black uppercase tracking-wider text-[#2563EB]">AI 분석 요약</span>
-              <span className="text-[8px] text-gray-400">규칙 기반 · 참고</span>
+          <div className="rounded-2xl border border-sky-200/70 bg-sky-50/40 px-2 py-2 shadow-sm">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-sky-700">AI 분석 요약</span>
+              <span className="text-[9px] text-sky-600/80">참고</span>
             </div>
-            <ul className="space-y-1">
+            <ul className="space-y-0.5">
               {summaryLines.slice(0, 3).map((line, i) => (
-                <li key={i} className="text-[11px] sm:text-[12px] text-slate-800 leading-snug pl-2.5 border-l-2 border-[#2563EB]/30">
+                <li
+                  key={i}
+                  className={`text-xs leading-snug pl-2 border-l-2 border-sky-300/50 ${
+                    i === 0 ? "font-semibold text-slate-900" : "font-normal text-slate-600"
+                  }`}
+                >
                   {line}
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* 영향력 · 포스팅 패턴 (2열) */}
+          {/* 영향력 · 포스팅 패턴 (2열) — Premium SaaS 리포트 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
-            <div className="rounded-2xl border border-[#e5e7eb] bg-white p-3 sm:p-4 shadow-sm flex flex-col h-full">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <h4 className="text-[13px] font-bold text-[#111827]">최근 블로그 영향력</h4>
-                <span className="text-[9px] text-gray-400 shrink-0">주제 평균 대비</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5 text-center mb-2">
-                <div className="rounded-lg bg-slate-50 py-1.5 px-0.5">
-                  <p className="text-[9px] text-gray-400">종합</p>
-                  <p className={`text-[11px] font-bold ${tierCaption(blogScoreResult.influenceScore).className}`}>
-                    {tierCaption(blogScoreResult.influenceScore).label}
-                  </p>
+            {/* ── 최근 블로그 영향력 ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              whileHover={{ y: -1, transition: { duration: 0.2 } }}
+              className="rounded-3xl border border-slate-200/70 bg-gradient-to-b from-white to-slate-50/60 p-4 sm:p-5 shadow-[0_1px_4px_rgb(0,0,0,0.04),0_6px_20px_rgb(0,0,0,0.04)] hover:shadow-[0_2px_8px_rgb(0,0,0,0.06),0_10px_28px_rgb(0,0,0,0.06)] transition-shadow duration-300 flex flex-col min-w-0 overflow-hidden"
+            >
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center shrink-0">
+                    <BarChart3 size={12} className="text-white" strokeWidth={2.5} />
+                  </div>
+                  <h4 className="text-sm font-semibold text-slate-800 tracking-tight">최근 블로그 영향력</h4>
                 </div>
-                <div className="rounded-lg bg-slate-50 py-1.5 px-0.5">
-                  <p className="text-[9px] text-gray-400">키워드</p>
-                  <p className={`text-[11px] font-bold ${tierCaption(blogScoreResult.keywordInfluenceScore).className}`}>
-                    {tierCaption(blogScoreResult.keywordInfluenceScore).label}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-50 py-1.5 px-0.5">
-                  <p className="text-[9px] text-gray-400">콘텐츠</p>
-                  <p className={`text-[11px] font-bold ${tierCaption(blogScoreResult.contentInfluenceScore).className}`}>
-                    {tierCaption(blogScoreResult.contentInfluenceScore).label}
-                  </p>
-                </div>
+                <span className="text-[9px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">주제 평균 대비</span>
               </div>
-              <p className="text-[9px] text-gray-400 mb-1.5 leading-snug">회색 막대는 주제 평균, 색 막대는 나예요. 같은 0~100 눈금으로 비교됩니다.</p>
-              <div className="flex-1 min-h-0">
-                <PeerMeDualBar
-                  title="종합 영향력"
-                  peerScore={peerTotalForBar}
-                  myScore={blogScoreResult.influenceScore}
-                  peerDisplay={peerTotalDisplay ?? "—"}
-                  myDisplay={`${blogScoreResult.influenceScore.toFixed(1)}점`}
-                />
-                <PeerMeDualBar
-                  title="키워드 영향력"
-                  peerScore={peerKeywordInfl != null ? clampPct(peerKeywordInfl) : null}
-                  myScore={blogScoreResult.keywordInfluenceScore}
-                  peerDisplay={peerKeywordInfl != null ? `${peerKeywordInfl.toFixed(1)}점(추정)` : "—"}
-                  myDisplay={`${blogScoreResult.keywordInfluenceScore.toFixed(1)}점`}
-                />
-                <PeerMeDualBar
-                  title="콘텐츠 영향력"
-                  peerScore={peerContentInfl != null ? clampPct(peerContentInfl) : null}
-                  myScore={blogScoreResult.contentInfluenceScore}
-                  peerDisplay={peerContentInfl != null ? `${peerContentInfl.toFixed(1)}점(추정)` : "—"}
-                  myDisplay={`${blogScoreResult.contentInfluenceScore.toFixed(1)}점`}
-                />
-              </div>
-            </div>
 
-            <div className="rounded-2xl border border-[#e5e7eb] bg-white p-3 sm:p-4 shadow-sm flex flex-col h-full">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <h4 className="text-[13px] font-bold text-[#111827]">포스팅 패턴</h4>
-                <span className="text-[9px] text-gray-400 shrink-0">주제 평균 대비</span>
+              <div className="grid grid-cols-3 divide-x divide-slate-100 border border-slate-100/80 rounded-2xl overflow-hidden bg-white/70">
+                <PremiumStatCol name="영향력 지수" tier={tierCaption(blogScoreResult.influenceScore)} delay={0} />
+                <PremiumStatCol name="키워드 영향력" tier={tierCaption(blogScoreResult.keywordInfluenceScore)} delay={0.08} />
+                <PremiumStatCol name="콘텐츠 영향력" tier={tierCaption(blogScoreResult.contentInfluenceScore)} delay={0.16} />
               </div>
+
+              <div className="mt-3 space-y-0.5 px-0.5">
+                {influenceSummaryLines.map((sentence, i) => (
+                  <p key={i} className="text-[11px] text-slate-500 leading-snug">
+                    {sentence}
+                  </p>
+                ))}
+              </div>
+
+              <div className="mt-4 border-t border-slate-100/70 pt-2 min-w-0">
+                {!influenceHasAnyPeerBar ? (
+                  <p className="text-[9px] text-slate-400 mb-2">평균 데이터 없음</p>
+                ) : null}
+                <PremiumCompareBar
+                  Icon={BarChart3}
+                  title="영향력 지수"
+                  peerLabel={`Lv.${blogScoreResult.level} 평균`}
+                  peerText={peerTotalScore != null ? peerTotalScore.toFixed(2) : "-"}
+                  peerPct={peerTotalForBar}
+                  myLabel="나의 점수"
+                  myText={blogScoreResult.influenceScore.toFixed(2)}
+                  myPct={clampPct(blogScoreResult.influenceScore)}
+                  tierLabel={tierCaption(blogScoreResult.influenceScore).label}
+                  delay={0.1}
+                />
+                <PremiumCompareBar
+                  Icon={KeyRound}
+                  title="키워드 영향력"
+                  peerLabel={`Lv.${blogScoreResult.level} 평균`}
+                  peerText={peerKeywordInfl != null ? peerKeywordInfl.toFixed(2) : "-"}
+                  peerPct={peerKeywordInfl != null ? clampPct(peerKeywordInfl) : null}
+                  myLabel="나의 점수"
+                  myText={blogScoreResult.keywordInfluenceScore.toFixed(2)}
+                  myPct={clampPct(blogScoreResult.keywordInfluenceScore)}
+                  tierLabel={tierCaption(blogScoreResult.keywordInfluenceScore).label}
+                  delay={0.2}
+                />
+                <PremiumCompareBar
+                  Icon={FileText}
+                  title="콘텐츠 영향력"
+                  peerLabel={`Lv.${blogScoreResult.level} 평균`}
+                  peerText={peerContentInfl != null ? peerContentInfl.toFixed(2) : "-"}
+                  peerPct={peerContentInfl != null ? clampPct(peerContentInfl) : null}
+                  myLabel="나의 점수"
+                  myText={blogScoreResult.contentInfluenceScore.toFixed(2)}
+                  myPct={clampPct(blogScoreResult.contentInfluenceScore)}
+                  tierLabel={tierCaption(blogScoreResult.contentInfluenceScore).label}
+                  delay={0.3}
+                />
+              </div>
+            </motion.div>
+
+            {/* ── 포스팅 패턴 ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.06, ease: "easeOut" }}
+              whileHover={{ y: -1, transition: { duration: 0.2 } }}
+              className="rounded-3xl border border-slate-200/70 bg-gradient-to-b from-white to-slate-50/60 p-4 sm:p-5 shadow-[0_1px_4px_rgb(0,0,0,0.04),0_6px_20px_rgb(0,0,0,0.04)] hover:shadow-[0_2px_8px_rgb(0,0,0,0.06),0_10px_28px_rgb(0,0,0,0.06)] transition-shadow duration-300 flex flex-col min-w-0 overflow-hidden"
+            >
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
+                    <FileText size={12} className="text-white" strokeWidth={2.5} />
+                  </div>
+                  <h4 className="text-sm font-semibold text-slate-800 tracking-tight">포스팅 패턴</h4>
+                </div>
+                <span className="text-[9px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">주제 평균 대비</span>
+              </div>
+
               {!patternAnalysis ? (
-                <p className="text-[12px] text-gray-400 py-3">최근 공개 글을 불러오지 못했거나 분석할 포스트가 없습니다.</p>
+                <p className="text-xs text-slate-400 py-2">최근 공개 글을 불러오지 못했거나 분석할 포스트가 없습니다.</p>
               ) : (
                 <>
-                  <div className="grid grid-cols-3 gap-1.5 text-center mb-2">
-                    <div className="rounded-lg bg-slate-50 py-1.5">
-                      <p className="text-[9px] text-gray-400">제목</p>
-                      <p className={`text-[11px] font-bold ${patternTierCaption(Number(patternAnalysis.titleLengthScore ?? 0)).className}`}>
-                        {patternTierCaption(Number(patternAnalysis.titleLengthScore ?? 0)).label}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 py-1.5">
-                      <p className="text-[9px] text-gray-400">본문</p>
-                      <p className={`text-[11px] font-bold ${patternTierCaption(Number(patternAnalysis.contentLengthScore ?? 0)).className}`}>
-                        {patternTierCaption(Number(patternAnalysis.contentLengthScore ?? 0)).label}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 py-1.5">
-                      <p className="text-[9px] text-gray-400">이미지</p>
-                      <p className={`text-[11px] font-bold ${patternTierCaption(Number(patternAnalysis.imageCountScore ?? 0)).className}`}>
-                        {patternTierCaption(Number(patternAnalysis.imageCountScore ?? 0)).label}
-                      </p>
-                    </div>
+                  <div className="grid grid-cols-3 divide-x divide-slate-100 border border-slate-100/80 rounded-2xl overflow-hidden bg-white/70">
+                    <PremiumStatCol name="제목 길이" tier={patternTierCaption(Number(patternAnalysis.titleLengthScore ?? 0))} delay={0.06} />
+                    <PremiumStatCol name="본문 길이" tier={patternTierCaption(Number(patternAnalysis.contentLengthScore ?? 0))} delay={0.14} />
+                    <PremiumStatCol name="이미지 수" tier={patternTierCaption(Number(patternAnalysis.imageCountScore ?? 0))} delay={0.22} />
                   </div>
-                  <p className="text-[9px] text-gray-400 mb-1 leading-snug">주제 평균을 패턴 점수로 환산해 같은 눈금에 비교해요.</p>
-                  <div className="flex-1 min-h-0">
-                    <PatternPeerMeDualBar
-                      title="제목 길이"
-                      caption="짧거나 과하게 길면 불리할 수 있어요."
-                      myScore={Number(patternAnalysis.titleLengthScore ?? 0)}
-                      peerScore={roughTitleScoreFromPeerChars(topicAverageComparison?.averageTitleLength)}
-                      myMetricLabel={formatAvgTitleChars(patternAnalysis.averageTitleLength)}
-                      peerMetricLabel={formatAvgTitleChars(topicAverageComparison?.averageTitleLength)}
-                    />
-                    <PatternPeerMeDualBar
-                      title="본문 길이"
-                      caption="분량이 너무 얕으면 패턴 점수가 약해질 수 있어요."
-                      myScore={Number(patternAnalysis.contentLengthScore ?? 0)}
-                      peerScore={roughContentScoreFromPeerChars(topicAverageComparison?.averageContentLength)}
-                      myMetricLabel={formatAvgBodyChars(patternAnalysis.averageContentLength)}
-                      peerMetricLabel={formatAvgBodyChars(topicAverageComparison?.averageContentLength)}
-                    />
-                    <PatternPeerMeDualBar
-                      title="이미지 수"
-                      caption="거의 없거나 과하면 점수가 흔들릴 수 있어요."
-                      myScore={Number(patternAnalysis.imageCountScore ?? 0)}
-                      peerScore={roughImageScoreFromPeerCount(topicAverageComparison?.averageImageCount)}
-                      myMetricLabel={formatAvgImages(patternAnalysis.averageImageCount)}
-                      peerMetricLabel={formatAvgImages(topicAverageComparison?.averageImageCount)}
-                    />
+
+                  <div className="mt-3 space-y-0.5 px-0.5">
+                    {patternSummaryLines.map((sentence, i) => (
+                      <p key={i} className="text-[11px] text-slate-500 leading-snug">
+                        {sentence}
+                      </p>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 border-t border-slate-100/70 pt-2 min-w-0">
+                    {!patternHasAnyPeerBar ? (
+                      <p className="text-[9px] text-slate-400 mb-2">평균 데이터 없음</p>
+                    ) : null}
+                    {(() => {
+                      const tSc = Number(patternAnalysis.titleLengthScore ?? 0);
+                      const cSc = Number(patternAnalysis.contentLengthScore ?? 0);
+                      const iSc = Number(patternAnalysis.imageCountScore ?? 0);
+                      const peerT = roughTitleScoreFromPeerChars(topicAverageComparison?.averageTitleLength);
+                      const peerC = roughContentScoreFromPeerChars(topicAverageComparison?.averageContentLength);
+                      const peerI = roughImageScoreFromPeerCount(topicAverageComparison?.averageImageCount);
+                      return (
+                        <>
+                          <PremiumCompareBar
+                            Icon={Type}
+                            title="제목 길이"
+                            peerLabel="상위권 평균"
+                            peerText={formatAvgTitleChars(topicAverageComparison?.averageTitleLength)}
+                            peerPct={peerT != null ? clampPct(peerT) : null}
+                            myLabel="나의 평균"
+                            myText={formatAvgTitleChars(patternAnalysis.averageTitleLength)}
+                            myPct={clampPct(tSc)}
+                            tierLabel={patternTierCaption(tSc).label}
+                            delay={0.15}
+                          />
+                          <PremiumCompareBar
+                            Icon={AlignLeft}
+                            title="본문 길이"
+                            peerLabel="상위권 평균"
+                            peerText={formatAvgBodyChars(topicAverageComparison?.averageContentLength)}
+                            peerPct={peerC != null ? clampPct(peerC) : null}
+                            myLabel="나의 평균"
+                            myText={formatAvgBodyChars(patternAnalysis.averageContentLength)}
+                            myPct={clampPct(cSc)}
+                            tierLabel={patternTierCaption(cSc).label}
+                            delay={0.25}
+                          />
+                          <PremiumCompareBar
+                            Icon={ImageIcon}
+                            title="이미지 수"
+                            peerLabel="상위권 평균"
+                            peerText={formatAvgImages(topicAverageComparison?.averageImageCount)}
+                            peerPct={peerI != null ? clampPct(peerI) : null}
+                            myLabel="나의 평균"
+                            myText={formatAvgImages(patternAnalysis.averageImageCount)}
+                            myPct={clampPct(iSc)}
+                            tierLabel={patternTierCaption(iSc).label}
+                            delay={0.35}
+                          />
+                        </>
+                      );
+                    })()}
                   </div>
                 </>
               )}
-            </div>
+            </motion.div>
           </div>
 
           {/* 키워드 테이블 */}
-          <div className="rounded-2xl border border-[#e5e7eb] bg-white shadow-sm overflow-hidden">
-            <div className="border-b border-gray-100 bg-gray-50 px-3 py-2">
-              <h4 className="text-[10px] font-bold text-gray-600 tracking-tighter">● 유효 키워드 상세 (검색량 &gt; 0)</h4>
+          <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+            <div className="border-b border-slate-100 bg-slate-50/80 px-2 py-1.5">
+              <h4 className="text-[10px] font-bold text-slate-600">유효 키워드 상세 (검색량 &gt; 0)</h4>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] text-left">
                 <thead className="bg-gray-50/80 border-b border-gray-100">
                   <tr>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 whitespace-nowrap">키워드</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">총 검색량</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">모바일</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">PC</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">점수</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">등장</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">최근</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">경쟁</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 whitespace-nowrap">키워드</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">총 검색량</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">모바일</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">PC</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">점수</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">등장</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">최근</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">경쟁</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -849,28 +1061,28 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                       const insight = keywordInsights.find((k) => k.keyword === row.keyword);
                       return (
                         <tr key={`${row.keyword}-${i}`} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-3 py-2 text-[11px] font-bold text-[#111827] whitespace-nowrap">{row.keyword}</td>
-                          <td className="px-3 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                          <td className="px-2.5 py-1.5 text-[11px] font-semibold text-[#111827] whitespace-nowrap">{row.keyword}</td>
+                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
                             {formatVolumeCell(insight?.totalVolume ?? row.totalVolume)}
                           </td>
-                          <td className="px-3 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
                             {formatVolumeCell(insight?.mobileVolume ?? row.mobileVolume)}
                           </td>
-                          <td className="px-3 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
                             {formatVolumeCell(insight?.pcVolume ?? row.pcVolume)}
                           </td>
                           <td
-                            className={`px-3 py-2 text-[10px] text-right tabular-nums whitespace-nowrap font-bold ${insight ? keywordInfluenceScoreClass(insight.keywordScore) : "text-gray-600"}`}
+                            className={`px-2.5 py-1.5 text-[10px] text-right tabular-nums whitespace-nowrap font-bold ${insight ? keywordInfluenceScoreClass(insight.keywordScore) : "text-gray-600"}`}
                           >
                             {insight ? formatKeywordScoreCell(insight.keywordScore) : "-"}
                           </td>
-                          <td className="px-3 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
                             {insight && Number.isFinite(insight.matchedPostCount) ? insight.matchedPostCount.toLocaleString() : "-"}
                           </td>
-                          <td className="px-3 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
                             {insight ? formatPostDate(insight.lastAppearedAt) : "-"}
                           </td>
-                          <td className={`px-3 py-2 text-[10px] text-right whitespace-nowrap ${insight ? competitionLevelClass(insight.competitionLevel) : "text-gray-600"}`}>
+                          <td className={`px-2.5 py-1.5 text-[10px] text-right whitespace-nowrap ${insight ? competitionLevelClass(insight.competitionLevel) : "text-gray-600"}`}>
                             {insight ? insight.competitionLevel : "-"}
                           </td>
                         </tr>
@@ -889,9 +1101,9 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
           </div>
 
           {/* 주제 평균 비교 */}
-          <div className="rounded-2xl border border-[#e5e7eb] bg-white p-3 sm:p-4 shadow-sm">
-            <h4 className="text-[13px] font-bold mb-0.5 text-[#111827]">같은 주제 평균과 비교</h4>
-            <p className="text-[9px] text-gray-400 mb-2 leading-snug">동료 블로그 스냅샷 평균 · 현재 블로그는 계산에서 제외</p>
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-2.5 sm:p-3 shadow-sm">
+            <h4 className="text-sm font-bold text-[#111827]">같은 주제 평균과 비교</h4>
+            <p className="text-[9px] text-gray-400 mb-1.5 leading-tight">동료 스냅샷 평균 · 현재 블로그 제외</p>
             {!topicAverageComparison ? (
               <div className="rounded-xl border border-dashed border-gray-200 bg-slate-50/60 px-3 py-3 text-center text-[11px] text-gray-400">
                 비교할 동료 표본이 아직 부족합니다. 분석을 다시 실행하면 채워질 수 있어요.
@@ -964,44 +1176,44 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
 
           {/* 포스팅 */}
           <div>
-            <div className="flex gap-1 mb-2 bg-gray-100/50 p-1 rounded-xl w-fit">
+            <div className="flex gap-0.5 mb-1.5 bg-slate-100/60 p-0.5 rounded-xl w-fit">
               {[{ id: "recent", label: "최근 포스팅" }, { id: "popular", label: "인기글 목록" }].map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === tab.id ? "bg-white shadow-sm" : "text-gray-400"}`}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${activeTab === tab.id ? "bg-white shadow-sm text-slate-900" : "text-gray-400"}`}
                 >
                   {tab.label}
                 </button>
               ))}
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
               <table className="w-full text-left">
-                <thead className="bg-gray-50 border-b border-gray-100">
+                <thead className="bg-slate-50/80 border-b border-slate-100">
                   <tr>
-                    <th className="px-4 py-2.5 text-[10px] font-bold text-gray-500">발행일</th>
-                    <th className="px-4 py-2.5 text-[10px] font-bold text-gray-500">제목</th>
-                    <th className="px-4 py-2.5 text-[10px] font-bold text-gray-500 text-center w-10">분석</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500">발행일</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500">제목</th>
+                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-center w-10">분석</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-slate-50">
                   {recentPosts.length > 0 ? (
                     recentPosts.map((post, i) => (
-                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">{formatPostDate(post.createdAt)}</td>
-                        <td className="px-4 py-3 text-xs font-bold text-[#111827] min-w-0">
-                          <div className="flex items-center gap-2 min-w-0">
+                      <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-2.5 py-1.5 text-[10px] text-gray-400 whitespace-nowrap tabular-nums">{formatPostDate(post.createdAt)}</td>
+                        <td className="px-2.5 py-1.5 text-xs font-semibold text-[#111827] min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
                             {post.thumbnail ? (
-                              <img src={post.thumbnail} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover border border-gray-100" />
+                              <img src={post.thumbnail} alt="" className="h-7 w-7 shrink-0 rounded-md object-cover border border-slate-100" />
                             ) : null}
-                            <a href={post.url} target="_blank" rel="noreferrer" className="hover:text-[#2563EB] transition-colors truncate">
+                            <a href={post.url} target="_blank" rel="noreferrer" className="hover:text-[#2563EB] transition-colors truncate min-w-0">
                               {post.title}
                             </a>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <button type="button" className="p-1.5 hover:bg-gray-100 rounded-lg text-sm">
+                        <td className="px-2.5 py-1.5 text-center">
+                          <button type="button" className="p-1 hover:bg-slate-100 rounded-md text-xs">
                             🔍
                           </button>
                         </td>
@@ -1009,7 +1221,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={3} className="px-4 py-8 text-center text-gray-300 text-xs">
+                      <td colSpan={3} className="px-3 py-6 text-center text-gray-300 text-xs">
                         최근 글이 없습니다.
                       </td>
                     </tr>

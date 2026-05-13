@@ -115,6 +115,11 @@ function tabDeltaLabel(
   return `순위 ${Math.abs(d).toLocaleString()}계단 밀림`;
 }
 
+const CARD_BORDER = "border-slate-200/70";
+const CARD_HEADER = "bg-gradient-to-r from-slate-700 to-slate-800 px-3 py-1.5";
+const CARD_HEADER_LABEL = "text-[10px] font-semibold text-white/90 tracking-wider uppercase";
+const CHART_STROKE = "#6366f1";
+
 export function VisitorMetricsChartCard({
   historyPoints,
   dailyVisitor,
@@ -128,58 +133,70 @@ export function VisitorMetricsChartCard({
   const hasVisitorSeries = rows.some((r) => r.visitor != null && Number.isFinite(r.visitor));
   const { avgDisplay, dayOverDay, dayOverDayPct } = visitorStatsFromHistory(historyPoints, dailyVisitor);
   const pctClass =
-    dayOverDay === "-" ? "text-gray-400" : dayOverDayPct != null && dayOverDayPct >= 0 ? "text-emerald-600" : "text-rose-600";
+    dayOverDay === "-" ? "text-slate-400" : dayOverDayPct != null && dayOverDayPct >= 0 ? "text-emerald-600" : "text-rose-500";
 
   return (
-    <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-sm overflow-hidden flex flex-col min-h-[200px]">
-      <div className="bg-slate-600 px-3 py-1.5">
-        <span className="text-[10px] font-bold text-white tracking-tight">방문자 수 지표</span>
+    <div className={`bg-white rounded-2xl border ${CARD_BORDER} shadow-sm overflow-hidden flex flex-col`}>
+      <div className={CARD_HEADER}>
+        <span className={CARD_HEADER_LABEL}>방문자 수 지표</span>
       </div>
-      <div className="p-2 sm:p-3 flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1 min-h-0">
-        <div className="flex-1 min-h-[140px] sm:min-h-[160px] min-w-0">
+      <div className="p-2 sm:p-2.5 flex flex-col sm:flex-row gap-2 flex-1 min-h-0">
+        <div className="flex-1 min-h-[108px] sm:min-h-[120px] min-w-0 w-full overflow-hidden">
           {hasVisitorSeries ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={rows} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} tickLine={false} />
+              <LineChart data={rows} margin={{ top: 10, right: 8, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.7} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
                 <YAxis
-                  width={32}
-                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={28}
+                  tick={{ fontSize: 8, fill: "#94a3b8" }}
                   tickLine={false}
+                  axisLine={false}
                   allowDecimals={false}
                 />
                 <Tooltip
-                  contentStyle={{ borderRadius: 8, border: "1px solid #e2e8e0", fontSize: 11 }}
+                  contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}
                   formatter={(val) => {
                     const v = typeof val === "number" ? val : Number(val);
                     return Number.isFinite(v) ? [`${Math.round(v).toLocaleString()}명`, "방문"] : ["-", "방문"];
                   }}
                 />
-                <Line type="monotone" dataKey="visitor" name="visitor" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} />
+                <Line
+                  type="monotone"
+                  dataKey="visitor"
+                  name="visitor"
+                  stroke={CHART_STROKE}
+                  strokeWidth={2}
+                  dot={{ r: 2.5, fill: CHART_STROKE, strokeWidth: 0 }}
+                  connectNulls={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-[11px] text-gray-400 h-full flex items-center justify-center px-2 text-center">방문자 추이 데이터가 없습니다.</p>
+            <div className="h-full min-h-[96px] flex flex-col items-center justify-center rounded-xl bg-slate-50/80 mx-0.5 px-3 py-4 text-center border border-slate-100/60">
+              <p className="text-[10px] font-medium text-slate-500 leading-snug">방문자 추이 데이터가 없습니다</p>
+              <p className="text-[9px] text-slate-400 mt-1">히스토리에 방문 수가 쌓이면 그래프가 표시돼요</p>
+            </div>
           )}
         </div>
-        <div className="sm:w-[120px] shrink-0 flex sm:flex-col flex-row flex-wrap gap-3 sm:gap-2 justify-between sm:justify-start sm:border-l sm:border-gray-100 sm:pl-3 pt-1 sm:pt-0">
+        <div className="sm:w-[104px] shrink-0 flex sm:flex-col flex-row flex-wrap gap-x-3 gap-y-2 justify-between sm:justify-start sm:border-l sm:border-slate-100 sm:pl-2.5 pt-1 sm:pt-0">
           <div>
-            <p className="text-[9px] text-gray-400">전일 대비</p>
-            <p className={`text-sm font-black tabular-nums ${pctClass}`}>{dayOverDay}</p>
+            <p className="text-[8px] font-medium text-slate-400 uppercase tracking-wider">전일 대비</p>
+            <p className={`text-sm font-bold tabular-nums leading-tight tracking-tight mt-0.5 ${pctClass}`}>{dayOverDay}</p>
           </div>
           <div>
-            <p className="text-[9px] text-gray-400">일일 방문</p>
-            <p className="text-sm font-black tabular-nums text-[#111827]">
+            <p className="text-[8px] font-medium text-slate-400">일일 방문</p>
+            <p className="text-sm font-bold tabular-nums text-slate-800 leading-tight tracking-tight mt-0.5">
               {dailyVisitor != null ? `${dailyVisitor.toLocaleString()}명` : "—"}
             </p>
           </div>
           <div>
-            <p className="text-[9px] text-gray-400">평균 방문</p>
-            <p className="text-sm font-black tabular-nums text-[#111827]">{avgDisplay}</p>
+            <p className="text-[8px] font-medium text-slate-400">평균 방문</p>
+            <p className="text-sm font-bold tabular-nums text-slate-800 leading-tight tracking-tight mt-0.5">{avgDisplay}</p>
           </div>
           <div>
-            <p className="text-[9px] text-gray-400">누적 방문</p>
-            <p className="text-xs font-black tabular-nums text-slate-800">{totalVisitor.toLocaleString()}명</p>
+            <p className="text-[8px] font-medium text-slate-400">누적 방문</p>
+            <p className="text-sm font-bold tabular-nums text-slate-700 leading-tight tracking-tight mt-0.5">{totalVisitor.toLocaleString()}명</p>
           </div>
         </div>
       </div>
@@ -234,86 +251,91 @@ export function HistoryTabChartCard({
 
   const displayPrev = prev != null ? (rankTab === "keywords" ? formatKwY(prev) : formatRankY(prev)) : "—";
 
-  const displayBest =
-    best != null ? (rankTab === "keywords" ? formatKwY(best) : formatRankY(best)) : "—";
+  const displayBest = best != null ? (rankTab === "keywords" ? formatKwY(best) : formatRankY(best)) : "—";
+
+  const tabBtn = (id: "total" | "topic" | "keywords", label: string) => (
+    <button
+      type="button"
+      onClick={() => setRankTab(id)}
+      className={`flex-1 px-1 py-1.5 text-[9px] sm:text-[10px] font-semibold transition-colors duration-150 ${
+        rankTab === id
+          ? "bg-gradient-to-r from-slate-700 to-slate-800 text-white"
+          : "bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-sm overflow-hidden flex flex-col min-h-[200px]">
-      <div className="flex border-b border-gray-100">
-        <button
-          type="button"
-          onClick={() => setRankTab("total")}
-          className={`flex-1 px-1.5 py-1.5 text-[9px] sm:text-[10px] font-bold ${rankTab === "total" ? "bg-slate-600 text-white" : "text-gray-400 bg-slate-50"}`}
-        >
-          전체 순위
-        </button>
-        <button
-          type="button"
-          onClick={() => setRankTab("topic")}
-          className={`flex-1 px-1.5 py-1.5 text-[9px] sm:text-[10px] font-bold ${rankTab === "topic" ? "bg-slate-600 text-white" : "text-gray-400 bg-slate-50"}`}
-        >
-          주제 순위
-        </button>
-        <button
-          type="button"
-          onClick={() => setRankTab("keywords")}
-          className={`flex-1 px-1.5 py-1.5 text-[9px] sm:text-[10px] font-bold ${rankTab === "keywords" ? "bg-slate-600 text-white" : "text-gray-400 bg-slate-50"}`}
-        >
-          유효키워드
-        </button>
+    <div className={`bg-white rounded-2xl border ${CARD_BORDER} shadow-sm overflow-hidden flex flex-col`}>
+      <div className="flex border-b border-slate-200/60">
+        {tabBtn("total", "전체 순위")}
+        {tabBtn("topic", "주제 순위")}
+        {tabBtn("keywords", "유효키워드")}
       </div>
-      <div className="p-2 sm:p-3 flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1 min-h-0">
-        <div className="flex-1 min-h-[140px] sm:min-h-[160px] min-w-0">
+      <div className="p-2 sm:p-2.5 flex flex-col sm:flex-row gap-2 flex-1 min-h-0">
+        <div className="flex-1 min-h-[108px] sm:min-h-[120px] min-w-0 w-full overflow-hidden">
           {hasAny ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={rows} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} tickLine={false} />
+              <LineChart data={rows} margin={{ top: 10, right: 8, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.7} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
                 <YAxis
                   reversed={rankReversed}
-                  width={36}
-                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={30}
+                  tick={{ fontSize: 8, fill: "#94a3b8" }}
                   tickLine={false}
+                  axisLine={false}
                   allowDecimals={rankTab !== "keywords"}
                 />
                 <Tooltip
-                  contentStyle={{ borderRadius: 8, border: "1px solid #e2e8e0", fontSize: 11 }}
+                  contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}
                   formatter={(val) => {
                     const v = typeof val === "number" ? val : Number(val);
                     if (!Number.isFinite(v)) return ["-", ""];
                     return rankTab === "keywords" ? [formatKwY(v), "유효 키워드"] : [formatRankY(v), "순위"];
                   }}
                 />
-                <Line type="monotone" dataKey="value" name="value" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  name="value"
+                  stroke={CHART_STROKE}
+                  strokeWidth={2}
+                  dot={{ r: 2.5, fill: CHART_STROKE, strokeWidth: 0 }}
+                  connectNulls={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-[11px] text-gray-400 h-full flex items-center justify-center px-2 text-center">
-              표시할 값이 없습니다.
-            </p>
+            <div className="h-full min-h-[96px] flex flex-col items-center justify-center rounded-xl bg-slate-50/80 mx-0.5 px-3 py-4 text-center border border-slate-100/60">
+              <p className="text-[10px] font-medium text-slate-500 leading-snug">표시할 값이 없습니다</p>
+              <p className="text-[9px] text-slate-400 mt-1">순위·키워드 기록이 쌓이면 그래프가 나타나요</p>
+            </div>
           )}
         </div>
-        <div className="sm:w-[128px] shrink-0 flex sm:flex-col flex-row flex-wrap gap-2 sm:gap-1.5 justify-between sm:justify-start sm:border-l sm:border-gray-100 sm:pl-3 pt-1 sm:pt-0 text-[9px]">
-          <div>
-            <p className="text-gray-400">최근 변화</p>
-            <p className="font-bold text-[#111827] leading-tight mt-0.5">{historyTrend.compactLabel}</p>
-            <p className="text-gray-500 leading-snug mt-0.5 line-clamp-2">{historyTrend.narrative}</p>
+        <div className="sm:w-[108px] shrink-0 flex sm:flex-col flex-row flex-wrap gap-x-3 gap-y-1.5 justify-between sm:justify-start sm:border-l sm:border-slate-100 sm:pl-2.5 pt-1 sm:pt-0 text-[8px]">
+          <div className="min-w-0 w-full sm:w-auto">
+            <p className="text-slate-400 font-medium uppercase tracking-wider">최근 변화</p>
+            <p className="text-[10px] font-bold text-slate-800 leading-tight mt-0.5 tracking-tight">{historyTrend.compactLabel}</p>
+            <p className="text-[9px] text-slate-500 leading-snug mt-0.5 line-clamp-2">{historyTrend.narrative}</p>
           </div>
-          <div className="w-full border-t border-gray-50 pt-1.5 sm:pt-1 space-y-1">
-            <div className="flex justify-between gap-1">
-              <span className="text-gray-400 shrink-0">최고</span>
-              <span className="font-bold text-[#111827] tabular-nums truncate text-right">{displayBest}</span>
+          <div className="w-full border-t border-slate-100 pt-1.5 space-y-1 sm:min-w-0">
+            <div className="flex justify-between gap-0.5">
+              <span className="text-slate-400 shrink-0">최고</span>
+              <span className="font-semibold text-slate-700 tabular-nums truncate text-right text-[9px]">{displayBest}</span>
             </div>
-            <div className="flex justify-between gap-1">
-              <span className="text-gray-400 shrink-0">이번 분석</span>
-              <span className="font-black text-[#111827] tabular-nums truncate text-right">{displayCurrent}</span>
+            <div className="flex justify-between gap-0.5">
+              <span className="text-slate-400 shrink-0">이번</span>
+              <span className="font-bold text-slate-800 tabular-nums truncate text-right text-[10px] tracking-tight">{displayCurrent}</span>
             </div>
-            <div className="flex justify-between gap-1">
-              <span className="text-gray-400 shrink-0">지난 분석</span>
-              <span className="font-semibold text-slate-700 tabular-nums truncate text-right">{displayPrev}</span>
+            <div className="flex justify-between gap-0.5">
+              <span className="text-slate-400 shrink-0">지난</span>
+              <span className="font-semibold text-slate-500 tabular-nums truncate text-right text-[9px]">{displayPrev}</span>
             </div>
-            <p className="text-gray-400 pt-0.5 leading-tight">{tabDeltaLabel(rankTab, historyPoints)}</p>
-            {historySparse ? <p className="text-[9px] text-gray-400 pt-0.5">변동 데이터 부족</p> : null}
+            <p className="text-slate-400 pt-0.5 leading-tight text-[8px]">{tabDeltaLabel(rankTab, historyPoints)}</p>
+            {historySparse ? <p className="text-[8px] text-slate-400 pt-0.5">변동 데이터 부족</p> : null}
           </div>
         </div>
       </div>
