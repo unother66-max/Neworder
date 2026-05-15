@@ -21,7 +21,6 @@ import type {
 import { analyzeBlogHistoryTrend } from "@/lib/blog-analysis-history-trend";
 import { buildBlogAnalysisSummary } from "@/lib/blog-analysis-summary";
 import { computeBlogScore, type BlogScoreResult } from "@/lib/blog-score";
-import { formatSignedDiff, topicComparisonBandLabel } from "@/lib/blog-topic-comparison-format";
 import { extractBlogId, isValidNaverBlogId } from "@/lib/scraper";
 
 function formatPostDate(iso: string | null | undefined): string {
@@ -29,6 +28,58 @@ function formatPostDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "-";
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function firstFiniteNumber(...values: Array<number | string | null | undefined>): number | null {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function formatPostMetric(value: number | string | null | undefined, suffix = ""): string {
+  const n = firstFiniteNumber(value);
+  if (n === null) return "-";
+  return `${Math.round(n).toLocaleString()}${suffix}`;
+}
+
+function formatPostLevel(value: BlogAnalysisRecentPost["postLevel"]): string {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
+function postScoreClass(score: number | null): string {
+  if (score === null) return "text-slate-500";
+  if (score >= 80) return "text-[#2563EB]";
+  if (score >= 60) return "text-green-600";
+  if (score >= 40) return "text-orange-500";
+  return "text-rose-500";
+}
+
+function getPostPotentialScore(post: BlogAnalysisRecentPost, keywords: BlogValidKeyword[]): number | null {
+  const realScore = firstFiniteNumber(post.potentialScore, post.postScore, post.score);
+  if (realScore !== null) return clampPct(realScore);
+
+  const title = String(post.title ?? "").trim();
+  const wordCount = firstFiniteNumber(post.wordCount);
+  const imageCount = firstFiniteNumber(post.imageCount);
+  const commentCount = firstFiniteNumber(post.commentCount);
+  const sympathyCount = firstFiniteNumber(post.sympathyCount, post.likeCount);
+  const hasKeywordMatch = keywords.some((row) => {
+    const keyword = String(row.keyword ?? "").trim();
+    return keyword.length > 0 && title.includes(keyword);
+  });
+
+  let score = 0;
+  if (title) score += 20;
+  if (wordCount !== null && wordCount >= 800) score += 20;
+  if (imageCount !== null && imageCount >= 5) score += 20;
+  if ((commentCount !== null && commentCount > 0) || (sympathyCount !== null && sympathyCount > 0)) score += 10;
+  if (hasKeywordMatch) score += 20;
+
+  return clampPct(score);
 }
 
 function formatVolumeCell(v: number | null | undefined): string {
@@ -119,28 +170,6 @@ function formatAvgImages(n: number | null | undefined): string {
   return `${s}개`;
 }
 
-function formatCmpScorePt(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(Number(n))) return "-";
-  return `${Number(n).toFixed(1)}점`;
-}
-
-function formatCmpKeywordsCt(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(Number(n))) return "-";
-  const x = Number(n);
-  const core = Number.isInteger(x) ? x.toLocaleString() : (Math.round(x * 10) / 10).toFixed(1);
-  return `${core}개`;
-}
-
-function formatCmpVisitorCt(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(Number(n))) return "-";
-  return `${Math.round(Number(n)).toLocaleString()}명`;
-}
-
-function formatCmpPostingFreq(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(Number(n))) return "-";
-  return `${Number(n).toFixed(2)}개`;
-}
-
 /** 주제 평균 유효 키워드 수만 알 때 대략적인 동료 키워드 영향력(0~100) */
 function estimatePeerKeywordInfluence(avgVk: number | null | undefined): number | null {
   if (avgVk == null || !Number.isFinite(Number(avgVk))) return null;
@@ -184,51 +213,6 @@ function roughImageScoreFromPeerCount(n: number | null | undefined): number | nu
   if (x <= 4) return 70;
   if (x <= 8) return 58;
   return 48;
-}
-
-function pctVsAvgPhrase(my: number | null | undefined, avg: number | null | undefined): string | null {
-  if (my == null || avg == null || !Number.isFinite(Number(my)) || !Number.isFinite(Number(avg))) return null;
-  const a = Number(avg);
-  if (Math.abs(a) < 1e-6) return null;
-  const p = Math.round(((Number(my) - a) / a) * 100);
-  if (p === 0) return "주제 평균과 비슷해요.";
-  if (p > 0) return `주제 평균보다 약 ${p}% 높아요.`;
-  return `주제 평균보다 약 ${Math.abs(p)}% 낮아요.`;
-}
-
-function CompactCompareRow({
-  label,
-  myDisplay,
-  avgDisplay,
-  diffDecimals,
-  myRaw,
-  avgRaw,
-}: {
-  label: string;
-  myDisplay: string;
-  avgDisplay: string;
-  diffDecimals: number;
-  myRaw: number | null | undefined;
-  avgRaw: number | null | undefined;
-}) {
-  const band = topicComparisonBandLabel(myRaw, avgRaw);
-  const diffStr = formatSignedDiff(myRaw, avgRaw, diffDecimals);
-  const extra = pctVsAvgPhrase(myRaw, avgRaw);
-  return (
-    <div className="py-2 border-b border-slate-100/90 last:border-b-0">
-      <div className="flex flex-wrap items-center justify-between gap-1.5">
-        <span className="text-xs font-semibold text-slate-500">{label}</span>
-        {band ? <span className={`text-[10px] font-medium ${band.className}`}>{band.label}</span> : <span className="text-[10px] text-gray-400">—</span>}
-      </div>
-      <p className="text-sm font-bold text-[#111827] mt-0.5 tabular-nums">{myDisplay}</p>
-      <p className="text-xs text-gray-500 mt-0.5">
-        평균 <span className="font-semibold text-slate-700 tabular-nums">{avgDisplay}</span>
-        <span className="mx-1 text-gray-300">·</span>
-        차이 <span className="font-semibold text-[#2563EB] tabular-nums">{diffStr}</span>
-      </p>
-      {extra ? <p className="text-xs font-medium text-slate-600 mt-0.5 leading-snug">{extra}</p> : null}
-    </div>
-  );
 }
 
 // ─── Premium UI helpers ────────────────────────────────────────────────────
@@ -419,11 +403,14 @@ function patternPeerSentence(kind: "title" | "body" | "image", myRaw: number | n
 
 
 type Props = { blogId: string };
+const RECENT_POSTS_ROWS_PER_PAGE = 5;
 
 export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const router = useRouter();
   const [searchInput, setSearchInput] = useState(blogId);
   const [activeTab, setActiveTab] = useState("recent");
+  const [recentPostsPage, setRecentPostsPage] = useState(1);
+  const [recentPostsVisibleCount, setRecentPostsVisibleCount] = useState(RECENT_POSTS_ROWS_PER_PAGE);
   const [rankTab, setRankTab] = useState<"total" | "topic" | "keywords">("total");
   const [loading, setLoading] = useState(() => isValidNaverBlogId(blogId));
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -480,6 +467,8 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
         setVisitor(data.visitor ?? null);
         setTotalVisitor(data.totalVisitor);
         setRecentPosts(data.recentPosts ?? []);
+        setRecentPostsPage(1);
+        setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
         setPostCount(data.postCount ?? null);
         setPostingFrequency(data.postingFrequency ?? null);
         setSubscriberCount(data.subscriberCount ?? null);
@@ -615,6 +604,26 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
     const i = roughImageScoreFromPeerCount(topicAverageComparison?.averageImageCount);
     return t != null || c != null || i != null;
   }, [patternAnalysis, topicAverageComparison]);
+
+  const recentPostsTotalPages = Math.max(1, Math.ceil(recentPosts.length / RECENT_POSTS_ROWS_PER_PAGE));
+  const recentPostsPageStart = (recentPostsPage - 1) * RECENT_POSTS_ROWS_PER_PAGE;
+  const visibleRecentPosts = recentPosts.slice(recentPostsPageStart, recentPostsPageStart + recentPostsVisibleCount);
+  const canShowMoreRecentPosts = recentPostsPageStart + recentPostsVisibleCount < recentPosts.length;
+
+  useEffect(() => {
+    if (recentPostsPage <= recentPostsTotalPages) return;
+    setRecentPostsPage(recentPostsTotalPages);
+    setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
+  }, [recentPostsPage, recentPostsTotalPages]);
+
+  const handleRecentPostsPageChange = (page: number) => {
+    setRecentPostsPage(page);
+    setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
+  };
+
+  const handleShowMoreRecentPosts = () => {
+    setRecentPostsVisibleCount((count) => count + RECENT_POSTS_ROWS_PER_PAGE);
+  };
 
   const blogInfoItems = [
     { label: "블로그 주제", value: blogTopic != null && blogTopic.trim() !== "" ? blogTopic : "-" },
@@ -1100,134 +1109,152 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
             </div>
           </div>
 
-          {/* 주제 평균 비교 */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-2.5 sm:p-3 shadow-sm">
-            <h4 className="text-sm font-bold text-[#111827]">같은 주제 평균과 비교</h4>
-            <p className="text-[9px] text-gray-400 mb-1.5 leading-tight">동료 스냅샷 평균 · 현재 블로그 제외</p>
-            {!topicAverageComparison ? (
-              <div className="rounded-xl border border-dashed border-gray-200 bg-slate-50/60 px-3 py-3 text-center text-[11px] text-gray-400">
-                비교할 동료 표본이 아직 부족합니다. 분석을 다시 실행하면 채워질 수 있어요.
-              </div>
-            ) : (
-              <>
-                <p className="text-[10px] text-gray-500 mb-2">
-                  주제 <span className="font-bold text-[#111827]">{topicAverageComparison.topic?.trim() || "—"}</span>
-                  <span className="text-gray-300"> · </span>표본 {topicAverageComparison.sampleCount}개
-                </p>
-                <CompactCompareRow
-                  label="영향력 점수"
-                  myDisplay={formatCmpScorePt(topicAverageComparison.myTotalScore)}
-                  avgDisplay={formatCmpScorePt(topicAverageComparison.averageTotalScore)}
-                  diffDecimals={1}
-                  myRaw={topicAverageComparison.myTotalScore}
-                  avgRaw={topicAverageComparison.averageTotalScore}
-                />
-                <CompactCompareRow
-                  label="키워드 개수(평균 대비)"
-                  myDisplay={formatCmpKeywordsCt(topicAverageComparison.myValidKeywordCount)}
-                  avgDisplay={formatCmpKeywordsCt(topicAverageComparison.averageValidKeywordCount)}
-                  diffDecimals={1}
-                  myRaw={topicAverageComparison.myValidKeywordCount}
-                  avgRaw={topicAverageComparison.averageValidKeywordCount}
-                />
-                <CompactCompareRow
-                  label="방문자 수"
-                  myDisplay={formatCmpVisitorCt(topicAverageComparison.myVisitorCount)}
-                  avgDisplay={formatCmpVisitorCt(topicAverageComparison.averageVisitorCount)}
-                  diffDecimals={1}
-                  myRaw={topicAverageComparison.myVisitorCount}
-                  avgRaw={topicAverageComparison.averageVisitorCount}
-                />
-                <CompactCompareRow
-                  label="작성 빈도"
-                  myDisplay={formatCmpPostingFreq(topicAverageComparison.myPostingFrequency)}
-                  avgDisplay={formatCmpPostingFreq(topicAverageComparison.averagePostingFrequency)}
-                  diffDecimals={2}
-                  myRaw={topicAverageComparison.myPostingFrequency}
-                  avgRaw={topicAverageComparison.averagePostingFrequency}
-                />
-                <CompactCompareRow
-                  label="평균 제목 길이"
-                  myDisplay={formatAvgTitleChars(topicAverageComparison.myAverageTitleLength)}
-                  avgDisplay={formatAvgTitleChars(topicAverageComparison.averageTitleLength)}
-                  diffDecimals={1}
-                  myRaw={topicAverageComparison.myAverageTitleLength}
-                  avgRaw={topicAverageComparison.averageTitleLength}
-                />
-                <CompactCompareRow
-                  label="평균 본문 길이"
-                  myDisplay={formatAvgBodyChars(topicAverageComparison.myAverageContentLength)}
-                  avgDisplay={formatAvgBodyChars(topicAverageComparison.averageContentLength)}
-                  diffDecimals={0}
-                  myRaw={topicAverageComparison.myAverageContentLength}
-                  avgRaw={topicAverageComparison.averageContentLength}
-                />
-                <CompactCompareRow
-                  label="평균 이미지 수"
-                  myDisplay={formatAvgImages(topicAverageComparison.myAverageImageCount)}
-                  avgDisplay={formatAvgImages(topicAverageComparison.averageImageCount)}
-                  diffDecimals={1}
-                  myRaw={topicAverageComparison.myAverageImageCount}
-                  avgRaw={topicAverageComparison.averageImageCount}
-                />
-              </>
-            )}
-          </div>
-
           {/* 포스팅 */}
           <div>
-            <div className="flex gap-0.5 mb-1.5 bg-slate-100/60 p-0.5 rounded-xl w-fit">
-              {[{ id: "recent", label: "최근 포스팅" }, { id: "popular", label: "인기글 목록" }].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${activeTab === tab.id ? "bg-white shadow-sm text-slate-900" : "text-gray-400"}`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
             <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50/80 border-b border-slate-100">
-                  <tr>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500">발행일</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500">제목</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-center w-10">분석</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {recentPosts.length > 0 ? (
-                    recentPosts.map((post, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-2.5 py-1.5 text-[10px] text-gray-400 whitespace-nowrap tabular-nums">{formatPostDate(post.createdAt)}</td>
-                        <td className="px-2.5 py-1.5 text-xs font-semibold text-[#111827] min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {post.thumbnail ? (
-                              <img src={post.thumbnail} alt="" className="h-7 w-7 shrink-0 rounded-md object-cover border border-slate-100" />
-                            ) : null}
-                            <a href={post.url} target="_blank" rel="noreferrer" className="hover:text-[#2563EB] transition-colors truncate min-w-0">
-                              {post.title}
-                            </a>
-                          </div>
-                        </td>
-                        <td className="px-2.5 py-1.5 text-center">
-                          <button type="button" className="p-1 hover:bg-slate-100 rounded-md text-xs">
-                            🔍
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={3} className="px-3 py-6 text-center text-gray-300 text-xs">
-                        최근 글이 없습니다.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <div className="border-b border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                <div className="flex gap-0.5 bg-slate-100/80 p-0.5 rounded-xl w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("recent")}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${activeTab === "recent" ? "bg-white shadow-sm text-slate-900" : "text-gray-400"}`}
+                  >
+                    최근 포스팅
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold text-gray-400 cursor-not-allowed"
+                  >
+                    인기글 목록
+                    <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">준비중</span>
+                  </button>
+                </div>
+              </div>
+              {activeTab === "recent" ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[860px] text-left">
+                      <thead className="bg-slate-50/80 border-b border-slate-100">
+                        <tr>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500 whitespace-nowrap">노출 상태</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-center whitespace-nowrap">레벨</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500 whitespace-nowrap">발행일</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500">제목</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">공유</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">가능성</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {recentPosts.length > 0 ? (
+                          visibleRecentPosts.map((post, i) => {
+                            const publishedAt = post.publishedAt ?? post.createdAt;
+                            const potentialScore = getPostPotentialScore(post, validKeywords);
+                            const exposureStatus = String(post.exposureStatus ?? "").trim() || "분석됨";
+                            const sympathyCount = firstFiniteNumber(post.sympathyCount, post.likeCount);
+                            const detailItems = [
+                              firstFiniteNumber(post.wordCount) !== null ? `글자 ${formatPostMetric(post.wordCount, "자")}` : null,
+                              firstFiniteNumber(post.imageCount) !== null ? `이미지 ${formatPostMetric(post.imageCount, "장")}` : null,
+                              firstFiniteNumber(post.commentCount) !== null ? `댓글 ${formatPostMetric(post.commentCount)}` : null,
+                              sympathyCount !== null ? `공감 ${formatPostMetric(sympathyCount)}` : null,
+                            ].filter(Boolean);
+
+                            return (
+                              <tr key={`${post.url || post.title}-${recentPostsPageStart + i}`} className="hover:bg-slate-50/70 transition-colors">
+                                <td className="px-3 py-2 align-top whitespace-nowrap">
+                                  <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
+                                    {exposureStatus}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 align-top text-center text-[11px] font-bold text-slate-700 whitespace-nowrap">
+                                  {formatPostLevel(post.postLevel)}
+                                </td>
+                                <td className="px-3 py-2 align-top text-[10px] text-gray-400 whitespace-nowrap tabular-nums">
+                                  {formatPostDate(publishedAt)}
+                                </td>
+                                <td className="px-3 py-2 align-top min-w-0">
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    {post.thumbnail ? (
+                                      <img src={post.thumbnail} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover border border-slate-100" />
+                                    ) : null}
+                                    <div className="min-w-0">
+                                      <a href={post.url} target="_blank" rel="noreferrer" className="block text-xs font-bold text-[#111827] hover:text-[#2563EB] transition-colors truncate">
+                                        {post.title || "-"}
+                                      </a>
+                                      <div className="mt-1 flex max-w-[540px] flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium text-gray-400">
+                                        {detailItems.map((item) => (
+                                          <span key={item}>{item}</span>
+                                        ))}
+                                        {post.url ? (
+                                          <a href={post.url} target="_blank" rel="noreferrer" className="max-w-[320px] truncate text-slate-400 hover:text-[#2563EB]">
+                                            {post.url}
+                                          </a>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 align-top text-right text-[11px] font-bold text-slate-700 tabular-nums whitespace-nowrap">
+                                  {formatPostMetric(post.shareCount)}
+                                </td>
+                                <td className={`px-3 py-2 align-top text-right text-[11px] font-bold tabular-nums whitespace-nowrap ${postScoreClass(potentialScore)}`}>
+                                  {potentialScore === null ? "-" : `${Math.round(potentialScore)}점`}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-8 text-center text-gray-400 text-xs">
+                              최근 포스팅 데이터를 불러오지 못했어요. 다시 분석하면 표시될 수 있습니다.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                {recentPosts.length > 0 ? (
+                  <div className="border-t border-slate-100 bg-white px-3 py-3">
+                    {canShowMoreRecentPosts ? (
+                      <button
+                        type="button"
+                        onClick={handleShowMoreRecentPosts}
+                        className="mb-2.5 flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                      >
+                        더보기
+                      </button>
+                    ) : null}
+                    {recentPostsTotalPages > 1 ? (
+                      <div className="flex flex-wrap items-center justify-center gap-1">
+                        {Array.from({ length: recentPostsTotalPages }, (_, index) => {
+                          const page = index + 1;
+                          const isActive = page === recentPostsPage;
+                          return (
+                            <button
+                              key={page}
+                              type="button"
+                              onClick={() => handleRecentPostsPageChange(page)}
+                              className={`h-7 min-w-7 rounded-lg px-2 text-[11px] font-bold transition-colors ${
+                                isActive
+                                  ? "bg-[#111827] text-white"
+                                  : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                              }`}
+                              aria-current={isActive ? "page" : undefined}
+                            >
+                              {page}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                </>
+              ) : (
+                <div className="px-3 py-8 text-center text-gray-400 text-xs">
+                  인기글 목록은 준비중입니다.
+                </div>
+              )}
             </div>
           </div>
         </div>
