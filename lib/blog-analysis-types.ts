@@ -66,6 +66,7 @@ export type BlogTopicAverageComparison = {
 };
 
 export type BlogAnalysisSavedListItem = {
+  id?: string;
   blogId: string;
   nickname: string | null;
   blogName: string | null;
@@ -78,6 +79,7 @@ export type BlogAnalysisSavedListItem = {
   level: number | null;
   grade: string | null;
   isPinned: boolean;
+  autoTracking: boolean;
 };
 
 export type BlogAnalysisResult = {

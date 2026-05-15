@@ -421,6 +421,26 @@ model BlogAnalysisHistory {
   @@index([blogTopic, totalScore])
 }
 
+/** 블로그 분석 저장 목록: 고정/자동추적 상태 영구 저장 */
+model BlogAnalysisSaved {
+  id           String   @id @default(cuid())
+  userId       String?
+  blogId       String
+  nickname     String?
+  blogName     String?
+  profileImage String?  @db.Text
+  blogTopic    String?
+  isPinned     Boolean  @default(false)
+  autoTracking Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([blogId])
+  @@index([userId])
+  @@index([isPinned])
+  @@index([autoTracking])
+}
+
 model Post {
   id        String   @id @default(cuid())
   category  String

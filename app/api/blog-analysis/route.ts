@@ -159,6 +159,9 @@ export async function POST(request: Request) {
     const postingFrequency = computePostingFrequency7d(recentPosts);
 
     let patternAnalysis: BlogAnalysisResult["patternAnalysis"] = null;
+    // 방문자/최근글/기본 정보는 요청 시점에 실시간으로 수집합니다.
+    // 전체 순위·주제 순위·유효키워드 히스토리는 내부 DB 스냅샷 기준이며,
+    // 추후 1~2주 단위 batch job으로 주기적 재계산하는 구조로 확장할 예정입니다.
     try {
       patternAnalysis = await analyzeBlogPostPatterns(recentPosts);
     } catch (e) {
@@ -289,6 +292,46 @@ export async function POST(request: Request) {
       });
 
       analyzedAtIso = historyRow.analyzedAt.toISOString();
+
+      try {
+        const existingSaved = sessionUserId
+          ? await prisma.blogAnalysisSaved.findFirst({
+              where: { userId: sessionUserId, blogId },
+              orderBy: { updatedAt: "desc" },
+            })
+          : await prisma.blogAnalysisSaved.findFirst({
+              where: { blogId },
+              orderBy: { updatedAt: "desc" },
+            });
+
+        const savedProfile = profileImageBase64 ?? null;
+        if (existingSaved) {
+          await prisma.blogAnalysisSaved.update({
+            where: { id: existingSaved.id },
+            data: {
+              nickname: nickname || null,
+              blogName: nickname || null,
+              profileImage: savedProfile,
+              blogTopic,
+            },
+          });
+        } else {
+          await prisma.blogAnalysisSaved.create({
+            data: {
+              userId: sessionUserId,
+              blogId,
+              nickname: nickname || null,
+              blogName: nickname || null,
+              profileImage: savedProfile,
+              blogTopic,
+              autoTracking: true,
+              isPinned: false,
+            },
+          });
+        }
+      } catch (e) {
+        console.warn("[blog-analysis] 저장 목록 갱신 실패:", e);
+      }
 
       const snapshots = await prisma.blogAnalysisHistory.findMany({
         select: {

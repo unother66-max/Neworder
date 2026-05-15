@@ -335,7 +335,11 @@ export function HistoryTabChartCard({
               <span className="font-semibold text-slate-500 tabular-nums truncate text-right text-[9px]">{displayPrev}</span>
             </div>
             <p className="text-slate-400 pt-0.5 leading-tight text-[8px]">{tabDeltaLabel(rankTab, historyPoints)}</p>
-            {historySparse ? <p className="text-[8px] text-slate-400 pt-0.5">변동 데이터 부족</p> : null}
+            {historySparse ? (
+              <p className="text-[8px] text-slate-400 pt-0.5 leading-tight">
+                이 블로그는 오늘부터 변화 기록이 쌓입니다. 내일부터 방문자·키워드·순위 변화를 확인할 수 있어요.
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

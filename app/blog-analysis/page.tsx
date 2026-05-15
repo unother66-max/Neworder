@@ -46,8 +46,6 @@ export default function BlogAnalysisPage() {
 
   const [savedList, setSavedList] = useState<BlogAnalysisSavedListItem[]>([]);
   const [savedListLoading, setSavedListLoading] = useState(false);
-  /** 로컬 고정만 지원. 영구 저장은 향후 BlogAnalysisSaved 모델 예정. */
-  const [pinnedBlogIds, setPinnedBlogIds] = useState<Record<string, boolean>>({});
 
   const fetchSavedList = useCallback(async () => {
     setSavedListLoading(true);
@@ -70,9 +68,7 @@ export default function BlogAnalysisPage() {
   const sortedSavedList = useMemo(() => {
     const list = [...savedList];
     list.sort((a, b) => {
-      const ap = pinnedBlogIds[a.blogId] ? 1 : 0;
-      const bp = pinnedBlogIds[b.blogId] ? 1 : 0;
-      if (bp !== ap) return bp - ap;
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
       const ta = new Date(a.analyzedAt).getTime();
       const tb = new Date(b.analyzedAt).getTime();
       if (!Number.isFinite(ta) && !Number.isFinite(tb)) return 0;
@@ -81,25 +77,43 @@ export default function BlogAnalysisPage() {
       return tb - ta;
     });
     return list;
-  }, [savedList, pinnedBlogIds]);
+  }, [savedList]);
 
-  const toggleLocalPin = (id: string) => {
-    setPinnedBlogIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  const patchSavedRow = async (
+    targetBlogId: string,
+    patch: { isPinned?: boolean }
+  ) => {
+    const previous = savedList;
+    setSavedList((prev) =>
+      prev.map((row) => (row.blogId === targetBlogId ? { ...row, ...patch } : row))
+    );
+    try {
+      const res = await fetch("/api/blog-analysis/saved", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blogId: targetBlogId, ...patch }),
+      });
+      const j = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !j.ok) {
+        setSavedList(previous);
+        alert(j.error ?? "상태 변경에 실패했습니다.");
+      } else {
+        await fetchSavedList();
+      }
+    } catch {
+      setSavedList(previous);
+      alert("상태 변경 중 오류가 발생했습니다.");
+    }
   };
 
   const handleDeleteSavedRow = async (targetBlogId: string) => {
-    if (!window.confirm("이 블로그의 분석 기록을 모두 삭제할까요?")) return;
+    if (!window.confirm("저장 목록에서 제거할까요?")) return;
     try {
       const res = await fetch(`/api/blog-analysis/saved?blogId=${encodeURIComponent(targetBlogId)}`, {
         method: "DELETE",
       });
       const j = (await res.json()) as { ok?: boolean; error?: string };
       if (res.ok && j.ok) {
-        setPinnedBlogIds((prev) => {
-          const next = { ...prev };
-          delete next[targetBlogId];
-          return next;
-        });
         await fetchSavedList();
       } else {
         alert(j.error ?? "삭제에 실패했습니다.");
@@ -158,8 +172,7 @@ export default function BlogAnalysisPage() {
             {savedListLoading ? <span className="text-[11px] text-gray-400">불러오는 중…</span> : null}
           </div>
           <p className="px-6 pt-3 text-[11px] text-gray-400 leading-relaxed">
-            고정(별)은 이 기기에서만 순서를 올립니다. 영구 저장·자동 재분석은 다음 단계에서{" "}
-            <span className="text-gray-500">BlogAnalysisSaved</span> 모델로 붙일 예정입니다.
+            한 번 분석한 블로그는 저장 목록에 남고, 이후 방문자·키워드·순위 변화 기록이 자동으로 쌓입니다.
           </p>
           <div className="overflow-x-auto px-2 pb-4">
             <table className="w-full min-w-[640px] text-left">
@@ -175,21 +188,21 @@ export default function BlogAnalysisPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {sortedSavedList.length > 0 ? (
-                  sortedSavedList.map((row) => {
+                  sortedSavedList.map((row, index) => {
                     const displayName =
                       (row.nickname != null && String(row.nickname).trim() !== ""
                         ? row.nickname
                         : row.blogName != null && String(row.blogName).trim() !== ""
                           ? row.blogName
                           : null) ?? row.blogId;
-                    const pinned = Boolean(pinnedBlogIds[row.blogId]);
+                    const pinned = Boolean(row.isPinned);
                     return (
-                      <tr key={row.blogId} className="hover:bg-gray-50/50 transition-colors">
+                      <tr key={row.id ?? `${row.blogId}-${index}`} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-3 text-center">
                           <button
                             type="button"
                             aria-label={pinned ? "고정 해제" : "고정"}
-                            onClick={() => toggleLocalPin(row.blogId)}
+                            onClick={() => void patchSavedRow(row.blogId, { isPinned: !pinned })}
                             className={`text-lg leading-none p-1 rounded-md hover:bg-gray-100 ${pinned ? "text-amber-500" : "text-gray-300 hover:text-amber-400"}`}
                           >
                             ★
@@ -198,7 +211,7 @@ export default function BlogAnalysisPage() {
                         <td className="px-4 py-3 text-center">
                           <button
                             type="button"
-                            aria-label="기록 삭제"
+                            aria-label="저장 목록에서 제거"
                             onClick={() => void handleDeleteSavedRow(row.blogId)}
                             className="text-gray-400 hover:text-red-600 text-sm font-bold w-8 h-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center"
                           >

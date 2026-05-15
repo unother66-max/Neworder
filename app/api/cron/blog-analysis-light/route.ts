@@ -3,7 +3,6 @@ import {
   collectLightBlogAnalysisSnapshot,
   persistLightBlogAnalysisHistory,
 } from "@/lib/blog-analysis-light";
-import { pickLatestHistoryPerBlogId } from "@/lib/blog-analysis-history-rank";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -39,16 +38,48 @@ export async function GET(req: NextRequest) {
   const limit = parseLimit(req.nextUrl.searchParams);
   const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
 
-  const rows = await prisma.blogAnalysisHistory.findMany({
-    select: { blogId: true, analyzedAt: true },
-    orderBy: { analyzedAt: "desc" },
+  // 내부 자동 추적 풀만 대상으로 경량 스냅샷을 쌓습니다.
+  // 방문자/최근글/기본 정보는 가볍게 갱신하고, 전체 순위·주제 순위·유효키워드 히스토리는
+  // 내부 DB 기준으로 유지합니다. 추후 1~2주 단위 batch 재계산 job으로 확장할 예정입니다.
+  const savedRows = await prisma.blogAnalysisSaved.findMany({
+    where: { autoTracking: true },
+    select: { blogId: true, updatedAt: true },
+    orderBy: { updatedAt: "asc" },
   });
 
-  const latestPerBlog = pickLatestHistoryPerBlogId(rows);
-  const stale = latestPerBlog.filter((r) => r.analyzedAt.getTime() < cutoffMs);
-  stale.sort((a, b) => a.analyzedAt.getTime() - b.analyzedAt.getTime());
+  const savedByBlogId = new Map<string, (typeof savedRows)[number]>();
+  for (const row of savedRows) {
+    if (!savedByBlogId.has(row.blogId)) savedByBlogId.set(row.blogId, row);
+  }
+  const savedTargets = [...savedByBlogId.values()];
+  const savedBlogIds = savedTargets.map((row) => row.blogId);
+  const historyRows = savedBlogIds.length
+    ? await prisma.blogAnalysisHistory.findMany({
+        where: { blogId: { in: savedBlogIds } },
+        select: { blogId: true, analyzedAt: true },
+        orderBy: { analyzedAt: "desc" },
+      })
+    : [];
 
-  const skippedRecent = latestPerBlog.length - stale.length;
+  const latestHistoryByBlogId = new Map<string, Date>();
+  for (const row of historyRows) {
+    if (!latestHistoryByBlogId.has(row.blogId)) {
+      latestHistoryByBlogId.set(row.blogId, row.analyzedAt);
+    }
+  }
+
+  const stale = savedTargets.filter((row) => {
+    const latestAnalyzedAt = latestHistoryByBlogId.get(row.blogId);
+    if (!latestAnalyzedAt) return true;
+    return latestAnalyzedAt.getTime() < cutoffMs;
+  });
+  stale.sort((a, b) => {
+    const at = latestHistoryByBlogId.get(a.blogId)?.getTime() ?? 0;
+    const bt = latestHistoryByBlogId.get(b.blogId)?.getTime() ?? 0;
+    return at - bt;
+  });
+
+  const skippedRecent = savedTargets.length - stale.length;
   const totalTargets = stale.length;
   const queue = stale.slice(0, limit).map((r) => r.blogId);
 
@@ -57,7 +88,7 @@ export async function GET(req: NextRequest) {
     totalStale: totalTargets,
     skippedRecent,
     attempted: queue.length,
-    trackedBlogs: latestPerBlog.length,
+    trackedBlogs: savedTargets.length,
   });
 
   const results: CronBlogResult[] = [];
