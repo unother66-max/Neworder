@@ -539,6 +539,16 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   };
 
   const historyTrend = useMemo(() => analyzeBlogHistoryTrend(historyPoints), [historyPoints]);
+  const currentResultValidKeywordCount = useMemo(() => {
+    if (validKeywords.length > 0) return validKeywords.length;
+    if (validKeywordCount != null) return validKeywordCount;
+
+    const latestHistoryPoint = historyPoints.find((point) => {
+      const value = point.validKeywordCount;
+      return value != null && Number.isFinite(Number(value));
+    });
+    return latestHistoryPoint?.validKeywordCount ?? null;
+  }, [historyPoints, validKeywordCount, validKeywords.length]);
 
   const summaryLines = useMemo(() => {
     if (!blogScoreResult) return [];
@@ -800,7 +810,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                   <div className="grid grid-cols-3 gap-0 divide-x divide-slate-100/80">
                     <div className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1">
                       <p className="text-xl sm:text-2xl font-bold text-indigo-600 tabular-nums leading-none tracking-tight">
-                        {validKeywordCount != null ? `${validKeywordCount.toLocaleString()}개` : "—"}
+                        {currentResultValidKeywordCount != null ? `${currentResultValidKeywordCount.toLocaleString()}개` : "—"}
                       </p>
                       <p className="text-[9px] font-medium text-slate-500 leading-none">유효 키워드</p>
                       <p className="text-[8px] text-slate-400 leading-tight">검색량 0 초과</p>
