@@ -411,6 +411,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const [activeTab, setActiveTab] = useState("recent");
   const [recentPostsPage, setRecentPostsPage] = useState(1);
   const [recentPostsVisibleCount, setRecentPostsVisibleCount] = useState(RECENT_POSTS_ROWS_PER_PAGE);
+  const [showKeywordDetails, setShowKeywordDetails] = useState(false);
   const [rankTab, setRankTab] = useState<"total" | "topic" | "keywords">("total");
   const [loading, setLoading] = useState(() => isValidNaverBlogId(blogId));
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -1047,66 +1048,75 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
 
           {/* 키워드 테이블 */}
           <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-            <div className="border-b border-slate-100 bg-slate-50/80 px-2 py-1.5">
-              <h4 className="text-[10px] font-bold text-slate-600">유효 키워드 상세 (검색량 &gt; 0)</h4>
+            <div className={`${showKeywordDetails ? "border-b border-slate-100 bg-slate-50/80" : "bg-white"} px-2 py-2`}>
+              <button
+                type="button"
+                onClick={() => setShowKeywordDetails((open) => !open)}
+                className="flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                aria-expanded={showKeywordDetails}
+              >
+                {showKeywordDetails ? "유효 키워드 상세 닫기" : "유효 키워드 상세 보기"}
+              </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left">
-                <thead className="bg-gray-50/80 border-b border-gray-100">
-                  <tr>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 whitespace-nowrap">키워드</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">총 검색량</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">모바일</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">PC</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">점수</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">등장</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">최근</th>
-                    <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">경쟁</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {validKeywords.length > 0 ? (
-                    validKeywords.map((row, i) => {
-                      const insight = keywordInsights.find((k) => k.keyword === row.keyword);
-                      return (
-                        <tr key={`${row.keyword}-${i}`} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-2.5 py-1.5 text-[11px] font-semibold text-[#111827] whitespace-nowrap">{row.keyword}</td>
-                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                            {formatVolumeCell(insight?.totalVolume ?? row.totalVolume)}
-                          </td>
-                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                            {formatVolumeCell(insight?.mobileVolume ?? row.mobileVolume)}
-                          </td>
-                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                            {formatVolumeCell(insight?.pcVolume ?? row.pcVolume)}
-                          </td>
-                          <td
-                            className={`px-2.5 py-1.5 text-[10px] text-right tabular-nums whitespace-nowrap font-bold ${insight ? keywordInfluenceScoreClass(insight.keywordScore) : "text-gray-600"}`}
-                          >
-                            {insight ? formatKeywordScoreCell(insight.keywordScore) : "-"}
-                          </td>
-                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                            {insight && Number.isFinite(insight.matchedPostCount) ? insight.matchedPostCount.toLocaleString() : "-"}
-                          </td>
-                          <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                            {insight ? formatPostDate(insight.lastAppearedAt) : "-"}
-                          </td>
-                          <td className={`px-2.5 py-1.5 text-[10px] text-right whitespace-nowrap ${insight ? competitionLevelClass(insight.competitionLevel) : "text-gray-600"}`}>
-                            {insight ? insight.competitionLevel : "-"}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
+            {showKeywordDetails ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[860px] text-left">
+                  <thead className="bg-gray-50/80 border-b border-gray-100">
                     <tr>
-                      <td colSpan={8} className="px-3 py-6 text-center text-gray-400 text-[11px]">
-                        {validKeywordCount === null ? "키워드 후보·검색량 조회 전이거나 없습니다." : "유효 키워드가 없습니다."}
-                      </td>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 whitespace-nowrap">키워드</th>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">총 검색량</th>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">모바일</th>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">PC</th>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">점수</th>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">등장</th>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">최근</th>
+                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">경쟁</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {validKeywords.length > 0 ? (
+                      validKeywords.map((row, i) => {
+                        const insight = keywordInsights.find((k) => k.keyword === row.keyword);
+                        return (
+                          <tr key={`${row.keyword}-${i}`} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-2.5 py-1.5 text-[11px] font-semibold text-[#111827] whitespace-nowrap">{row.keyword}</td>
+                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {formatVolumeCell(insight?.totalVolume ?? row.totalVolume)}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {formatVolumeCell(insight?.mobileVolume ?? row.mobileVolume)}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {formatVolumeCell(insight?.pcVolume ?? row.pcVolume)}
+                            </td>
+                            <td
+                              className={`px-2.5 py-1.5 text-[10px] text-right tabular-nums whitespace-nowrap font-bold ${insight ? keywordInfluenceScoreClass(insight.keywordScore) : "text-gray-600"}`}
+                            >
+                              {insight ? formatKeywordScoreCell(insight.keywordScore) : "-"}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {insight && Number.isFinite(insight.matchedPostCount) ? insight.matchedPostCount.toLocaleString() : "-"}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {insight ? formatPostDate(insight.lastAppearedAt) : "-"}
+                            </td>
+                            <td className={`px-2.5 py-1.5 text-[10px] text-right whitespace-nowrap ${insight ? competitionLevelClass(insight.competitionLevel) : "text-gray-600"}`}>
+                              {insight ? insight.competitionLevel : "-"}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-6 text-center text-gray-400 text-[11px]">
+                          {validKeywordCount === null ? "키워드 후보·검색량 조회 전이거나 없습니다." : "유효 키워드가 없습니다."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </div>
 
           {/* 포스팅 */}
