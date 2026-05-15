@@ -1,8 +1,21 @@
-export type BlogAnalysisRecentPost = {
+export interface BlogAnalysisRecentPost {
   title: string;
   url: string;
   createdAt?: string | null;
   thumbnail?: string | null;
+
+  publishedAt?: string | null;
+  wordCount?: number | null;
+  imageCount?: number | null;
+  commentCount?: number | null;
+  sympathyCount?: number | null;
+  likeCount?: number | null;
+  shareCount?: number | null;
+  score?: number | null;
+  potentialScore?: number | null;
+  postScore?: number | null;
+  postLevel?: number | string | null;
+  exposureStatus?: string | null;
 };
 
 export type BlogValidKeyword = {
