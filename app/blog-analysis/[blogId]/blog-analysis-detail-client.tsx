@@ -47,7 +47,35 @@ function formatPostMetric(value: number | string | null | undefined, suffix = ""
 
 function formatPostLevel(value: BlogAnalysisRecentPost["postLevel"]): string {
   if (value === null || value === undefined || value === "") return "-";
+  const n = Number(value);
+  if (Number.isFinite(n)) return `Lv.${Math.round(n)}`;
   return String(value);
+}
+
+function formatExposureStatus(post: BlogAnalysisRecentPost): string {
+  const rawStatus = String(post.exposureStatus ?? "").trim();
+  if (rawStatus) {
+    const normalized = rawStatus.toLowerCase();
+    if (["pending", "waiting", "반영 대기", "반영대기", "반영 대기중"].includes(normalized)) return "반영 대기중";
+    if (["delayed", "delay", "노출 지연", "노출지연"].includes(normalized)) return "노출 지연";
+    if (normalized === "analyzed") return "분석됨";
+    if (["found", "exposed", "visible", "normal", "true", "정상 노출", "정상노출"].includes(normalized)) return "정상 노출";
+    if (["missing", "omitted", "not_found", "hidden", "none", "false", "누락", "노출 누락", "노출누락"].includes(normalized)) return "노출 누락";
+    return rawStatus;
+  }
+
+  if (post.foundOnSearch === true) return "정상 노출";
+  if (post.foundOnSearch === false) return "노출 누락";
+  return "-";
+}
+
+function exposureStatusClass(label: string): string {
+  if (label === "정상 노출") return "bg-emerald-50 text-emerald-700";
+  if (label === "노출 누락") return "bg-rose-50 text-rose-600";
+  if (label === "노출 지연") return "bg-amber-50 text-amber-700";
+  if (label === "반영 대기중") return "bg-indigo-50 text-indigo-700";
+  if (label === "-") return "bg-slate-50 text-slate-400";
+  return "bg-sky-50 text-sky-700";
 }
 
 function postScoreClass(score: number | null): string {
@@ -71,6 +99,10 @@ function getPostPotentialScore(post: BlogAnalysisRecentPost, keywords: BlogValid
     const keyword = String(row.keyword ?? "").trim();
     return keyword.length > 0 && title.includes(keyword);
   });
+  const hasMeasuredSignal =
+    wordCount !== null || imageCount !== null || commentCount !== null || sympathyCount !== null || hasKeywordMatch;
+
+  if (!hasMeasuredSignal) return null;
 
   let score = 0;
   if (title) score += 20;
@@ -1157,7 +1189,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
               {activeTab === "recent" ? (
                 <>
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[860px] text-left">
+                    <table className="w-full min-w-[980px] text-left">
                       <thead className="bg-slate-50/80 border-b border-slate-100">
                         <tr>
                           <th className="px-3 py-2 text-[10px] font-bold text-gray-500 whitespace-nowrap">노출 상태</th>
@@ -1166,6 +1198,8 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                           <th className="px-3 py-2 text-[10px] font-bold text-gray-500">제목</th>
                           <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">공유</th>
                           <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">가능성</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">반응성</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">관련성</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -1173,19 +1207,22 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                           visibleRecentPosts.map((post, i) => {
                             const publishedAt = post.publishedAt ?? post.createdAt;
                             const potentialScore = getPostPotentialScore(post, validKeywords);
-                            const exposureStatus = String(post.exposureStatus ?? "").trim() || "분석됨";
+                            const reactivityScore = firstFiniteNumber(post.reactivityScore);
+                            const relatednessScore = firstFiniteNumber(post.relatednessScore);
+                            const exposureStatus = formatExposureStatus(post);
                             const sympathyCount = firstFiniteNumber(post.sympathyCount, post.likeCount);
                             const detailItems = [
-                              firstFiniteNumber(post.wordCount) !== null ? `글자 ${formatPostMetric(post.wordCount, "자")}` : null,
                               firstFiniteNumber(post.imageCount) !== null ? `이미지 ${formatPostMetric(post.imageCount, "장")}` : null,
+                              firstFiniteNumber(post.videoCount) !== null ? `동영상 ${formatPostMetric(post.videoCount, "개")}` : null,
+                              firstFiniteNumber(post.wordCount) !== null ? `글자 ${formatPostMetric(post.wordCount, "자")}` : null,
                               firstFiniteNumber(post.commentCount) !== null ? `댓글 ${formatPostMetric(post.commentCount)}` : null,
-                              sympathyCount !== null ? `공감 ${formatPostMetric(sympathyCount)}` : null,
+                              sympathyCount !== null ? `하트 ${formatPostMetric(sympathyCount)}` : null,
                             ].filter(Boolean);
 
                             return (
                               <tr key={`${post.url || post.title}-${recentPostsPageStart + i}`} className="hover:bg-slate-50/70 transition-colors">
                                 <td className="px-3 py-2 align-top whitespace-nowrap">
-                                  <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${exposureStatusClass(exposureStatus)}`}>
                                     {exposureStatus}
                                   </span>
                                 </td>
@@ -1196,24 +1233,19 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                                   {formatPostDate(publishedAt)}
                                 </td>
                                 <td className="px-3 py-2 align-top min-w-0">
-                                  <div className="flex items-start gap-2 min-w-0">
-                                    {post.thumbnail ? (
-                                      <img src={post.thumbnail} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover border border-slate-100" />
-                                    ) : null}
-                                    <div className="min-w-0">
-                                      <a href={post.url} target="_blank" rel="noreferrer" className="block text-xs font-bold text-[#111827] hover:text-[#2563EB] transition-colors truncate">
-                                        {post.title || "-"}
-                                      </a>
-                                      <div className="mt-1 flex max-w-[540px] flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium text-gray-400">
-                                        {detailItems.map((item) => (
-                                          <span key={item}>{item}</span>
-                                        ))}
-                                        {post.url ? (
-                                          <a href={post.url} target="_blank" rel="noreferrer" className="max-w-[320px] truncate text-slate-400 hover:text-[#2563EB]">
-                                            {post.url}
-                                          </a>
-                                        ) : null}
-                                      </div>
+                                  <div className="min-w-0">
+                                    <a href={post.url} target="_blank" rel="noreferrer" className="block text-xs font-bold text-[#111827] hover:text-[#2563EB] transition-colors truncate">
+                                      {post.title || "-"}
+                                    </a>
+                                    <div className="mt-1 flex max-w-[540px] flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium text-gray-400">
+                                      {detailItems.map((item) => (
+                                        <span key={item}>{item}</span>
+                                      ))}
+                                      {post.url ? (
+                                        <a href={post.url} target="_blank" rel="noreferrer" className="max-w-[320px] truncate text-slate-400 hover:text-[#2563EB]">
+                                          {post.url}
+                                        </a>
+                                      ) : null}
                                     </div>
                                   </div>
                                 </td>
@@ -1223,12 +1255,18 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                                 <td className={`px-3 py-2 align-top text-right text-[11px] font-bold tabular-nums whitespace-nowrap ${postScoreClass(potentialScore)}`}>
                                   {potentialScore === null ? "-" : `${Math.round(potentialScore)}점`}
                                 </td>
+                                <td className={`px-3 py-2 align-top text-right text-[11px] font-bold tabular-nums whitespace-nowrap ${postScoreClass(reactivityScore)}`}>
+                                  {reactivityScore === null ? "-" : `${Math.round(reactivityScore)}점`}
+                                </td>
+                                <td className={`px-3 py-2 align-top text-right text-[11px] font-bold tabular-nums whitespace-nowrap ${postScoreClass(relatednessScore)}`}>
+                                  {relatednessScore === null ? "-" : `${Math.round(relatednessScore)}점`}
+                                </td>
                               </tr>
                             );
                           })
                         ) : (
                           <tr>
-                            <td colSpan={6} className="px-3 py-8 text-center text-gray-400 text-xs">
+                            <td colSpan={8} className="px-3 py-8 text-center text-gray-400 text-xs">
                               최근 포스팅 데이터를 불러오지 못했어요. 다시 분석하면 표시될 수 있습니다.
                             </td>
                           </tr>
