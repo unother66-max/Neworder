@@ -2,12 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import type { BlogAnalysisResult } from "@/lib/blog-analysis-types";
-import {
-  isTopicRankingEligible,
-  pickLatestHistoryPerBlogId,
-  rankPlace1Based,
-  sortBlogAnalysisSnapshotsForRank,
-} from "@/lib/blog-analysis-history-rank";
 import { computeBlogKeywordInsights } from "@/lib/blog-keyword-insight";
 import { fetchValidBlogKeywordsFromCandidates } from "@/lib/blog-keyword-volume";
 import { extractKeywordCandidatesFromTitles } from "@/lib/blog-keywords";
@@ -35,17 +29,210 @@ const fetchHeaders = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 };
 
+const NAVER_OFFICIAL_BLOG_TOPICS = [
+  "일상·생각",
+  "비즈니스·경제",
+  "맛집",
+  "건강·의학",
+  "패션·미용",
+  "상품리뷰",
+  "교육·학문",
+  "여행",
+  "육아·결혼",
+  "반려동물",
+  "IT·컴퓨터",
+  "자동차",
+  "스포츠",
+  "공연·전시",
+  "문학·책",
+  "영화",
+  "음악",
+  "게임",
+  "요리·레시피",
+  "인테리어·DIY",
+  "원예·재배",
+  "사진",
+  "세계여행",
+  "국내여행",
+  "미술·디자인",
+  "좋은글·이미지",
+  "방송",
+  "스타·연예인",
+  "만화·애니",
+  "사회·정치",
+  "어학·외국어",
+  "취미",
+  "공예",
+  "문화·예술",
+  "시사·인문·경제",
+] as const;
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&middot;/g, "·")
+    .replace(/&#183;/g, "·")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function normalizeOfficialTopicCandidate(value: string): string | null {
+  const normalized = decodeHtmlEntities(value)
+    .replace(/\\u002F/g, "/")
+    .replace(/ㆍ/g, "·")
+    .replace(/[|/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  for (const topic of NAVER_OFFICIAL_BLOG_TOPICS) {
+    if (normalized === topic || normalized.includes(topic)) return topic;
+  }
+  return null;
+}
+
+function parseOfficialBlogTopicFromHtml(html: string): string | null {
+  const patterns = [
+    /<span[^>]*class=["'][^"']*subject[^"']*["'][^>]*>([\s\S]{0,80}?)<\/span>/i,
+    /"subject"\s*:\s*"([^"]+)"/i,
+    /"blogDirectoryName"\s*:\s*"([^"]+)"/i,
+    /"directoryName"\s*:\s*"([^"]+)"/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (!match) continue;
+    const topic = normalizeOfficialTopicCandidate(match[1].replace(/<[^>]*>/g, ""));
+    if (topic) return topic;
+  }
+  return null;
+}
+
 function parsePostCountFromHtml(html: string): number | null {
   const patterns = [
+    /"blogContentsCount"[\s\S]{0,2000}?"postCount"\s*:\s*"?([\d,]+)"?/,
+    /<strong>\s*전체보기\s*<\/strong>[\s\S]{0,80}?([\d,]+)\s*개의\s*글/i,
+    /([\d,]+)\s*개의\s*글/i,
     /"totalPostCount":\s*(\d+)/,
     /"total_post_count":\s*(\d+)/i,
     /totalPostCount["']?\s*:\s*(\d+)/,
+    /"(?:postCount|logCount|totalLogCount|articleCount|postingCount)"\s*:\s*"?([\d,]+)"?/i,
   ];
   for (const p of patterns) {
     const m = html.match(p);
-    if (m) return parseInt(m[1], 10);
+    if (m) return parseInt(m[1].replace(/,/g, ""), 10);
+  }
+
+  if (/"postList"\s*:\s*\[/.test(html) || /"countPerPage"\s*:/.test(html)) {
+    const m = html.match(/"totalCount"\s*:\s*"?([\d,]+)"?/i);
+    if (m) return parseInt(m[1].replace(/,/g, ""), 10);
   }
   return null;
+}
+
+function parseScrapCountFromHtml(html: string): number | null {
+  const patterns = [
+    /글\s*스크랩[\s\S]{0,120}?<em[^>]*>\s*([\d,]+)\s*<\/em>/i,
+    /class=["'][^"']*_viewScrap[^"']*["'][\s\S]*?<em[^>]*>([\d,]+)<\/em>/i,
+    /"totalScrapCount"\s*:\s*"?([\d,]+)"?/i,
+    /"scrapCount"\s*:\s*"?([\d,]+)"?/i,
+    /"scrapCnt"\s*:\s*"?([\d,]+)"?/i,
+    /"scrap_count"\s*:\s*"?([\d,]+)"?/i,
+    /"sharedCount"\s*:\s*"?([\d,]+)"?/i,
+    /"bookmarkCount"\s*:\s*"?([\d,]+)"?/i,
+  ];
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m) return parseInt(m[1].replace(/,/g, ""), 10);
+  }
+  return null;
+}
+
+function parseSelectCategoryNoFromHtml(html: string): string | null {
+  const patterns = [
+    /var\s+selectCategoryNo\s*=\s*["']([^"']*)["']/,
+    /selectCategoryNo["']?\s*[:=]\s*["']?(\d+)["']?/i,
+    /categoryNo["']?\s*[:=]\s*["']?(\d+)["']?/i,
+  ];
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match && match[1] !== undefined) return match[1];
+  }
+  return null;
+}
+
+function buildWidgetListAsyncUrl(blogId: string, selectCategoryNo: string): string {
+  const params = new URLSearchParams({
+    blogId,
+    listNumVisitor: "5",
+    isVisitorOpen: "false",
+    isBuddyOpen: "false",
+    selectCategoryNo,
+    skinId: "0",
+    skinType: "C",
+    isCategoryOpen: "true",
+    isEnglish: "false",
+    listNumComment: "5",
+    areaCode: "11B20203",
+    weatherType: "0",
+    currencySign: "ALL",
+    enableWidgetKeys: "profile,stat,rss,search,buddyconnect,currency,visitorgp,title,menu,content,gnb,externalwidget",
+    writingMaterialListType: "1",
+    callType: "",
+  });
+  return `https://blog.naver.com/prologue/WidgetListAsync.naver?${params.toString()}`;
+}
+
+function parseRankNumber(value: string): number | null {
+  const n = Number(value.replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function parseOfficialBlogRanksFromHtml(html: string): {
+  overallRank: number | null;
+  topicRank: number | null;
+  topicName: string | null;
+} {
+  const overallPatterns = [
+    /전체\s*순위[\s\S]{0,120}?([\d,]+)\s*위/i,
+    /"overallRank"\s*:\s*"?([\d,]+)"?/i,
+    /"totalRank"\s*:\s*"?([\d,]+)"?/i,
+    /"globalRank"\s*:\s*"?([\d,]+)"?/i,
+    /"blogRank"\s*:\s*"?([\d,]+)"?/i,
+  ];
+  const topicPatterns = [
+    /(?:주제|카테고리)\s*순위[\s\S]{0,120}?([\d,]+)\s*위/i,
+    /"topicRank"\s*:\s*"?([\d,]+)"?/i,
+    /"themeRank"\s*:\s*"?([\d,]+)"?/i,
+    /"categoryRank"\s*:\s*"?([\d,]+)"?/i,
+    /"directoryRank"\s*:\s*"?([\d,]+)"?/i,
+  ];
+
+  let overallRank: number | null = null;
+  let topicRank: number | null = null;
+
+  for (const pattern of overallPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      overallRank = parseRankNumber(match[1]);
+      if (overallRank !== null) break;
+    }
+  }
+
+  for (const pattern of topicPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      topicRank = parseRankNumber(match[1]);
+      if (topicRank !== null) break;
+    }
+  }
+
+  return {
+    overallRank,
+    topicRank,
+    topicName: parseOfficialBlogTopicFromHtml(html),
+  };
 }
 
 function parseSubscriberCountFromHtml(html: string): number | null {
@@ -125,6 +312,9 @@ async function mergeRecentPostsWithMetricCache(
             wordCount: draft.wordCount ?? null,
             imageCount: draft.imageCount ?? null,
             videoCount: draft.videoCount ?? null,
+            commentCount: draft.commentCount ?? 0,
+            sympathyCount: draft.sympathyCount ?? 0,
+            shareCount: draft.shareCount ?? 0,
             titleScore: draft.titleScore ?? null,
             contentLengthScore: draft.contentLengthScore ?? null,
             imageScore: draft.imageScore ?? null,
@@ -145,6 +335,9 @@ async function mergeRecentPostsWithMetricCache(
             wordCount: draft.wordCount ?? null,
             imageCount: draft.imageCount ?? null,
             videoCount: draft.videoCount ?? null,
+            commentCount: draft.commentCount ?? 0,
+            sympathyCount: draft.sympathyCount ?? 0,
+            shareCount: draft.shareCount ?? 0,
             titleScore: draft.titleScore ?? null,
             contentLengthScore: draft.contentLengthScore ?? null,
             imageScore: draft.imageScore ?? null,
@@ -231,12 +424,32 @@ export async function POST(request: Request) {
     const totalVisitor = parseTotalVisitorFromHtml(mHtml);
     const subscriberCount = mHtml ? parseSubscriberCountFromHtml(mHtml) : null;
     let postCount = mHtml ? parsePostCountFromHtml(mHtml) : null;
+    let scrapCount = mHtml ? parseScrapCountFromHtml(mHtml) : null;
+    const selectCategoryNo = parseSelectCategoryNoFromHtml(mHtml) ?? "45";
 
-    const [visitor, pcHtml, rssRecentPosts] = await Promise.all([
+    const [visitor, pcHtml, postTitleListHtml, widgetListHtml, prologueListHtml, rssRecentPosts] = await Promise.all([
       fetchLatestVisitorCount(blogId),
       fetchText(`https://blog.naver.com/${blogId}`, {
         Referer: `https://blog.naver.com/`,
         "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+      }),
+      fetchText(
+        `https://blog.naver.com/PostTitleListAsync.naver?blogId=${encodeURIComponent(blogId)}&viewdate=&currentPage=1&categoryNo=0&parentCategoryNo=0&countPerPage=5`,
+        {
+          Referer: `https://blog.naver.com/PostList.naver?blogId=${encodeURIComponent(blogId)}`,
+          "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+        }
+      ),
+      fetchText(
+        buildWidgetListAsyncUrl(blogId, selectCategoryNo),
+        {
+          Referer: `https://blog.naver.com/${blogId}`,
+          "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        }
+      ),
+      fetchText(`https://blog.naver.com/prologue/PrologueList.naver?blogId=${encodeURIComponent(blogId)}`, {
+        Referer: `https://blog.naver.com/${blogId}`,
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
       }),
       (async () => {
         try {
@@ -257,8 +470,29 @@ export async function POST(request: Request) {
       })(),
     ]);
 
+    if (postTitleListHtml) {
+      postCount = parsePostCountFromHtml(postTitleListHtml) ?? postCount;
+      scrapCount = parseScrapCountFromHtml(postTitleListHtml) ?? scrapCount;
+    }
+
+    if (widgetListHtml) {
+      scrapCount = parseScrapCountFromHtml(widgetListHtml) ?? scrapCount;
+      if (process.env.NODE_ENV === "development") {
+        console.log("[blog-analysis] widget scrap response", {
+          blogId,
+          hasScrapText: widgetListHtml.includes("글 스크랩"),
+          hasViewScrap: widgetListHtml.includes("_viewScrap"),
+          scrapCount,
+          preview: widgetListHtml.slice(0, 500),
+        });
+      }
+    }
+
     if (postCount === null && pcHtml) {
       postCount = parsePostCountFromHtml(pcHtml);
+    }
+    if (scrapCount === null && pcHtml) {
+      scrapCount = parseScrapCountFromHtml(pcHtml);
     }
 
     const recentPosts = await mergeRecentPostsWithMetricCache(blogId, rssRecentPosts);
@@ -311,11 +545,28 @@ export async function POST(request: Request) {
     const representativeValidKeywordCount =
       validKeywordCount === null ? null : representativeValidKeywords.length;
 
-    let blogTopic: string | null = null;
+    let inferredBlogTopic: string | null = null;
     try {
-      blogTopic = inferBlogTopic(recentPosts, validKeywords);
+      inferredBlogTopic = inferBlogTopic(recentPosts, validKeywords);
     } catch {
-      blogTopic = null;
+      inferredBlogTopic = null;
+    }
+
+    const officialBlogTopic =
+      parseOfficialBlogTopicFromHtml(mHtml) ??
+      (prologueListHtml ? parseOfficialBlogTopicFromHtml(prologueListHtml) : null) ??
+      (widgetListHtml ? parseOfficialBlogTopicFromHtml(widgetListHtml) : null) ??
+      (pcHtml ? parseOfficialBlogTopicFromHtml(pcHtml) : null);
+    const blogTopic = officialBlogTopic ?? inferredBlogTopic;
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("[blog-analysis] topic source", {
+        blogId,
+        officialBlogTopic,
+        inferredBlogTopic,
+        displayBlogTopic: blogTopic,
+        source: officialBlogTopic ? "official" : inferredBlogTopic ? "inferred" : "none",
+      });
     }
 
     let profileImageUrl: string | null = null;
@@ -361,8 +612,37 @@ export async function POST(request: Request) {
       validKeywordCount: representativeValidKeywordCount,
     });
 
+    const blogRankCandidates = [
+      { source: "mobile", html: mHtml },
+      { source: "prologue", html: prologueListHtml },
+      { source: "widget", html: widgetListHtml },
+      { source: "pc", html: pcHtml },
+    ].filter((candidate): candidate is { source: string; html: string } => Boolean(candidate.html));
+    let blogRankSource = "unavailable";
     let totalRank: number | null = null;
     let topicRank: number | null = null;
+    for (const candidate of blogRankCandidates) {
+      const parsed = parseOfficialBlogRanksFromHtml(candidate.html);
+      if (parsed.overallRank !== null || parsed.topicRank !== null) {
+        totalRank = parsed.overallRank;
+        topicRank = parsed.topicRank;
+        blogRankSource = candidate.source;
+        break;
+      }
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      const previewHtml = blogRankCandidates.find((candidate) => candidate.source === blogRankSource)?.html ?? blogRankCandidates[0]?.html;
+      console.log("[blog-analysis] blog rank source", {
+        blogId,
+        overallRank: totalRank,
+        topicRank,
+        topicName: officialBlogTopic,
+        source: blogRankSource,
+        preview: previewHtml?.slice(0, 500),
+      });
+    }
+
     let analyzedAtIso: string | null = null;
 
     try {
@@ -448,29 +728,6 @@ export async function POST(request: Request) {
         console.warn("[blog-analysis] 저장 목록 갱신 실패:", e);
       }
 
-      const snapshots = await prisma.blogAnalysisHistory.findMany({
-        select: {
-          blogId: true,
-          totalScore: true,
-          visitorCount: true,
-          analyzedAt: true,
-          blogTopic: true,
-        },
-        orderBy: { analyzedAt: "desc" },
-      });
-
-      const latestPerBlog = pickLatestHistoryPerBlogId(snapshots);
-      const sortedGlobal = sortBlogAnalysisSnapshotsForRank(latestPerBlog);
-      totalRank = rankPlace1Based(sortedGlobal, blogId);
-
-      if (isTopicRankingEligible(blogTopic)) {
-        const topicSlice = latestPerBlog.filter((r) => r.blogTopic === blogTopic && isTopicRankingEligible(r.blogTopic));
-        const sortedTopic = sortBlogAnalysisSnapshotsForRank(topicSlice);
-        topicRank = rankPlace1Based(sortedTopic, blogId);
-      } else {
-        topicRank = null;
-      }
-
       await prisma.blogAnalysisHistory.update({
         where: { id: historyRow.id },
         data: {
@@ -509,6 +766,7 @@ export async function POST(request: Request) {
       totalVisitor,
       subscriberCount,
       postCount,
+      scrapCount,
       recentPosts,
       postingFrequency,
       profileImage: profileImageBase64,

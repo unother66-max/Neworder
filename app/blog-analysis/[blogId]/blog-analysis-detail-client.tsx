@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, KeyRound, FileText, Type, AlignLeft, ImageIcon } from "lucide-react";
+import { BarChart3, KeyRound, FileText, Type, AlignLeft, ImageIcon, Video, MessageCircle, Heart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import TopNav from "@/components/top-nav";
 import { GlobalLoading } from "@/components/global-loading";
@@ -433,6 +433,87 @@ function patternPeerSentence(kind: "title" | "body" | "image", myRaw: number | n
   return `${label}이(가) 동일한 카테고리의 상위권 평균 대비 ${Math.abs(d)}자 짧아요.`;
 }
 
+type ComparisonTone = "low" | "high" | "neutral" | "muted";
+
+type ComparisonSummaryItem = {
+  label: string;
+  prefix: string;
+  value?: string;
+  suffix?: string;
+  tone: ComparisonTone;
+};
+
+function comparisonToneClass(tone: ComparisonTone): string {
+  if (tone === "low") return "text-rose-500";
+  if (tone === "high") return "text-emerald-500";
+  if (tone === "neutral") return "text-amber-500";
+  return "text-slate-400";
+}
+
+function influencePeerItem(metricLabel: string, my: number, peer: number | null): ComparisonSummaryItem {
+  if (peer == null) {
+    return {
+      label: metricLabel,
+      prefix: "비교 데이터가 부족해요.",
+      tone: "muted",
+    };
+  }
+
+  const diff = my - peer;
+  if (Math.abs(diff) < 0.05) {
+    return {
+      label: metricLabel,
+      prefix: `${metricLabel}가 같은 레벨 평균과 `,
+      value: "비슷해요.",
+      tone: "neutral",
+    };
+  }
+
+  return {
+    label: metricLabel,
+    prefix: `${metricLabel}가 같은 레벨 평균 대비 `,
+    value: `${Math.abs(diff).toFixed(2)}점`,
+    suffix: diff < 0 ? " 낮아요." : " 높아요.",
+    tone: diff < 0 ? "low" : "high",
+  };
+}
+
+function patternPeerItem(
+  label: string,
+  myRaw: number | null,
+  peerRaw: number | null,
+  unit: "자" | "장"
+): ComparisonSummaryItem {
+  if (myRaw == null || peerRaw == null) {
+    return {
+      label,
+      prefix: "비교 데이터가 부족해요.",
+      tone: "muted",
+    };
+  }
+
+  const diff = Math.round(myRaw - peerRaw);
+  if (diff === 0) {
+    return {
+      label,
+      prefix: `${label}가 동일한 카테고리의 상위권 평균과 `,
+      value: "비슷해요.",
+      tone: "neutral",
+    };
+  }
+
+  const positiveSuffix = unit === "장" ? " 많아요." : " 길어요.";
+  const negativeSuffix = unit === "장" ? " 적어요." : " 짧아요.";
+
+  return {
+    label,
+    prefix: `${label}가 동일한 카테고리의 상위권 평균 대비 `,
+    value: `${Math.abs(diff).toLocaleString()}${unit}`,
+    suffix: diff > 0 ? positiveSuffix : negativeSuffix,
+    tone: diff > 0 ? "high" : "low",
+  };
+}
+
 
 type Props = { blogId: string };
 const RECENT_POSTS_ROWS_PER_PAGE = 5;
@@ -455,6 +536,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const [recentPosts, setRecentPosts] = useState<BlogAnalysisRecentPost[]>([]);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [postCount, setPostCount] = useState<number | null>(null);
+  const [scrapCount, setScrapCount] = useState<number | null>(null);
   const [postingFrequency, setPostingFrequency] = useState<number | null>(null);
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
 
@@ -505,6 +587,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
         setRecentPostsPage(1);
         setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
         setPostCount(data.postCount ?? null);
+        setScrapCount(data.scrapCount ?? null);
         setPostingFrequency(data.postingFrequency ?? null);
         setSubscriberCount(data.subscriberCount ?? null);
         setValidKeywords(data.validKeywords ?? []);
@@ -603,44 +686,30 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const peerKeywordInfl = estimatePeerKeywordInfluence(topicAverageComparison?.averageValidKeywordCount ?? null);
   const peerContentInfl = estimatePeerContentInfluence(topicAverageComparison?.averagePostingFrequency ?? null);
 
-  const influenceSummaryLines = useMemo(() => {
-    if (!blogScoreResult) return [] as string[];
-    const lines: string[] = [];
-    if (peerTotalScore != null) {
-      lines.push(influencePeerSentence("영향력 점수", blogScoreResult.influenceScore, peerTotalScore));
-    }
-    if (peerKeywordInfl != null) {
-      lines.push(influencePeerSentence("키워드 영향력 점수", blogScoreResult.keywordInfluenceScore, peerKeywordInfl));
-    }
-    if (peerContentInfl != null) {
-      lines.push(influencePeerSentence("콘텐츠 영향력 점수", blogScoreResult.contentInfluenceScore, peerContentInfl));
-    }
-    if (lines.length === 0) return ["비교 데이터가 부족해요."];
-    return lines;
+  const influenceSummaryItems = useMemo(() => {
+    if (!blogScoreResult) return [] as ComparisonSummaryItem[];
+    return [
+      influencePeerItem("영향력 점수", blogScoreResult.influenceScore, peerTotalScore),
+      influencePeerItem("키워드 영향력 점수", blogScoreResult.keywordInfluenceScore, peerKeywordInfl),
+      influencePeerItem("콘텐츠 영향력 점수", blogScoreResult.contentInfluenceScore, peerContentInfl),
+    ];
   }, [blogScoreResult, peerTotalScore, peerKeywordInfl, peerContentInfl]);
 
   const influenceHasAnyPeerBar = peerTotalScore != null || peerKeywordInfl != null || peerContentInfl != null;
 
-  const patternSummaryLines = useMemo(() => {
-    if (!patternAnalysis) return [] as string[];
-    const lines: string[] = [];
+  const patternSummaryItems = useMemo(() => {
+    if (!patternAnalysis) return [] as ComparisonSummaryItem[];
     const pt = finiteOrNull(topicAverageComparison?.averageTitleLength);
     const mt = finiteOrNull(patternAnalysis.averageTitleLength);
-    if (pt != null && mt != null) {
-      lines.push(patternPeerSentence("title", mt, pt));
-    }
     const pb = finiteOrNull(topicAverageComparison?.averageContentLength);
     const mb = finiteOrNull(patternAnalysis.averageContentLength);
-    if (pb != null && mb != null) {
-      lines.push(patternPeerSentence("body", mb, pb));
-    }
     const pi = finiteOrNull(topicAverageComparison?.averageImageCount);
     const mi = finiteOrNull(patternAnalysis.averageImageCount);
-    if (pi != null && mi != null) {
-      lines.push(patternPeerSentence("image", mi, pi));
-    }
-    if (lines.length === 0) return ["비교 데이터가 부족해요."];
-    return lines;
+    return [
+      patternPeerItem("제목 길이", mt, pt, "자"),
+      patternPeerItem("본문 길이", mb, pb, "자"),
+      patternPeerItem("이미지 수", mi, pi, "장"),
+    ];
   }, [patternAnalysis, topicAverageComparison]);
 
   const patternHasAnyPeerBar = useMemo(() => {
@@ -681,7 +750,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
       label: "포스팅 작성 빈도",
       value: postingFrequency != null ? `${postingFrequency.toFixed(2)}개` : "-",
     },
-    { label: "스크랩 수", value: "-" },
+    { label: "스크랩 수", value: scrapCount != null ? `${scrapCount.toLocaleString()}개` : "-" },
     {
       label: "이웃 수",
       value: subscriberCount != null ? `${subscriberCount.toLocaleString()}명` : "-",
@@ -855,14 +924,14 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                         {formatRankDisplay(totalRank)}
                       </p>
                       <p className="text-[9px] font-medium text-slate-500 leading-none">전체 순위</p>
-                      <p className="text-[8px] text-slate-400 leading-tight">히스토리 기준</p>
+                      <p className="text-[8px] text-slate-400 leading-tight">공식 랭킹</p>
                     </div>
                     <div className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1">
                       <p className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums leading-none tracking-tight break-all">
                         {formatRankDisplay(topicRank)}
                       </p>
                       <p className="text-[9px] font-medium text-slate-500 leading-none">주제 순위</p>
-                      <p className="text-[8px] text-slate-400 leading-tight">같은 주제 안</p>
+                      <p className="text-[8px] text-slate-400 leading-tight">공식 주제 안</p>
                     </div>
                   </div>
                 </div>
@@ -946,10 +1015,16 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                 <PremiumStatCol name="콘텐츠 영향력" tier={tierCaption(blogScoreResult.contentInfluenceScore)} delay={0.16} />
               </div>
 
-              <div className="mt-3 space-y-0.5 px-0.5">
-                {influenceSummaryLines.map((sentence, i) => (
-                  <p key={i} className="text-[11px] text-slate-500 leading-snug">
-                    {sentence}
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {influenceSummaryItems.map((item) => (
+                  <p key={item.label} className="rounded-xl border border-slate-100 bg-white/70 px-2.5 py-2 text-[11px] leading-relaxed text-slate-500">
+                    <span>{item.prefix}</span>
+                    {item.value ? (
+                      <span className={`font-semibold ${comparisonToneClass(item.tone)}`}>{item.value}</span>
+                    ) : null}
+                    {item.suffix ? (
+                      <span className={`font-semibold ${comparisonToneClass(item.tone)}`}>{item.suffix}</span>
+                    ) : null}
                   </p>
                 ))}
               </div>
@@ -1025,10 +1100,16 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                     <PremiumStatCol name="이미지 수" tier={patternTierCaption(Number(patternAnalysis.imageCountScore ?? 0))} delay={0.22} />
                   </div>
 
-                  <div className="mt-3 space-y-0.5 px-0.5">
-                    {patternSummaryLines.map((sentence, i) => (
-                      <p key={i} className="text-[11px] text-slate-500 leading-snug">
-                        {sentence}
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {patternSummaryItems.map((item) => (
+                      <p key={item.label} className="rounded-xl border border-slate-100 bg-white/70 px-2.5 py-2 text-[11px] leading-relaxed text-slate-500">
+                        <span>{item.prefix}</span>
+                        {item.value ? (
+                          <span className={`font-semibold ${comparisonToneClass(item.tone)}`}>{item.value}</span>
+                        ) : null}
+                        {item.suffix ? (
+                          <span className={`font-semibold ${comparisonToneClass(item.tone)}`}>{item.suffix}</span>
+                        ) : null}
                       </p>
                     ))}
                   </div>
@@ -1210,14 +1291,18 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                             const reactivityScore = firstFiniteNumber(post.reactivityScore);
                             const relatednessScore = firstFiniteNumber(post.relatednessScore);
                             const exposureStatus = formatExposureStatus(post);
-                            const sympathyCount = firstFiniteNumber(post.sympathyCount, post.likeCount);
+                            const heartCount = firstFiniteNumber(
+                              post.sympathyCount,
+                              (post as BlogAnalysisRecentPost & { heartCount?: number | null }).heartCount,
+                              post.likeCount
+                            );
                             const detailItems = [
-                              firstFiniteNumber(post.imageCount) !== null ? `이미지 ${formatPostMetric(post.imageCount, "장")}` : null,
-                              firstFiniteNumber(post.videoCount) !== null ? `동영상 ${formatPostMetric(post.videoCount, "개")}` : null,
-                              firstFiniteNumber(post.wordCount) !== null ? `글자 ${formatPostMetric(post.wordCount, "자")}` : null,
-                              firstFiniteNumber(post.commentCount) !== null ? `댓글 ${formatPostMetric(post.commentCount)}` : null,
-                              sympathyCount !== null ? `하트 ${formatPostMetric(sympathyCount)}` : null,
-                            ].filter(Boolean);
+                              { label: "사진", value: firstFiniteNumber(post.imageCount) ?? 0, icon: ImageIcon },
+                              { label: "동영상", value: firstFiniteNumber(post.videoCount) ?? 0, icon: Video },
+                              { label: "글자", value: firstFiniteNumber(post.wordCount) ?? 0, icon: Type },
+                              { label: "댓글", value: firstFiniteNumber(post.commentCount) ?? 0, icon: MessageCircle },
+                              { label: "하트", value: heartCount ?? 0, icon: Heart },
+                            ];
 
                             return (
                               <tr key={`${post.url || post.title}-${recentPostsPageStart + i}`} className="hover:bg-slate-50/70 transition-colors">
@@ -1239,13 +1324,12 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                                     </a>
                                     <div className="mt-1 flex max-w-[540px] flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium text-gray-400">
                                       {detailItems.map((item) => (
-                                        <span key={item}>{item}</span>
+                                        <span key={item.label} className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                                          <item.icon className="h-3 w-3 text-gray-300" aria-hidden="true" />
+                                          <span className="sr-only">{item.label}</span>
+                                          <span>{formatPostMetric(item.value)}</span>
+                                        </span>
                                       ))}
-                                      {post.url ? (
-                                        <a href={post.url} target="_blank" rel="noreferrer" className="max-w-[320px] truncate text-slate-400 hover:text-[#2563EB]">
-                                          {post.url}
-                                        </a>
-                                      ) : null}
                                     </div>
                                   </div>
                                 </td>

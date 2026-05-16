@@ -52,6 +52,54 @@ function stripTags(html: string): string {
   ).replace(/\s+/g, " ");
 }
 
+function extractBalancedDivFragment(html: string, markerIndex: number): string | null {
+  const start = html.lastIndexOf("<div", markerIndex);
+  if (start === -1) return null;
+
+  const lower = html.toLowerCase();
+  let i = html.indexOf(">", start);
+  if (i === -1) return null;
+  i += 1;
+
+  let depth = 1;
+  while (i < html.length && depth > 0) {
+    const nextOpen = lower.indexOf("<div", i);
+    const nextClose = lower.indexOf("</div>", i);
+    if (nextClose === -1) break;
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth += 1;
+      i = nextOpen + 4;
+      continue;
+    }
+    depth -= 1;
+    i = nextClose + 6;
+  }
+
+  const fragment = html.slice(start, i);
+  return fragment.length > 50 ? fragment : null;
+}
+
+function extractFragmentsByClass(html: string, className: string): string[] {
+  const fragments: string[] = [];
+  const re = new RegExp(`class\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["']`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const fragment = extractBalancedDivFragment(html, m.index);
+    if (fragment) fragments.push(fragment);
+  }
+  return fragments;
+}
+
+function pickBestTextFragment(fragments: string[]): { fragment: string; text: string } | null {
+  let best: { fragment: string; text: string } | null = null;
+  for (const fragment of fragments) {
+    const text = stripTags(fragment).trim();
+    if (text.length < 15) continue;
+    if (!best || text.length > best.text.length) best = { fragment, text };
+  }
+  return best;
+}
+
 /** `.se-text-paragraph` 블록 텍스트 수집 */
 function extractFromSeParagraphs(html: string): string {
   const parts: string[] = [];
@@ -118,10 +166,41 @@ function extractFallbackBlocks(html: string): string {
 }
 
 function countImgs(fragment: string): number {
-  return (fragment.match(/<img\b/gi) ?? []).length;
+  const tags = fragment.match(/<img\b[^>]*>/gi) ?? [];
+  return tags.filter((tag) => {
+    const src = tag.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    const cls = tag.match(/\bclass\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    const text = `${src} ${cls}`.toLowerCase();
+    if (text.includes("profile")) return false;
+    if (text.includes("emoticon")) return false;
+    if (text.includes("sticker")) return false;
+    if (text.includes("icon")) return false;
+    return true;
+  }).length;
+}
+
+function countVideos(fragment: string): number {
+  const tagCount = (fragment.match(/<(?:video|iframe)\b/gi) ?? []).length;
+  const componentCount = (fragment.match(/\bse-component-video\b/gi) ?? []).length;
+  const moduleCount = (fragment.match(/\bse-module-video\b/gi) ?? []).length;
+  const videoClassCount = (fragment.match(/\bse-video\b/gi) ?? []).length;
+  const playerCount = (fragment.match(/(?:nplayer|videoPlayer|video_player|data-video)/gi) ?? []).length;
+  return Math.max(tagCount, componentCount, moduleCount, videoClassCount, playerCount, 0);
 }
 
 function extractMainFragment(html: string): { fragment: string; text: string } | null {
+  const mainContainer = pickBestTextFragment(extractFragmentsByClass(html, "se-main-container"));
+  if (mainContainer) return mainContainer;
+
+  const componentContent = pickBestTextFragment(extractFragmentsByClass(html, "se-component-content"));
+  if (componentContent) return componentContent;
+
+  const area = extractPostViewAreaFragment(html);
+  if (area) {
+    const text = stripTags(area).trim();
+    if (text.length >= 15) return { fragment: area, text };
+  }
+
   let fragment = "";
   let text = extractFromSeParagraphs(html);
   if (text.length >= 30) {
@@ -149,14 +228,6 @@ function extractMainFragment(html: string): { fragment: string; text: string } |
   }
 
   if (text.length < 30) {
-    const area = extractPostViewAreaFragment(html);
-    if (area) {
-      fragment = area;
-      text = stripTags(area).trim();
-    }
-  }
-
-  if (text.length < 30) {
     const fb = extractFallbackBlocks(html);
     if (fb.length > text.length) {
       text = fb;
@@ -177,6 +248,8 @@ export type BlogPostPatternMetrics = {
   titleLength: number;
   contentLength: number;
   imageCount: number;
+  videoCount: number;
+  contentText: string;
 };
 
 export function scoreTitleLength(len: number): number {
@@ -228,8 +301,10 @@ export function extractMetricsFromPostHtml(html: string, rssTitle: string): Blog
   const main = extractMainFragment(html);
   if (!main) return null;
 
-  const contentLength = [...main.text.replace(/\s+/g, " ").trim()].length;
+  const contentText = main.text.replace(/\u200b/g, "").replace(/\s+/g, " ").trim();
+  const contentLength = [...contentText.replace(/\s/g, "")].length;
   const imageCount = countImgs(main.fragment);
+  const videoCount = countVideos(main.fragment);
 
   if (contentLength < 15) return null;
 
@@ -237,6 +312,8 @@ export function extractMetricsFromPostHtml(html: string, rssTitle: string): Blog
     titleLength: titleLen,
     contentLength,
     imageCount,
+    videoCount,
+    contentText,
   };
 }
 

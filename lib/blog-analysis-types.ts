@@ -113,6 +113,7 @@ export type BlogAnalysisResult = {
   recentPosts?: BlogAnalysisRecentPost[];
   profileImage?: string | null;
   postCount?: number | null;
+  scrapCount?: number | null;
   postingFrequency?: number | null;
   subscriberCount?: number | null;
   validKeywordCount?: number | null;
