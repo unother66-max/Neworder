@@ -421,6 +421,46 @@ model BlogAnalysisHistory {
   @@index([blogTopic, totalScore])
 }
 
+/** 블로그 최근 포스팅별 분석 메트릭 캐시 */
+model BlogPostMetricSnapshot {
+  id                 String    @id @default(cuid())
+  blogId             String
+  postKey            String
+  postUrl            String    @db.Text
+  orgUrl             String?   @db.Text
+  logNo              String?
+  title              String
+  publishedAt        DateTime?
+  thumbnail          String?   @db.Text
+
+  wordCount          Int?
+  imageCount         Int?
+  videoCount         Int?
+  commentCount       Int?
+  sympathyCount      Int?
+  shareCount         Int?
+
+  titleScore         Float?
+  contentLengthScore Float?
+  imageScore         Float?
+  potentialScore     Float?
+  reactivityScore    Float?
+  relatednessScore   Float?
+  postLevel          Int?
+  exposureStatus     String?
+  foundOnSearch      Boolean?
+
+  analyzedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([blogId, postKey])
+  @@index([blogId])
+  @@index([blogId, publishedAt])
+  @@index([blogId, analyzedAt])
+  @@index([exposureStatus])
+}
+
 /** 블로그 분석 저장 목록: 고정/자동추적 상태 영구 저장 */
 model BlogAnalysisSaved {
   id           String   @id @default(cuid())

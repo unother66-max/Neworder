@@ -16,6 +16,13 @@ import { computeBlogScore } from "@/lib/blog-score";
 import { inferBlogTopic } from "@/lib/blog-topic";
 import { prisma } from "@/lib/prisma";
 import { analyzeBlogPostPatterns } from "@/lib/blog-post-pattern";
+import {
+  fetchBlogPostMetricDraft,
+  isBlogPostMetricCacheFresh,
+  mergeBlogPostMetricSnapshot,
+  publishedAtDate,
+  withBlogPostMetricIdentity,
+} from "@/lib/blog-post-metric-cache";
 import { computeBlogTopicAverageComparison } from "@/lib/blog-topic-average";
 import {
   computePostingFrequency7d,
@@ -64,6 +71,103 @@ function sanitizeStoredFloat(value: unknown): number | null {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   return n;
+}
+
+async function mergeRecentPostsWithMetricCache(
+  blogId: string,
+  posts: BlogAnalysisResult["recentPosts"]
+): Promise<NonNullable<BlogAnalysisResult["recentPosts"]>> {
+  const postsWithKeys = (posts ?? []).map(withBlogPostMetricIdentity);
+  const postKeys = postsWithKeys.map((post) => post.postKey).filter((key): key is string => Boolean(key));
+  if (postKeys.length === 0) return postsWithKeys;
+
+  try {
+    const cachedRows = await prisma.blogPostMetricSnapshot.findMany({
+      where: {
+        blogId,
+        postKey: { in: postKeys },
+      },
+    });
+    const cacheByKey = new Map(cachedRows.map((row) => [row.postKey, row]));
+    const now = new Date();
+    const enriched: NonNullable<BlogAnalysisResult["recentPosts"]> = [];
+
+    for (const post of postsWithKeys) {
+      const cached = post.postKey ? cacheByKey.get(post.postKey) : null;
+      if (cached && isBlogPostMetricCacheFresh(cached, now)) {
+        enriched.push(mergeBlogPostMetricSnapshot(post, cached));
+        continue;
+      }
+
+      const draft = await fetchBlogPostMetricDraft(post);
+      if (!draft || !post.postKey) {
+        enriched.push(cached ? mergeBlogPostMetricSnapshot(post, cached) : post);
+        continue;
+      }
+
+      try {
+        const saved = await prisma.blogPostMetricSnapshot.upsert({
+          where: {
+            blogId_postKey: {
+              blogId,
+              postKey: post.postKey,
+            },
+          },
+          create: {
+            blogId,
+            postKey: post.postKey,
+            postUrl: post.url,
+            orgUrl: post.orgUrl ?? post.url,
+            logNo: post.logNo ?? null,
+            title: post.title || "-",
+            publishedAt: publishedAtDate(post),
+            thumbnail: post.thumbnail ?? null,
+            wordCount: draft.wordCount ?? null,
+            imageCount: draft.imageCount ?? null,
+            videoCount: draft.videoCount ?? null,
+            titleScore: draft.titleScore ?? null,
+            contentLengthScore: draft.contentLengthScore ?? null,
+            imageScore: draft.imageScore ?? null,
+            potentialScore: draft.potentialScore ?? null,
+            reactivityScore: draft.reactivityScore ?? null,
+            relatednessScore: draft.relatednessScore ?? null,
+            exposureStatus: draft.exposureStatus ?? "analyzed",
+            foundOnSearch: draft.foundOnSearch ?? null,
+            analyzedAt: now,
+          },
+          update: {
+            postUrl: post.url,
+            orgUrl: post.orgUrl ?? post.url,
+            logNo: post.logNo ?? null,
+            title: post.title || "-",
+            publishedAt: publishedAtDate(post),
+            thumbnail: post.thumbnail ?? null,
+            wordCount: draft.wordCount ?? null,
+            imageCount: draft.imageCount ?? null,
+            videoCount: draft.videoCount ?? null,
+            titleScore: draft.titleScore ?? null,
+            contentLengthScore: draft.contentLengthScore ?? null,
+            imageScore: draft.imageScore ?? null,
+            potentialScore: draft.potentialScore ?? null,
+            reactivityScore: draft.reactivityScore ?? null,
+            relatednessScore: draft.relatednessScore ?? null,
+            exposureStatus: draft.exposureStatus ?? "analyzed",
+            foundOnSearch: draft.foundOnSearch ?? null,
+            analyzedAt: now,
+          },
+        });
+        enriched.push(mergeBlogPostMetricSnapshot(post, saved));
+      } catch (e) {
+        console.warn("[blog-analysis] 포스팅 메트릭 캐시 저장 실패:", e);
+        enriched.push(cached ? mergeBlogPostMetricSnapshot(post, cached) : { ...post, ...draft });
+      }
+    }
+
+    return enriched;
+  } catch (e) {
+    console.warn("[blog-analysis] 포스팅 메트릭 캐시 조회 실패:", e);
+    return postsWithKeys;
+  }
 }
 
 async function fetchLatestVisitorCount(blogId: string): Promise<number | null> {
@@ -128,7 +232,7 @@ export async function POST(request: Request) {
     const subscriberCount = mHtml ? parseSubscriberCountFromHtml(mHtml) : null;
     let postCount = mHtml ? parsePostCountFromHtml(mHtml) : null;
 
-    const [visitor, pcHtml, recentPosts] = await Promise.all([
+    const [visitor, pcHtml, rssRecentPosts] = await Promise.all([
       fetchLatestVisitorCount(blogId),
       fetchText(`https://blog.naver.com/${blogId}`, {
         Referer: `https://blog.naver.com/`,
@@ -156,6 +260,8 @@ export async function POST(request: Request) {
     if (postCount === null && pcHtml) {
       postCount = parsePostCountFromHtml(pcHtml);
     }
+
+    const recentPosts = await mergeRecentPostsWithMetricCache(blogId, rssRecentPosts);
 
     const postingFrequency = computePostingFrequency7d(recentPosts);
 

@@ -4,18 +4,28 @@ export interface BlogAnalysisRecentPost {
   createdAt?: string | null;
   thumbnail?: string | null;
 
+  postKey?: string | null;
+  logNo?: string | null;
+  orgUrl?: string | null;
   publishedAt?: string | null;
   wordCount?: number | null;
   imageCount?: number | null;
+  videoCount?: number | null;
   commentCount?: number | null;
   sympathyCount?: number | null;
   likeCount?: number | null;
   shareCount?: number | null;
+  titleScore?: number | null;
+  contentLengthScore?: number | null;
+  imageScore?: number | null;
   score?: number | null;
   potentialScore?: number | null;
   postScore?: number | null;
+  reactivityScore?: number | null;
+  relatednessScore?: number | null;
   postLevel?: number | string | null;
   exposureStatus?: string | null;
+  foundOnSearch?: boolean | null;
 };
 
 export type BlogValidKeyword = {
