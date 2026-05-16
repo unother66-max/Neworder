@@ -121,9 +121,9 @@ export type BlogAnalysisResult = {
   representativeValidKeywords?: BlogValidKeyword[];
   keywordInsights?: BlogKeywordInsight[];
   blogTopic?: string | null;
-  /** 우리 서비스 DB 히스토리 기준 전체 순위 */
+  /** PostLabs 자체 누적 분석 기준 전체 순위. 네이버 공식 순위가 아니며 스냅샷 도입 전에는 null. */
   totalRank?: number | null;
-  /** 동일 블로그 주제(기타 제외) 내 순위 */
+  /** PostLabs 자체 누적 분석 기준 동일 공식 블로그 주제 내 순위. 스냅샷 도입 전에는 null. */
   topicRank?: number | null;
   analyzedAt?: string | null;
   patternAnalysis?: BlogPostPatternAnalysis | null;

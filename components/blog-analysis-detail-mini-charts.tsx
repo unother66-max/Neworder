@@ -270,8 +270,8 @@ export function HistoryTabChartCard({
   return (
     <div className={`bg-white rounded-2xl border ${CARD_BORDER} shadow-sm overflow-hidden flex flex-col`}>
       <div className="flex border-b border-slate-200/60">
-        {tabBtn("total", "전체 순위")}
-        {tabBtn("topic", "주제 순위")}
+        {tabBtn("total", "전체 랭킹")}
+        {tabBtn("topic", "주제 랭킹")}
         {tabBtn("keywords", "유효키워드")}
       </div>
       <div className="p-2 sm:p-2.5 flex flex-col sm:flex-row gap-2 flex-1 min-h-0">
@@ -311,7 +311,9 @@ export function HistoryTabChartCard({
           ) : (
             <div className="h-full min-h-[96px] flex flex-col items-center justify-center rounded-xl bg-slate-50/80 mx-0.5 px-3 py-4 text-center border border-slate-100/60">
               <p className="text-[10px] font-medium text-slate-500 leading-snug">표시할 값이 없습니다</p>
-              <p className="text-[9px] text-slate-400 mt-1">순위·키워드 기록이 쌓이면 그래프가 나타나요</p>
+              <p className="text-[9px] text-slate-400 mt-1">
+                {rankTab === "keywords" ? "키워드 기록이 쌓이면 그래프가 나타나요" : "PostLabs 자체 순위 데이터가 쌓이면 그래프가 나타나요"}
+              </p>
             </div>
           )}
         </div>

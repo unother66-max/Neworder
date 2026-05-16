@@ -184,57 +184,6 @@ function buildWidgetListAsyncUrl(blogId: string, selectCategoryNo: string): stri
   return `https://blog.naver.com/prologue/WidgetListAsync.naver?${params.toString()}`;
 }
 
-function parseRankNumber(value: string): number | null {
-  const n = Number(value.replace(/,/g, ""));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function parseOfficialBlogRanksFromHtml(html: string): {
-  overallRank: number | null;
-  topicRank: number | null;
-  topicName: string | null;
-} {
-  const overallPatterns = [
-    /전체\s*순위[\s\S]{0,120}?([\d,]+)\s*위/i,
-    /"overallRank"\s*:\s*"?([\d,]+)"?/i,
-    /"totalRank"\s*:\s*"?([\d,]+)"?/i,
-    /"globalRank"\s*:\s*"?([\d,]+)"?/i,
-    /"blogRank"\s*:\s*"?([\d,]+)"?/i,
-  ];
-  const topicPatterns = [
-    /(?:주제|카테고리)\s*순위[\s\S]{0,120}?([\d,]+)\s*위/i,
-    /"topicRank"\s*:\s*"?([\d,]+)"?/i,
-    /"themeRank"\s*:\s*"?([\d,]+)"?/i,
-    /"categoryRank"\s*:\s*"?([\d,]+)"?/i,
-    /"directoryRank"\s*:\s*"?([\d,]+)"?/i,
-  ];
-
-  let overallRank: number | null = null;
-  let topicRank: number | null = null;
-
-  for (const pattern of overallPatterns) {
-    const match = html.match(pattern);
-    if (match) {
-      overallRank = parseRankNumber(match[1]);
-      if (overallRank !== null) break;
-    }
-  }
-
-  for (const pattern of topicPatterns) {
-    const match = html.match(pattern);
-    if (match) {
-      topicRank = parseRankNumber(match[1]);
-      if (topicRank !== null) break;
-    }
-  }
-
-  return {
-    overallRank,
-    topicRank,
-    topicName: parseOfficialBlogTopicFromHtml(html),
-  };
-}
-
 function parseSubscriberCountFromHtml(html: string): number | null {
   const m = html.match(/"subscriberCount":\s*(\d+)/);
   if (!m) return null;
@@ -612,34 +561,20 @@ export async function POST(request: Request) {
       validKeywordCount: representativeValidKeywordCount,
     });
 
-    const blogRankCandidates = [
-      { source: "mobile", html: mHtml },
-      { source: "prologue", html: prologueListHtml },
-      { source: "widget", html: widgetListHtml },
-      { source: "pc", html: pcHtml },
-    ].filter((candidate): candidate is { source: string; html: string } => Boolean(candidate.html));
-    let blogRankSource = "unavailable";
+    // TODO: BlogInfluenceSnapshot 도입 후 BlogAnalysisHistory 누적값을
+    // officialBlogTopic별로 그룹화해 PostLabs 자체 전체/주제 순위를 저장합니다.
+    // 네이버 공식 순위나 BlogChart 값을 의미하지 않으므로, 현재 단계에서는 표시하지 않습니다.
     let totalRank: number | null = null;
     let topicRank: number | null = null;
-    for (const candidate of blogRankCandidates) {
-      const parsed = parseOfficialBlogRanksFromHtml(candidate.html);
-      if (parsed.overallRank !== null || parsed.topicRank !== null) {
-        totalRank = parsed.overallRank;
-        topicRank = parsed.topicRank;
-        blogRankSource = candidate.source;
-        break;
-      }
-    }
 
     if (process.env.NODE_ENV === "development") {
-      const previewHtml = blogRankCandidates.find((candidate) => candidate.source === blogRankSource)?.html ?? blogRankCandidates[0]?.html;
-      console.log("[blog-analysis] blog rank source", {
+      console.log("[blog-analysis] postlabs rank source", {
         blogId,
-        overallRank: totalRank,
-        topicRank,
+        postlabsOverallRank: totalRank,
+        postlabsTopicRank: topicRank,
         topicName: officialBlogTopic,
-        source: blogRankSource,
-        preview: previewHtml?.slice(0, 500),
+        rankSource: "postlabs",
+        message: "PostLabs 자체 랭킹 스냅샷 도입 전까지 순위는 표시하지 않습니다.",
       });
     }
 

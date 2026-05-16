@@ -517,6 +517,10 @@ function patternPeerItem(
 
 type Props = { blogId: string };
 const RECENT_POSTS_ROWS_PER_PAGE = 5;
+const POSTLABS_OVERALL_RANK_DESCRIPTION =
+  "PostLabs에 누적 분석된 블로그 데이터를 기준으로 유효 키워드, 영향력 지수, 최근 활동성 등을 종합해 산정하는 자체 순위입니다. 네이버 공식 순위가 아닙니다.";
+const POSTLABS_TOPIC_RANK_DESCRIPTION =
+  "같은 공식 블로그 주제 안에서 PostLabs 자체 기준으로 비교한 순위입니다. 데이터가 충분히 쌓인 뒤 제공됩니다.";
 
 export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const router = useRouter();
@@ -919,19 +923,29 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                       <p className="text-[9px] font-medium text-slate-500 leading-none">유효 키워드</p>
                       <p className="text-[8px] text-slate-400 leading-tight">검색량 0 초과</p>
                     </div>
-                    <div className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1">
+                    <div
+                      className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1"
+                      title={POSTLABS_OVERALL_RANK_DESCRIPTION}
+                    >
                       <p className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums leading-none tracking-tight break-all">
                         {formatRankDisplay(totalRank)}
                       </p>
                       <p className="text-[9px] font-medium text-slate-500 leading-none">전체 순위</p>
-                      <p className="text-[8px] text-slate-400 leading-tight">공식 랭킹</p>
+                      <p className="text-[8px] text-slate-400 leading-tight">
+                        {totalRank != null ? "PostLabs 기준" : "데이터 누적 후 제공"}
+                      </p>
                     </div>
-                    <div className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1">
+                    <div
+                      className="flex flex-col items-center justify-center text-center px-2 py-2 min-h-[72px] sm:min-h-[80px] gap-1"
+                      title={POSTLABS_TOPIC_RANK_DESCRIPTION}
+                    >
                       <p className="text-xl sm:text-2xl font-bold text-slate-800 tabular-nums leading-none tracking-tight break-all">
                         {formatRankDisplay(topicRank)}
                       </p>
                       <p className="text-[9px] font-medium text-slate-500 leading-none">주제 순위</p>
-                      <p className="text-[8px] text-slate-400 leading-tight">공식 주제 안</p>
+                      <p className="text-[8px] text-slate-400 leading-tight">
+                        {topicRank != null ? "PostLabs 기준" : "데이터 누적 후 제공"}
+                      </p>
                     </div>
                   </div>
                 </div>
