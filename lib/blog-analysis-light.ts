@@ -11,6 +11,7 @@ import {
 } from "@/lib/blog-analysis-history-rank";
 import { fetchValidBlogKeywordsFromCandidates } from "@/lib/blog-keyword-volume";
 import { extractKeywordCandidatesFromTitles } from "@/lib/blog-keywords";
+import { computeRepresentativeValidKeywords } from "@/lib/blog-representative-keywords";
 import { computeBlogScore } from "@/lib/blog-score";
 import { inferBlogTopic } from "@/lib/blog-topic";
 import type { BlogAnalysisRecentPost, BlogValidKeyword } from "@/lib/blog-analysis-types";
@@ -173,6 +174,13 @@ export async function collectLightBlogAnalysisSnapshot(blogId: string): Promise<
     validKeywordCount = null;
   }
 
+  const representativeValidKeywords = computeRepresentativeValidKeywords({
+    validKeywords,
+    recentPosts,
+  });
+  const representativeValidKeywordCount =
+    validKeywordCount === null ? null : representativeValidKeywords.length;
+
   let blogTopic: string | null = null;
   try {
     blogTopic = inferBlogTopic(recentPosts, validKeywords);
@@ -186,7 +194,7 @@ export async function collectLightBlogAnalysisSnapshot(blogId: string): Promise<
     postingFrequency,
     subscriberCount,
     recentPosts,
-    validKeywordCount,
+    validKeywordCount: representativeValidKeywordCount,
   });
 
   return {
@@ -196,7 +204,7 @@ export async function collectLightBlogAnalysisSnapshot(blogId: string): Promise<
     subscriberCount,
     postingFrequency,
     recentPosts,
-    validKeywordCount,
+    validKeywordCount: representativeValidKeywordCount,
     blogTopic,
     blogScorePayload,
   };

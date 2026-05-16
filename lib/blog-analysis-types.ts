@@ -107,6 +107,7 @@ export type BlogAnalysisResult = {
   subscriberCount?: number | null;
   validKeywordCount?: number | null;
   validKeywords?: BlogValidKeyword[];
+  representativeValidKeywords?: BlogValidKeyword[];
   keywordInsights?: BlogKeywordInsight[];
   blogTopic?: string | null;
   /** 우리 서비스 DB 히스토리 기준 전체 순위 */

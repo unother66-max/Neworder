@@ -11,6 +11,7 @@ import {
 import { computeBlogKeywordInsights } from "@/lib/blog-keyword-insight";
 import { fetchValidBlogKeywordsFromCandidates } from "@/lib/blog-keyword-volume";
 import { extractKeywordCandidatesFromTitles } from "@/lib/blog-keywords";
+import { computeRepresentativeValidKeywords } from "@/lib/blog-representative-keywords";
 import { computeBlogScore } from "@/lib/blog-score";
 import { inferBlogTopic } from "@/lib/blog-topic";
 import { prisma } from "@/lib/prisma";
@@ -196,6 +197,14 @@ export async function POST(request: Request) {
       keywordInsights = [];
     }
 
+    const representativeValidKeywords = computeRepresentativeValidKeywords({
+      validKeywords,
+      recentPosts,
+      keywordInsights,
+    });
+    const representativeValidKeywordCount =
+      validKeywordCount === null ? null : representativeValidKeywords.length;
+
     let blogTopic: string | null = null;
     try {
       blogTopic = inferBlogTopic(recentPosts, validKeywords);
@@ -243,7 +252,7 @@ export async function POST(request: Request) {
       postingFrequency,
       subscriberCount,
       recentPosts,
-      validKeywordCount,
+      validKeywordCount: representativeValidKeywordCount,
     });
 
     let totalRank: number | null = null;
@@ -274,7 +283,7 @@ export async function POST(request: Request) {
           postCount: sanitizeStoredInt(postCount),
           subscriberCount: sanitizeStoredInt(subscriberCount),
           postingFrequency: sanitizeStoredFloat(postingFrequency),
-          validKeywordCount: sanitizeStoredInt(validKeywordCount),
+          validKeywordCount: sanitizeStoredInt(representativeValidKeywordCount),
           level: sanitizeStoredInt(blogScorePayload.level),
           grade: blogScorePayload.grade,
           totalScore: sanitizeStoredFloat(blogScorePayload.totalScore),
@@ -374,7 +383,7 @@ export async function POST(request: Request) {
         myBlogId: blogId,
         mySnapshot: {
           totalScore: sanitizeStoredFloat(blogScorePayload.totalScore),
-          validKeywordCount,
+          validKeywordCount: representativeValidKeywordCount,
           visitorCount: visitor,
           postingFrequency: sanitizeStoredFloat(postingFrequency),
           averageTitleLength: patternAnalysis ? sanitizeStoredFloat(patternAnalysis.averageTitleLength) : null,
@@ -398,8 +407,9 @@ export async function POST(request: Request) {
       postingFrequency,
       profileImage: profileImageBase64,
       validKeywords,
+      representativeValidKeywords,
       keywordInsights,
-      validKeywordCount,
+      validKeywordCount: representativeValidKeywordCount,
       blogTopic,
       totalRank,
       topicRank,

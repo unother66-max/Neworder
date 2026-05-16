@@ -427,6 +427,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
 
   const [validKeywords, setValidKeywords] = useState<BlogValidKeyword[]>([]);
+  const [representativeValidKeywords, setRepresentativeValidKeywords] = useState<BlogValidKeyword[]>([]);
   const [keywordInsights, setKeywordInsights] = useState<BlogKeywordInsight[]>([]);
   const [validKeywordCount, setValidKeywordCount] = useState<number | null>(null);
   const [blogTopic, setBlogTopic] = useState<string | null>(null);
@@ -450,6 +451,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
     setFetchError(null);
     setHistoryPoints([]);
     setKeywordInsights([]);
+    setRepresentativeValidKeywords([]);
     setPatternAnalysis(null);
     setTopicAverageComparison(null);
     setBlogScoreResult(null);
@@ -474,6 +476,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
         setPostingFrequency(data.postingFrequency ?? null);
         setSubscriberCount(data.subscriberCount ?? null);
         setValidKeywords(data.validKeywords ?? []);
+        setRepresentativeValidKeywords(data.representativeValidKeywords ?? []);
         setKeywordInsights(data.keywordInsights ?? []);
         setValidKeywordCount(data.validKeywordCount ?? null);
         setBlogTopic(data.blogTopic ?? null);
@@ -540,7 +543,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
 
   const historyTrend = useMemo(() => analyzeBlogHistoryTrend(historyPoints), [historyPoints]);
   const currentResultValidKeywordCount = useMemo(() => {
-    if (validKeywords.length > 0) return validKeywords.length;
+    if (representativeValidKeywords.length > 0) return representativeValidKeywords.length;
     if (validKeywordCount != null) return validKeywordCount;
 
     const latestHistoryPoint = historyPoints.find((point) => {
@@ -548,7 +551,7 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
       return value != null && Number.isFinite(Number(value));
     });
     return latestHistoryPoint?.validKeywordCount ?? null;
-  }, [historyPoints, validKeywordCount, validKeywords.length]);
+  }, [historyPoints, representativeValidKeywords.length, validKeywordCount]);
 
   const summaryLines = useMemo(() => {
     if (!blogScoreResult) return [];
