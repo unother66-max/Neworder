@@ -472,6 +472,51 @@ model BlogMetricSnapshot {
   @@index([analyzedAt])
 }
 
+/** PostLabs 자체 랭킹 계산 결과 스냅샷 */
+model BlogRankSnapshot {
+  id                 String   @id @default(cuid())
+  blogId             String
+  overallRank        Int?
+  topicRank          Int?
+  officialBlogTopic  String?
+  totalBlogsCount    Int
+  topicBlogsCount    Int?
+  rankSource         String   @default("postlabs")
+  calculatedAt       DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  @@index([blogId])
+  @@index([blogId, calculatedAt])
+  @@index([overallRank])
+  @@index([officialBlogTopic, topicRank])
+  @@index([rankSource, calculatedAt])
+}
+
+/** PostLabs 자체 랭킹 확장을 위한 블로그 후보 수집 큐 */
+model BlogDiscoveryQueue {
+  id                 String    @id @default(cuid())
+  blogId             String    @unique
+  blogUrl            String?   @db.Text
+  source             String
+  seedKeyword        String?
+  officialBlogTopic  String?
+  status             String    @default("pending")
+  priority           Int       @default(50)
+  discoveredAt       DateTime  @default(now())
+  lastTriedAt        DateTime?
+  analyzedAt         DateTime?
+  errorMessage       String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([source])
+  @@index([seedKeyword])
+  @@index([officialBlogTopic])
+  @@index([lastTriedAt])
+}
+
 /** 블로그 최근 포스팅별 분석 메트릭 캐시 */
 model BlogPostMetricSnapshot {
   id                 String    @id @default(cuid())

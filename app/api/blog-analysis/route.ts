@@ -579,20 +579,51 @@ export async function POST(request: Request) {
       validKeywordCount: representativeValidKeywordCount,
     });
 
-    // TODO: BlogInfluenceSnapshot 도입 후 BlogAnalysisHistory 누적값을
-    // officialBlogTopic별로 그룹화해 PostLabs 자체 전체/주제 순위를 저장합니다.
-    // 네이버 공식 순위나 BlogChart 값을 의미하지 않으므로, 현재 단계에서는 표시하지 않습니다.
     let totalRank: number | null = null;
     let topicRank: number | null = null;
+    let totalBlogsCount: number | null = null;
+    let topicBlogsCount: number | null = null;
+    let rankSource: "postlabs" | null = null;
+
+    try {
+      const latestRankSnapshot = await prisma.blogRankSnapshot.findFirst({
+        where: {
+          blogId,
+          rankSource: "postlabs",
+        },
+        select: {
+          overallRank: true,
+          topicRank: true,
+          totalBlogsCount: true,
+          topicBlogsCount: true,
+          rankSource: true,
+        },
+        orderBy: { calculatedAt: "desc" },
+      });
+
+      if (latestRankSnapshot) {
+        totalRank = latestRankSnapshot.overallRank ?? null;
+        topicRank = latestRankSnapshot.topicRank ?? null;
+        totalBlogsCount = latestRankSnapshot.totalBlogsCount ?? null;
+        topicBlogsCount = latestRankSnapshot.topicBlogsCount ?? null;
+        rankSource = latestRankSnapshot.rankSource === "postlabs" ? "postlabs" : null;
+      }
+    } catch (e) {
+      console.warn("[blog-analysis] PostLabs 랭킹 스냅샷 조회 실패:", e);
+    }
 
     if (process.env.NODE_ENV === "development") {
       console.log("[blog-analysis] postlabs rank source", {
         blogId,
         postlabsOverallRank: totalRank,
         postlabsTopicRank: topicRank,
+        totalBlogsCount,
+        topicBlogsCount,
         topicName: officialBlogTopic,
-        rankSource: "postlabs",
-        message: "PostLabs 자체 랭킹 스냅샷 도입 전까지 순위는 표시하지 않습니다.",
+        rankSource: rankSource ?? "postlabs",
+        message: rankSource
+          ? "PostLabs 자체 랭킹 스냅샷 기준 순위를 표시합니다."
+          : "PostLabs 자체 랭킹 스냅샷이 없으면 순위는 표시하지 않습니다.",
       });
     }
 
@@ -782,6 +813,10 @@ export async function POST(request: Request) {
       blogTopic,
       totalRank,
       topicRank,
+      totalBlogsCount,
+      topicBlogsCount,
+      rankSource,
+      rankSourceLabel: rankSource === "postlabs" ? "PostLabs 기준" : null,
       analyzedAt: analyzedAtIso,
       patternAnalysis,
       topicAverageComparison,

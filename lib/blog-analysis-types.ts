@@ -125,6 +125,10 @@ export type BlogAnalysisResult = {
   totalRank?: number | null;
   /** PostLabs 자체 누적 분석 기준 동일 공식 블로그 주제 내 순위. 스냅샷 도입 전에는 null. */
   topicRank?: number | null;
+  totalBlogsCount?: number | null;
+  topicBlogsCount?: number | null;
+  rankSource?: "postlabs" | string | null;
+  rankSourceLabel?: string | null;
   analyzedAt?: string | null;
   patternAnalysis?: BlogPostPatternAnalysis | null;
   topicAverageComparison?: BlogTopicAverageComparison | null;
