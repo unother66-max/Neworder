@@ -421,6 +421,57 @@ model BlogAnalysisHistory {
   @@index([blogTopic, totalScore])
 }
 
+/** PostLabs 자체 랭킹용 블로그 최신 프로필 */
+model BlogProfile {
+  id                 String    @id @default(cuid())
+  blogId             String    @unique
+  blogUrl            String?   @db.Text
+  blogName           String?
+  nickname           String?
+  profileImage       String?   @db.Text
+  officialBlogTopic  String?
+
+  postCount          Int?
+  scrapCount         Int?
+  neighborCount      Int?
+  postingFrequency   Float?
+  lastAnalyzedAt     DateTime?
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([officialBlogTopic])
+  @@index([lastAnalyzedAt])
+}
+
+/** PostLabs 자체 랭킹 계산용 블로그 단위 메트릭 스냅샷 */
+model BlogMetricSnapshot {
+  id                       String   @id @default(cuid())
+  blogId                   String
+
+  influenceScore           Float?
+  keywordInfluenceScore    Float?
+  contentInfluenceScore    Float?
+  validKeywordCount        Int?
+  recentActivityScore      Float?
+
+  avgWordCount             Float?
+  avgImageCount            Float?
+  avgVideoCount            Float?
+  avgCommentCount          Float?
+  avgSympathyCount         Float?
+  avgShareCount            Float?
+
+  totalScore               Float?
+  analyzedAt               DateTime @default(now())
+  createdAt                DateTime @default(now())
+
+  @@index([blogId])
+  @@index([blogId, analyzedAt])
+  @@index([totalScore])
+  @@index([analyzedAt])
+}
+
 /** 블로그 최근 포스팅별 분석 메트릭 캐시 */
 model BlogPostMetricSnapshot {
   id                 String    @id @default(cuid())

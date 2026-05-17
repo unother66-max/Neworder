@@ -209,6 +209,24 @@ function sanitizeStoredFloat(value: unknown): number | null {
   return n;
 }
 
+function averageRecentPostNumber(
+  posts: BlogAnalysisResult["recentPosts"],
+  field: "wordCount" | "imageCount" | "videoCount" | "commentCount" | "sympathyCount" | "shareCount"
+): number | null {
+  const values = (posts ?? [])
+    .map((post) => post[field])
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function computeRecentActivityScore(postingFrequency: number | null | undefined): number | null {
+  const frequency = sanitizeStoredFloat(postingFrequency);
+  if (frequency === null) return null;
+  return Math.min(100, Math.max(0, frequency * 100));
+}
+
 async function mergeRecentPostsWithMetricCache(
   blogId: string,
   posts: BlogAnalysisResult["recentPosts"]
@@ -622,6 +640,58 @@ export async function POST(request: Request) {
       });
 
       analyzedAtIso = historyRow.analyzedAt.toISOString();
+
+      try {
+        await prisma.blogProfile.upsert({
+          where: { blogId },
+          create: {
+            blogId,
+            blogUrl: `https://blog.naver.com/${blogId}`,
+            blogName: nickname || null,
+            nickname: nickname || null,
+            profileImage: profileImageBase64 ?? null,
+            officialBlogTopic: officialBlogTopic ?? null,
+            postCount: sanitizeStoredInt(postCount),
+            scrapCount: sanitizeStoredInt(scrapCount),
+            neighborCount: sanitizeStoredInt(subscriberCount),
+            postingFrequency: sanitizeStoredFloat(postingFrequency),
+            lastAnalyzedAt: historyRow.analyzedAt,
+          },
+          update: {
+            blogUrl: `https://blog.naver.com/${blogId}`,
+            blogName: nickname || null,
+            nickname: nickname || null,
+            profileImage: profileImageBase64 ?? null,
+            officialBlogTopic: officialBlogTopic ?? null,
+            postCount: sanitizeStoredInt(postCount),
+            scrapCount: sanitizeStoredInt(scrapCount),
+            neighborCount: sanitizeStoredInt(subscriberCount),
+            postingFrequency: sanitizeStoredFloat(postingFrequency),
+            lastAnalyzedAt: historyRow.analyzedAt,
+          },
+        });
+
+        await prisma.blogMetricSnapshot.create({
+          data: {
+            blogId,
+            influenceScore: sanitizeStoredFloat(blogScorePayload.influenceScore),
+            keywordInfluenceScore: sanitizeStoredFloat(blogScorePayload.keywordInfluenceScore),
+            contentInfluenceScore: sanitizeStoredFloat(blogScorePayload.contentInfluenceScore),
+            validKeywordCount: sanitizeStoredInt(representativeValidKeywordCount),
+            recentActivityScore: computeRecentActivityScore(postingFrequency),
+            avgWordCount: averageRecentPostNumber(recentPosts, "wordCount"),
+            avgImageCount: averageRecentPostNumber(recentPosts, "imageCount"),
+            avgVideoCount: averageRecentPostNumber(recentPosts, "videoCount"),
+            avgCommentCount: averageRecentPostNumber(recentPosts, "commentCount"),
+            avgSympathyCount: averageRecentPostNumber(recentPosts, "sympathyCount"),
+            avgShareCount: averageRecentPostNumber(recentPosts, "shareCount"),
+            totalScore: sanitizeStoredFloat(blogScorePayload.totalScore),
+            analyzedAt: historyRow.analyzedAt,
+          },
+        });
+      } catch (e) {
+        console.warn("[blog-analysis] PostLabs 랭킹용 프로필/메트릭 저장 실패:", e);
+      }
 
       try {
         const existingSaved = sessionUserId
