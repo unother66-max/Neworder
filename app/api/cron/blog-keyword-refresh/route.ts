@@ -9,7 +9,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 900;
+export const maxDuration = 300;
 
 function parsePositiveInt(raw: string | undefined, fallback: number, max = 100): number {
   if (raw == null || raw === "") return fallback;
@@ -19,7 +19,7 @@ function parsePositiveInt(raw: string | undefined, fallback: number, max = 100):
 }
 
 function cronBlogKeywordRefreshLimit(): number {
-  return parsePositiveInt(process.env.CRON_BLOG_KEYWORD_REFRESH_LIMIT, 5, 50);
+  return parsePositiveInt(process.env.CRON_BLOG_KEYWORD_REFRESH_LIMIT, 3, 50);
 }
 
 function keywordRefreshStaleDays(): number {
