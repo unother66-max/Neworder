@@ -19,7 +19,7 @@ function parsePositiveInt(raw: string | undefined, fallback: number, max = 100):
 }
 
 function cronBlogKeywordRefreshLimit(): number {
-  return parsePositiveInt(process.env.CRON_BLOG_KEYWORD_REFRESH_LIMIT, 3, 50);
+  return parsePositiveInt(process.env.CRON_BLOG_KEYWORD_REFRESH_LIMIT, 1, 50);
 }
 
 function keywordRefreshStaleDays(): number {
