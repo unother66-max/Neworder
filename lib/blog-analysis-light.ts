@@ -9,6 +9,7 @@ import {
   rankPlace1Based,
   sortBlogAnalysisSnapshotsForRank,
 } from "@/lib/blog-analysis-history-rank";
+import { dedupeValidKeywordsForDisplay } from "@/lib/blog-valid-keywords";
 import { fetchValidBlogKeywordsFromCandidates } from "@/lib/blog-keyword-volume";
 import { extractKeywordCandidatesFromTitles } from "@/lib/blog-keywords";
 import { computeRepresentativeValidKeywords } from "@/lib/blog-representative-keywords";
@@ -166,7 +167,7 @@ export async function collectLightBlogAnalysisSnapshot(blogId: string): Promise<
       validKeywords = [];
       validKeywordCount = null;
     } else {
-      validKeywords = await fetchValidBlogKeywordsFromCandidates(candidates);
+      validKeywords = dedupeValidKeywordsForDisplay(await fetchValidBlogKeywordsFromCandidates(candidates));
       validKeywordCount = validKeywords.length;
     }
   } catch {

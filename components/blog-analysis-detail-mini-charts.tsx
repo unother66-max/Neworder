@@ -1,6 +1,6 @@
 "use client";
 
-import type { BlogAnalysisHistoryPoint } from "@/lib/blog-analysis-types";
+import type { BlogAnalysisHistoryPoint, BlogVisitorChartPoint } from "@/lib/blog-analysis-types";
 import type { BlogHistoryTrend } from "@/lib/blog-analysis-history-trend";
 import {
   CartesianGrid,
@@ -18,14 +18,31 @@ function finiteNum(v: number | null | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export function buildVisitorChartRows(points: BlogAnalysisHistoryPoint[]) {
+function kstMonthDayLabel(value: string) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "?";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const month = parts.find((part) => part.type === "month")?.value ?? "??";
+  const day = parts.find((part) => part.type === "day")?.value ?? "??";
+  return `${month}.${day}`;
+}
+
+export function buildVisitorChartRows(points: BlogAnalysisHistoryPoint[], visitorChartData?: BlogVisitorChartPoint[]) {
+  if (visitorChartData?.length) {
+    return visitorChartData.map((p) => ({
+      label: p.label || kstMonthDayLabel(`${p.date}T12:00:00+09:00`),
+      visitor: finiteNum(p.visitorCount) ?? null,
+      analyzedAt: p.date,
+      source: p.source ?? "naver",
+    }));
+  }
+
   return points.map((p) => {
-    const d = new Date(p.analyzedAt);
-    const label =
-      !Number.isNaN(d.getTime())
-        ? `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`
-        : "?";
-    return { label, visitor: finiteNum(p.visitorCount) ?? null, analyzedAt: p.analyzedAt };
+    return { label: kstMonthDayLabel(p.analyzedAt), visitor: finiteNum(p.visitorCount) ?? null, analyzedAt: p.analyzedAt, source: "history" };
   });
 }
 
@@ -34,11 +51,7 @@ export function buildSingleSeriesRows(
   key: "totalRank" | "topicRank" | "validKeywordCount"
 ) {
   return points.map((p) => {
-    const d = new Date(p.analyzedAt);
-    const label =
-      !Number.isNaN(d.getTime())
-        ? `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`
-        : "?";
+    const label = kstMonthDayLabel(p.analyzedAt);
     const raw = p[key];
     const v = finiteNum(raw);
     return { label, value: v ?? null, analyzedAt: p.analyzedAt };
@@ -122,18 +135,34 @@ const CHART_STROKE = "#6366f1";
 
 export function VisitorMetricsChartCard({
   historyPoints,
+  visitorChartData,
   dailyVisitor,
   totalVisitor,
 }: {
   historyPoints: BlogAnalysisHistoryPoint[];
+  visitorChartData?: BlogVisitorChartPoint[];
   dailyVisitor: number | null;
   totalVisitor: number;
 }) {
-  const rows = buildVisitorChartRows(historyPoints);
+  const rows = buildVisitorChartRows(historyPoints, visitorChartData);
   const hasVisitorSeries = rows.some((r) => r.visitor != null && Number.isFinite(r.visitor));
   const { avgDisplay, dayOverDay, dayOverDayPct } = visitorStatsFromHistory(historyPoints, dailyVisitor);
   const pctClass =
     dayOverDay === "-" ? "text-slate-400" : dayOverDayPct != null && dayOverDayPct >= 0 ? "text-emerald-600" : "text-rose-500";
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[blog-analysis] visitor card render", {
+      dailyVisitCount: dailyVisitor,
+      averageVisitCount: avgDisplay,
+      totalVisitCount: totalVisitor,
+      chartData: rows.map((row) => ({
+        date: row.analyzedAt,
+        label: row.label,
+        value: row.visitor,
+        source: row.source,
+      })),
+    });
+  }
 
   return (
     <div className={`bg-white rounded-2xl border ${CARD_BORDER} shadow-sm overflow-hidden flex flex-col`}>

@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, KeyRound, FileText, Type, AlignLeft, ImageIcon, Video, MessageCircle, Heart } from "lucide-react";
+import { BarChart3, KeyRound, FileText, Type, AlignLeft, ImageIcon, Video, MessageCircle, Heart, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import TopNav from "@/components/top-nav";
 import { GlobalLoading } from "@/components/global-loading";
 import { HistoryTabChartCard, VisitorMetricsChartCard } from "@/components/blog-analysis-detail-mini-charts";
 import type {
+  BlogAnalysisPerformanceMeta,
   BlogAnalysisRecentPost,
   BlogAnalysisResult,
   BlogAnalysisHistoryPoint,
@@ -17,9 +18,12 @@ import type {
   BlogValidKeyword,
   BlogPostPatternAnalysis,
   BlogTopicAverageComparison,
+  BlogVisitorChartPoint,
 } from "@/lib/blog-analysis-types";
 import { analyzeBlogHistoryTrend } from "@/lib/blog-analysis-history-trend";
 import { buildBlogAnalysisSummary } from "@/lib/blog-analysis-summary";
+import { computeBlogKeywordInsights } from "@/lib/blog-keyword-insight";
+import { computeRepresentativeValidKeywords } from "@/lib/blog-representative-keywords";
 import { computeBlogScore, type BlogScoreResult } from "@/lib/blog-score";
 import { extractBlogId, isValidNaverBlogId } from "@/lib/scraper";
 
@@ -45,12 +49,59 @@ function formatPostMetric(value: number | string | null | undefined, suffix = ""
   return `${Math.round(n).toLocaleString()}${suffix}`;
 }
 
+function formatPercentMetric(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "-";
+  return `${Number(value).toFixed(2)}%`;
+}
+
+function estimateDailyViewsFromPost(post: BlogAnalysisRecentPost): number | null {
+  const direct = firstFiniteNumber(
+    (post as RecentPostWithTrafficFields).dailyViewCount,
+    (post as RecentPostWithTrafficFields).averageDailyViewCount,
+    (post as RecentPostWithTrafficFields).avgDailyViewCount,
+    (post as RecentPostWithTrafficFields).viewCount,
+    (post as RecentPostWithTrafficFields).views
+  );
+  if (direct !== null) return Math.max(0, Math.round(direct));
+
+  const comments = firstFiniteNumber(post.commentCount) ?? 0;
+  const hearts = firstFiniteNumber(post.sympathyCount, post.likeCount) ?? 0;
+  const shares = firstFiniteNumber(post.shareCount) ?? 0;
+  const words = firstFiniteNumber(post.wordCount) ?? 0;
+  const images = firstFiniteNumber(post.imageCount) ?? 0;
+  const signal =
+    comments * 4 +
+    hearts * 2 +
+    shares * 5 +
+    Math.min(words / 220, 10) +
+    Math.min(images / 4, 8);
+
+  if (signal <= 0) return null;
+  return Math.max(1, Math.round(signal));
+}
+
 function formatPostLevel(value: BlogAnalysisRecentPost["postLevel"]): string {
   if (value === null || value === undefined || value === "") return "-";
   const n = Number(value);
   if (Number.isFinite(n)) return `Lv.${Math.round(n)}`;
   return String(value);
 }
+
+type RecentPostWithTrafficFields = BlogAnalysisRecentPost & {
+  viewCount?: number | null;
+  views?: number | null;
+  dailyViewCount?: number | null;
+  averageDailyViewCount?: number | null;
+  avgDailyViewCount?: number | null;
+  trafficRatio?: number | null;
+  inflowRatio?: number | null;
+};
+
+type PopularPostRow = BlogAnalysisRecentPost & {
+  averageDailyViews: number | null;
+  trafficRatio: number | null;
+  popularSortScore: number;
+};
 
 function formatExposureStatus(post: BlogAnalysisRecentPost): string {
   const rawStatus = String(post.exposureStatus ?? "").trim();
@@ -117,8 +168,8 @@ function getPostPotentialScore(post: BlogAnalysisRecentPost, keywords: BlogValid
 function formatVolumeCell(v: number | null | undefined): string {
   if (v === null || v === undefined) return "-";
   const n = Number(v);
-  if (!Number.isFinite(n)) return "-";
-  return Math.round(n).toLocaleString();
+  if (!Number.isFinite(n) || n <= 0) return "-";
+  return Math.round(n).toLocaleString("ko-KR");
 }
 
 function keywordInfluenceScoreClass(score: number): string {
@@ -133,6 +184,53 @@ function formatKeywordScoreCell(score: number | null | undefined): string {
   const n = Number(score);
   if (!Number.isFinite(n)) return "-";
   return `${Math.round(n)}`;
+}
+
+function formatExposureType(type: string | null | undefined): string {
+  const value = String(type ?? "").trim().toLowerCase();
+  if (value === "blog" || value === "view" || value === "popular") return "인기글";
+  if (value === "integrated") return "통합검색";
+  if (value === "smartblock") return "스마트블록";
+  if (value === "none") return "-";
+  return type ? String(type) : "-";
+}
+
+function getKeywordExposureLabel(row: BlogValidKeyword): string {
+  if (row.integratedSearchBlock || row.integratedSearchRank != null) return "통합검색";
+  if (firstFiniteNumber(row.smartBlockCount) != null && Number(row.smartBlockCount) > 0) return "스마트블록";
+  const blogRank = firstFiniteNumber(row.blogRank);
+  if (blogRank != null && blogRank >= 1 && blogRank <= 10) return "인기글";
+  return formatExposureType(row.exposureType);
+}
+
+function formatSmartBlockCount(value: number | null | undefined): string {
+  const n = firstFiniteNumber(value);
+  if (n === null || n <= 0) return "-";
+  return `${Math.round(n).toLocaleString("ko-KR")}개`;
+}
+
+function isDisplayValidKeyword(row: BlogValidKeyword): boolean {
+  const status = row.keywordValidationStatus;
+  if (status === "valid") return true;
+  if (status != null) return false;
+  const volume = firstFiniteNumber(row.monthlySearchVolume, row.totalVolume);
+  const blogRank = firstFiniteNumber(row.blogRank);
+  const smartBlockCount = firstFiniteNumber(row.smartBlockCount);
+  return (
+    volume !== null &&
+    volume > 0 &&
+    ((blogRank !== null && blogRank >= 1 && blogRank <= 10) ||
+      row.integratedSearchBlock != null ||
+      row.integratedSearchRank != null ||
+      (smartBlockCount !== null && smartBlockCount > 0))
+  );
+}
+
+function formatSaturation(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "-";
+  return `${Math.round(n).toLocaleString()}%`;
 }
 
 function competitionLevelClass(level: BlogKeywordInsight["competitionLevel"] | null | undefined): string {
@@ -177,29 +275,26 @@ function patternTierCaption(score: number): { label: string; className: string }
   return { label: "평균 이하", className: "text-red-500" };
 }
 
-function formatAvgTitleChars(n: number | null | undefined): string {
+function formatRoundedNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "-";
   const x = Number(n);
   if (!Number.isFinite(x)) return "-";
-  const rounded = Math.round(x * 10) / 10;
-  const s = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return `${s}자`;
+  return Math.round(x).toLocaleString("ko-KR");
+}
+
+function formatAvgTitleChars(n: number | null | undefined): string {
+  const s = formatRoundedNumber(n);
+  return s === "-" ? "-" : `${s}자`;
 }
 
 function formatAvgBodyChars(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "-";
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "-";
-  return `${Math.round(x).toLocaleString()}자`;
+  const s = formatRoundedNumber(n);
+  return s === "-" ? "-" : `${s}자`;
 }
 
 function formatAvgImages(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "-";
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "-";
-  const rounded = Math.round(x * 10) / 10;
-  const s = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return `${s}개`;
+  const s = formatRoundedNumber(n);
+  return s === "-" ? "-" : `${s}개`;
 }
 
 /** 주제 평균 유효 키워드 수만 알 때 대략적인 동료 키워드 영향력(0~100) */
@@ -410,6 +505,20 @@ function finiteOrNull(v: number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function proportionalPatternWidths(peerValue: number | null | undefined, myValue: number | null | undefined) {
+  const peer = finiteOrNull(peerValue);
+  const mine = finiteOrNull(myValue);
+  const maxValue = Math.max(peer ?? 0, mine ?? 0, 1);
+  const toWidth = (value: number | null) => {
+    if (value == null || value <= 0) return null;
+    return Math.max(6, Math.round((value / maxValue) * 100));
+  };
+  return {
+    peerPct: toWidth(peer),
+    myPct: toWidth(mine),
+  };
+}
+
 function influencePeerSentence(metricLabel: string, my: number, peer: number | null): string {
   if (peer == null) return "비교 데이터가 부족해요.";
   const d = my - peer;
@@ -515,20 +624,27 @@ function patternPeerItem(
 }
 
 
-type Props = { blogId: string };
-const RECENT_POSTS_ROWS_PER_PAGE = 5;
+type Props = { blogId: string; forceKeywordRefreshDev?: boolean };
+type BottomTab = "recent" | "popular" | "keywords";
+const RECENT_POSTS_ROWS_PER_PAGE = 10;
+const POPULAR_POSTS_ROWS_PER_PAGE = 10;
+const KEYWORD_PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
+/** 동일 blogId 자동 keyword-refresh 동시/연속 호출 완화 (sessionStorage + ref) */
+const KEYWORD_AUTO_REFRESH_INFLIGHT_MS = 12 * 60 * 1000;
 const POSTLABS_OVERALL_RANK_DESCRIPTION =
   "PostLabs에 누적 분석된 블로그 데이터를 기준으로 유효 키워드, 영향력 지수, 최근 활동성 등을 종합해 산정하는 자체 순위입니다. 네이버 공식 순위가 아닙니다.";
 const POSTLABS_TOPIC_RANK_DESCRIPTION =
   "같은 공식 블로그 주제 안에서 PostLabs 자체 기준으로 비교한 순위입니다. 데이터가 충분히 쌓인 뒤 제공됩니다.";
 
-export default function BlogAnalysisDetailClient({ blogId }: Props) {
+export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDev = false }: Props) {
   const router = useRouter();
   const [searchInput, setSearchInput] = useState(blogId);
-  const [activeTab, setActiveTab] = useState("recent");
+  const [activeTab, setActiveTab] = useState<BottomTab>("recent");
   const [recentPostsPage, setRecentPostsPage] = useState(1);
   const [recentPostsVisibleCount, setRecentPostsVisibleCount] = useState(RECENT_POSTS_ROWS_PER_PAGE);
-  const [showKeywordDetails, setShowKeywordDetails] = useState(false);
+  const [popularPostsVisibleCount, setPopularPostsVisibleCount] = useState(POPULAR_POSTS_ROWS_PER_PAGE);
+  const [keywordPage, setKeywordPage] = useState(1);
+  const [keywordPageSize, setKeywordPageSize] = useState<(typeof KEYWORD_PAGE_SIZE_OPTIONS)[number]>(30);
   const [rankTab, setRankTab] = useState<"total" | "topic" | "keywords">("total");
   const [loading, setLoading] = useState(() => isValidNaverBlogId(blogId));
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -557,28 +673,97 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const [blogScoreResult, setBlogScoreResult] = useState<BlogScoreResult | null>(null);
 
   const [historyPoints, setHistoryPoints] = useState<BlogAnalysisHistoryPoint[]>([]);
+  const [visitorChartData, setVisitorChartData] = useState<BlogVisitorChartPoint[]>([]);
 
   const [patternAnalysis, setPatternAnalysis] = useState<BlogPostPatternAnalysis | null>(null);
 
   const [topicAverageComparison, setTopicAverageComparison] = useState<BlogTopicAverageComparison | null>(null);
+
+  const [analysisPerformance, setAnalysisPerformance] = useState<BlogAnalysisPerformanceMeta | null>(null);
+  /** 자동·수동 keyword-refresh 진행 중 (중복 호출 방지; sessionStorage 자동 락과 무관) */
+  const [isKeywordRefreshing, setIsKeywordRefreshing] = useState(false);
+  const [keywordRefreshError, setKeywordRefreshError] = useState<string | null>(null);
+  const keywordRefreshInFlightRef = useRef(false);
+  /** 수동 업데이트: 동기식 중복 클릭 방지 (자동 refresh의 sessionStorage 락과 별도) */
+  const manualKeywordRefreshBusyRef = useRef(false);
+
+  const applyKeywordRefresh = useCallback(
+    (kws: BlogValidKeyword[], cnt: number | null, postsOverride?: BlogAnalysisRecentPost[]) => {
+      const posts = postsOverride ?? recentPosts;
+      const insights = computeBlogKeywordInsights(posts, kws);
+      setValidKeywords(kws);
+      setValidKeywordCount(cnt);
+      setKeywordInsights(insights);
+      setRepresentativeValidKeywords(
+        computeRepresentativeValidKeywords({
+          validKeywords: kws,
+          recentPosts: posts,
+          keywordInsights: insights,
+        })
+      );
+      setBlogScoreResult(
+        computeBlogScore({
+          blogId: resolvedBlogId || blogId,
+          visitorCount: visitor,
+          totalVisitCount: totalVisitor,
+          visitorChartData,
+          postCount,
+          postingFrequency,
+          subscriberCount,
+          recentPosts: posts,
+          patternAnalysis,
+          validKeywords: kws,
+          keywordInsights: insights,
+          validKeywordCount: cnt,
+        })
+      );
+    },
+    [
+      recentPosts,
+      resolvedBlogId,
+      blogId,
+      visitor,
+      totalVisitor,
+      visitorChartData,
+      postCount,
+      postingFrequency,
+      subscriberCount,
+      patternAnalysis,
+    ]
+  );
+
+  const applyKeywordRefreshRef = useRef(applyKeywordRefresh);
+  applyKeywordRefreshRef.current = applyKeywordRefresh;
 
   const loadAnalysis = useCallback(async () => {
     if (!isValidNaverBlogId(blogId)) return;
 
     setLoading(true);
     setFetchError(null);
+    setKeywordRefreshError(null);
     setHistoryPoints([]);
+    setVisitorChartData([]);
     setKeywordInsights([]);
     setRepresentativeValidKeywords([]);
     setPatternAnalysis(null);
     setTopicAverageComparison(null);
     setBlogScoreResult(null);
 
+    setAnalysisPerformance(null);
+
     try {
+      if (process.env.NODE_ENV === "development" && forceKeywordRefreshDev) {
+        console.log(
+          "[blog-analysis dev] forceKeywordRefresh=1 — 분석 후 자동 keyword-refresh 가 실행됩니다."
+        );
+      }
       const response = await fetch("/api/blog-analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blogUrl: blogId }),
+        body: JSON.stringify({
+          blogUrl: blogId,
+          ...(forceKeywordRefreshDev ? { forceKeywordRefresh: true } : {}),
+        }),
       });
       const data = (await response.json()) as BlogAnalysisResult & { error?: string };
 
@@ -586,7 +771,16 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
         setNickname(data.nickname);
         setResolvedBlogId(data.blogId);
         setVisitor(data.visitor ?? null);
-        setTotalVisitor(data.totalVisitor);
+        setTotalVisitor(data.totalVisitCount ?? data.totalVisitor ?? 0);
+        setVisitorChartData(data.visitorChartData ?? []);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[blog-analysis] visitor frontend response", {
+            dailyVisitCount: data.visitor ?? null,
+            averageVisitCount: null,
+            totalVisitCount: data.totalVisitCount ?? data.totalVisitor ?? 0,
+            visitorChartData: data.visitorChartData ?? [],
+          });
+        }
         setRecentPosts(data.recentPosts ?? []);
         setRecentPostsPage(1);
         setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
@@ -603,17 +797,32 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
         setTopicRank(data.topicRank ?? null);
         setAnalyzedAt(data.analyzedAt ?? null);
         setPatternAnalysis(data.patternAnalysis ?? null);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[blog-analysis] pattern frontend render input", {
+            averageTitleLength: data.patternAnalysis?.averageTitleLength ?? null,
+            averageContentLength: data.patternAnalysis?.averageContentLength ?? null,
+            averageImageCount: data.patternAnalysis?.averageImageCount ?? null,
+          });
+        }
         setTopicAverageComparison(data.topicAverageComparison ?? null);
+
+        setAnalysisPerformance(data.performance ?? null);
 
         setProfileImage(data.profileImage || null);
 
         setBlogScoreResult(
           computeBlogScore({
+            blogId: data.blogId,
             visitorCount: data.visitor,
+            totalVisitCount: data.totalVisitCount ?? data.totalVisitor ?? null,
+            visitorChartData: data.visitorChartData ?? [],
             postCount: data.postCount,
             postingFrequency: data.postingFrequency,
             subscriberCount: data.subscriberCount,
             recentPosts: data.recentPosts ?? [],
+            patternAnalysis: data.patternAnalysis ?? null,
+            validKeywords: data.validKeywords ?? [],
+            keywordInsights: data.keywordInsights ?? [],
             validKeywordCount: data.validKeywordCount ?? null,
           })
         );
@@ -621,11 +830,120 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
         try {
           const hr = await fetch(`/api/blog-analysis/history?blogId=${encodeURIComponent(data.blogId)}&days=14`);
           const hj = (await hr.json()) as { ok?: boolean; points?: BlogAnalysisHistoryPoint[] };
-          if (hr.ok && Array.isArray(hj.points)) setHistoryPoints(hj.points);
-          else setHistoryPoints([]);
+          if (hr.ok && Array.isArray(hj.points)) {
+            setHistoryPoints(hj.points);
+            if (process.env.NODE_ENV === "development") {
+              console.log("[blog-analysis] visitor history frontend response", {
+                points: hj.points.map((point) => ({
+                  analyzedAt: point.analyzedAt,
+                  visitorCount: point.visitorCount ?? null,
+                })),
+              });
+            }
+          } else setHistoryPoints([]);
         } catch (e) {
           console.warn("[blog-analysis] 히스토리 조회 실패:", e);
           setHistoryPoints([]);
+        }
+
+        const postsForKw = data.recentPosts ?? [];
+        if (process.env.NODE_ENV === "development") {
+          console.log("[blog-analysis keyword-auto-check client]", {
+            blogId: data.blogId,
+            keywordRefreshNeeded: data.keywordRefreshNeeded ?? false,
+            latestKeywordCheckedAt: data.latestKeywordCheckedAt ?? null,
+            keywordCacheAgeDays: data.keywordCacheAgeDays ?? null,
+            validKeywordCount: data.validKeywordCount ?? null,
+            usedCachedKeywordCount:
+              data.usedCachedKeywordCount ?? data.performance?.usedCachedKeywordCount ?? null,
+            autoRefreshStarted: false,
+            autoRefreshCompleted: false,
+          });
+        }
+
+        if (data.keywordRefreshNeeded === true && typeof window !== "undefined") {
+          const targetId = String(data.blogId).trim();
+          if (isValidNaverBlogId(targetId)) {
+            const lockKey = `keyword_refresh_inflight_${targetId}`;
+            if (forceKeywordRefreshDev) {
+              sessionStorage.removeItem(lockKey);
+            }
+            const prevTs = Number(sessionStorage.getItem(lockKey) ?? "");
+            const lockFresh =
+              Number.isFinite(prevTs) && Date.now() - prevTs < KEYWORD_AUTO_REFRESH_INFLIGHT_MS;
+
+            if (!lockFresh && !keywordRefreshInFlightRef.current) {
+              keywordRefreshInFlightRef.current = true;
+              sessionStorage.setItem(lockKey, String(Date.now()));
+              setKeywordRefreshError(null);
+              setIsKeywordRefreshing(true);
+
+              if (process.env.NODE_ENV === "development") {
+                console.log("[blog-analysis keyword-auto-check client]", {
+                  blogId: targetId,
+                  keywordRefreshNeeded: true,
+                  latestKeywordCheckedAt: data.latestKeywordCheckedAt ?? null,
+                  keywordCacheAgeDays: data.keywordCacheAgeDays ?? null,
+                  validKeywordCount: data.validKeywordCount ?? null,
+                  usedCachedKeywordCount: data.usedCachedKeywordCount ?? null,
+                  autoRefreshStarted: true,
+                });
+              }
+
+              void (async () => {
+                try {
+                  const kr = await fetch("/api/blog-analysis/keyword-refresh", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      blogUrl: targetId,
+                      ...(forceKeywordRefreshDev ? { force: true } : {}),
+                    }),
+                  });
+                  const payload = (await kr.json()) as {
+                    ok?: boolean;
+                    validKeywords?: BlogValidKeyword[];
+                    validKeywordCount?: number | null;
+                    error?: string;
+                  };
+                  if (!kr.ok || !payload.ok) {
+                    if (process.env.NODE_ENV === "development") {
+                      console.warn("[blog-analysis keyword-auto-check client]", {
+                        blogId: targetId,
+                        autoRefreshCompleted: false,
+                        error: payload.error ?? String(kr.status),
+                      });
+                    }
+                    return;
+                  }
+                  applyKeywordRefreshRef.current(
+                    payload.validKeywords ?? [],
+                    payload.validKeywordCount ?? null,
+                    postsForKw
+                  );
+                  if (process.env.NODE_ENV === "development") {
+                    console.log("[blog-analysis keyword-auto-check client]", {
+                      blogId: targetId,
+                      autoRefreshCompleted: true,
+                      validKeywordCount: payload.validKeywordCount ?? null,
+                    });
+                  }
+                } catch (err) {
+                  if (process.env.NODE_ENV === "development") {
+                    console.warn("[blog-analysis keyword-auto-check client]", {
+                      blogId: targetId,
+                      autoRefreshCompleted: false,
+                      error: String(err),
+                    });
+                  }
+                } finally {
+                  keywordRefreshInFlightRef.current = false;
+                  sessionStorage.removeItem(lockKey);
+                  setIsKeywordRefreshing(false);
+                }
+              })();
+            }
+          }
         }
       } else {
         setFetchError(data.error ?? "분석에 실패했습니다.");
@@ -635,7 +953,54 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [blogId]);
+  }, [blogId, forceKeywordRefreshDev]);
+
+  const handleManualKeywordRefresh = useCallback(async () => {
+    const targetId = String(resolvedBlogId || blogId).trim();
+    if (!isValidNaverBlogId(targetId)) return;
+    if (manualKeywordRefreshBusyRef.current || isKeywordRefreshing) return;
+
+    manualKeywordRefreshBusyRef.current = true;
+    setKeywordRefreshError(null);
+    setIsKeywordRefreshing(true);
+    try {
+      const kr = await fetch("/api/blog-analysis/keyword-refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blogUrl: targetId,
+          ...(forceKeywordRefreshDev ? { force: true } : {}),
+        }),
+      });
+      const payload = (await kr.json()) as {
+        ok?: boolean;
+        validKeywords?: BlogValidKeyword[];
+        validKeywordCount?: number | null;
+        error?: string;
+      };
+      if (!kr.ok || !payload.ok) {
+        setKeywordRefreshError(payload.error ?? `요청 실패 (${kr.status})`);
+        return;
+      }
+      applyKeywordRefresh(
+        payload.validKeywords ?? [],
+        payload.validKeywordCount ?? null,
+        recentPosts
+      );
+    } catch {
+      setKeywordRefreshError("유효 키워드 업데이트 중 오류가 발생했습니다.");
+    } finally {
+      manualKeywordRefreshBusyRef.current = false;
+      setIsKeywordRefreshing(false);
+    }
+  }, [
+    applyKeywordRefresh,
+    blogId,
+    forceKeywordRefreshDev,
+    isKeywordRefreshing,
+    recentPosts,
+    resolvedBlogId,
+  ]);
 
   useEffect(() => {
     setSearchInput(blogId);
@@ -662,8 +1027,8 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
 
   const historyTrend = useMemo(() => analyzeBlogHistoryTrend(historyPoints), [historyPoints]);
   const currentResultValidKeywordCount = useMemo(() => {
-    if (representativeValidKeywords.length > 0) return representativeValidKeywords.length;
     if (validKeywordCount != null) return validKeywordCount;
+    if (representativeValidKeywords.length > 0) return representativeValidKeywords.length;
 
     const latestHistoryPoint = historyPoints.find((point) => {
       const value = point.validKeywordCount;
@@ -728,12 +1093,59 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
   const recentPostsPageStart = (recentPostsPage - 1) * RECENT_POSTS_ROWS_PER_PAGE;
   const visibleRecentPosts = recentPosts.slice(recentPostsPageStart, recentPostsPageStart + recentPostsVisibleCount);
   const canShowMoreRecentPosts = recentPostsPageStart + recentPostsVisibleCount < recentPosts.length;
+  const displayValidKeywords = useMemo(
+    () => validKeywords.filter((row) => isDisplayValidKeyword(row)),
+    [validKeywords]
+  );
+  const keywordTotalPages = Math.max(1, Math.ceil(displayValidKeywords.length / keywordPageSize));
+  const keywordPageStart = (keywordPage - 1) * keywordPageSize;
+  const visibleValidKeywords = displayValidKeywords.slice(keywordPageStart, keywordPageStart + keywordPageSize);
+  const popularPosts = useMemo<PopularPostRow[]>(() => {
+    const rows = recentPosts.map((post) => {
+      const postWithTraffic = post as RecentPostWithTrafficFields;
+      const averageDailyViews = estimateDailyViewsFromPost(post);
+      return {
+        ...post,
+        averageDailyViews,
+        trafficRatio: firstFiniteNumber(postWithTraffic.trafficRatio, postWithTraffic.inflowRatio),
+        popularSortScore: averageDailyViews ?? 0,
+      };
+    });
+    const totalEstimatedViews = rows.reduce((sum, row) => sum + (row.averageDailyViews ?? 0), 0);
+
+    return rows
+      .map((row) => ({
+        ...row,
+        trafficRatio:
+          row.trafficRatio ??
+          (row.averageDailyViews !== null && totalEstimatedViews > 0
+            ? (row.averageDailyViews / totalEstimatedViews) * 100
+            : null),
+      }))
+      .sort((a, b) => {
+        if (b.popularSortScore !== a.popularSortScore) return b.popularSortScore - a.popularSortScore;
+        const bd = new Date(b.publishedAt ?? b.createdAt ?? 0).getTime();
+        const ad = new Date(a.publishedAt ?? a.createdAt ?? 0).getTime();
+        return (Number.isFinite(bd) ? bd : 0) - (Number.isFinite(ad) ? ad : 0);
+      });
+  }, [recentPosts]);
+  const visiblePopularPosts = popularPosts.slice(0, popularPostsVisibleCount);
+  const canShowMorePopularPosts = popularPostsVisibleCount < popularPosts.length;
 
   useEffect(() => {
     if (recentPostsPage <= recentPostsTotalPages) return;
     setRecentPostsPage(recentPostsTotalPages);
     setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
   }, [recentPostsPage, recentPostsTotalPages]);
+
+  useEffect(() => {
+    if (keywordPage <= keywordTotalPages) return;
+    setKeywordPage(keywordTotalPages);
+  }, [keywordPage, keywordTotalPages]);
+
+  useEffect(() => {
+    setPopularPostsVisibleCount(POPULAR_POSTS_ROWS_PER_PAGE);
+  }, [recentPosts]);
 
   const handleRecentPostsPageChange = (page: number) => {
     setRecentPostsPage(page);
@@ -742,6 +1154,12 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
 
   const handleShowMoreRecentPosts = () => {
     setRecentPostsVisibleCount((count) => count + RECENT_POSTS_ROWS_PER_PAGE);
+  };
+
+  const handleKeywordPageSizeChange = (value: string) => {
+    const next = KEYWORD_PAGE_SIZE_OPTIONS.find((option) => option === Number(value)) ?? 30;
+    setKeywordPageSize(next);
+    setKeywordPage(1);
   };
 
   const blogInfoItems = [
@@ -971,7 +1389,12 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
 
           {/* 2행: 방문자 지표 + 순위/키워드 그래프 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <VisitorMetricsChartCard historyPoints={historyPoints} dailyVisitor={visitor} totalVisitor={totalVisitor} />
+            <VisitorMetricsChartCard
+              historyPoints={historyPoints}
+              visitorChartData={visitorChartData}
+              dailyVisitor={visitor}
+              totalVisitor={totalVisitor}
+            />
             <HistoryTabChartCard
               historyPoints={historyPoints}
               rankTab={rankTab}
@@ -1136,9 +1559,18 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                       const tSc = Number(patternAnalysis.titleLengthScore ?? 0);
                       const cSc = Number(patternAnalysis.contentLengthScore ?? 0);
                       const iSc = Number(patternAnalysis.imageCountScore ?? 0);
-                      const peerT = roughTitleScoreFromPeerChars(topicAverageComparison?.averageTitleLength);
-                      const peerC = roughContentScoreFromPeerChars(topicAverageComparison?.averageContentLength);
-                      const peerI = roughImageScoreFromPeerCount(topicAverageComparison?.averageImageCount);
+                      const titleWidths = proportionalPatternWidths(
+                        topicAverageComparison?.averageTitleLength,
+                        patternAnalysis.averageTitleLength
+                      );
+                      const contentWidths = proportionalPatternWidths(
+                        topicAverageComparison?.averageContentLength,
+                        patternAnalysis.averageContentLength
+                      );
+                      const imageWidths = proportionalPatternWidths(
+                        topicAverageComparison?.averageImageCount,
+                        patternAnalysis.averageImageCount
+                      );
                       return (
                         <>
                           <PremiumCompareBar
@@ -1146,10 +1578,10 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                             title="제목 길이"
                             peerLabel="상위권 평균"
                             peerText={formatAvgTitleChars(topicAverageComparison?.averageTitleLength)}
-                            peerPct={peerT != null ? clampPct(peerT) : null}
+                            peerPct={titleWidths.peerPct}
                             myLabel="나의 평균"
                             myText={formatAvgTitleChars(patternAnalysis.averageTitleLength)}
-                            myPct={clampPct(tSc)}
+                            myPct={titleWidths.myPct}
                             tierLabel={patternTierCaption(tSc).label}
                             delay={0.15}
                           />
@@ -1158,10 +1590,10 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                             title="본문 길이"
                             peerLabel="상위권 평균"
                             peerText={formatAvgBodyChars(topicAverageComparison?.averageContentLength)}
-                            peerPct={peerC != null ? clampPct(peerC) : null}
+                            peerPct={contentWidths.peerPct}
                             myLabel="나의 평균"
                             myText={formatAvgBodyChars(patternAnalysis.averageContentLength)}
-                            myPct={clampPct(cSc)}
+                            myPct={contentWidths.myPct}
                             tierLabel={patternTierCaption(cSc).label}
                             delay={0.25}
                           />
@@ -1170,10 +1602,10 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                             title="이미지 수"
                             peerLabel="상위권 평균"
                             peerText={formatAvgImages(topicAverageComparison?.averageImageCount)}
-                            peerPct={peerI != null ? clampPct(peerI) : null}
+                            peerPct={imageWidths.peerPct}
                             myLabel="나의 평균"
                             myText={formatAvgImages(patternAnalysis.averageImageCount)}
-                            myPct={clampPct(iSc)}
+                            myPct={imageWidths.myPct}
                             tierLabel={patternTierCaption(iSc).label}
                             delay={0.35}
                           />
@@ -1186,102 +1618,40 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
             </motion.div>
           </div>
 
-          {/* 키워드 테이블 */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-            <div className={`${showKeywordDetails ? "border-b border-slate-100 bg-slate-50/80" : "bg-white"} px-2 py-2`}>
-              <button
-                type="button"
-                onClick={() => setShowKeywordDetails((open) => !open)}
-                className="flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
-                aria-expanded={showKeywordDetails}
-              >
-                {showKeywordDetails ? "유효 키워드 상세 닫기" : "유효 키워드 상세 보기"}
-              </button>
+          {/* 하단 탭 테이블 */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+            <div className="border-b border-slate-100 bg-slate-50/70 px-2.5 py-2">
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100/80 p-1">
+                {[
+                  { key: "recent", label: "최근 포스팅" },
+                  { key: "popular", label: "인기글 목록" },
+                  { key: "keywords", label: "유효 키워드" },
+                ].map((tab) => {
+                  const isActive = activeTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setActiveTab(tab.key as BottomTab)}
+                      className={`h-9 rounded-lg text-[12px] font-bold transition-all ${
+                        isActive
+                          ? "bg-slate-800 text-white shadow-sm"
+                          : "border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {isKeywordRefreshing && activeTab === "keywords" ? (
+                <p className="mt-2 px-2 text-center text-[10px] text-slate-500">
+                  유효 키워드 업데이트 중...
+                </p>
+              ) : null}
             </div>
-            {showKeywordDetails ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] text-left">
-                  <thead className="bg-gray-50/80 border-b border-gray-100">
-                    <tr>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 whitespace-nowrap">키워드</th>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">총 검색량</th>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">모바일</th>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">PC</th>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">점수</th>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">등장</th>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">최근</th>
-                      <th className="px-2.5 py-1.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">경쟁</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {validKeywords.length > 0 ? (
-                      validKeywords.map((row, i) => {
-                        const insight = keywordInsights.find((k) => k.keyword === row.keyword);
-                        return (
-                          <tr key={`${row.keyword}-${i}`} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-2.5 py-1.5 text-[11px] font-semibold text-[#111827] whitespace-nowrap">{row.keyword}</td>
-                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                              {formatVolumeCell(insight?.totalVolume ?? row.totalVolume)}
-                            </td>
-                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                              {formatVolumeCell(insight?.mobileVolume ?? row.mobileVolume)}
-                            </td>
-                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                              {formatVolumeCell(insight?.pcVolume ?? row.pcVolume)}
-                            </td>
-                            <td
-                              className={`px-2.5 py-1.5 text-[10px] text-right tabular-nums whitespace-nowrap font-bold ${insight ? keywordInfluenceScoreClass(insight.keywordScore) : "text-gray-600"}`}
-                            >
-                              {insight ? formatKeywordScoreCell(insight.keywordScore) : "-"}
-                            </td>
-                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                              {insight && Number.isFinite(insight.matchedPostCount) ? insight.matchedPostCount.toLocaleString() : "-"}
-                            </td>
-                            <td className="px-2.5 py-1.5 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
-                              {insight ? formatPostDate(insight.lastAppearedAt) : "-"}
-                            </td>
-                            <td className={`px-2.5 py-1.5 text-[10px] text-right whitespace-nowrap ${insight ? competitionLevelClass(insight.competitionLevel) : "text-gray-600"}`}>
-                              {insight ? insight.competitionLevel : "-"}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={8} className="px-3 py-6 text-center text-gray-400 text-[11px]">
-                          {validKeywordCount === null ? "키워드 후보·검색량 조회 전이거나 없습니다." : "유효 키워드가 없습니다."}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </div>
 
-          {/* 포스팅 */}
-          <div>
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
-              <div className="border-b border-slate-100 bg-slate-50/70 px-2.5 py-2">
-                <div className="flex gap-0.5 bg-slate-100/80 p-0.5 rounded-xl w-fit">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("recent")}
-                    className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${activeTab === "recent" ? "bg-white shadow-sm text-slate-900" : "text-gray-400"}`}
-                  >
-                    최근 포스팅
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold text-gray-400 cursor-not-allowed"
-                  >
-                    인기글 목록
-                    <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">준비중</span>
-                  </button>
-                </div>
-              </div>
-              {activeTab === "recent" ? (
+            {activeTab === "recent" ? (
                 <>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[980px] text-left">
@@ -1409,12 +1779,224 @@ export default function BlogAnalysisDetailClient({ blogId }: Props) {
                   </div>
                 ) : null}
                 </>
-              ) : (
-                <div className="px-3 py-8 text-center text-gray-400 text-xs">
-                  인기글 목록은 준비중입니다.
+              ) : null}
+
+            {activeTab === "popular" ? (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-left">
+                    <thead className="bg-slate-50/80 border-b border-slate-100">
+                      <tr>
+                        <th className="px-3 py-2 text-[10px] font-bold text-gray-500 whitespace-nowrap">발행일</th>
+                        <th className="px-3 py-2 text-[10px] font-bold text-gray-500">제목</th>
+                        <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">일 평균 조회수</th>
+                        <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">유입 비율</th>
+                        <th className="px-3 py-2 text-[10px] font-bold text-gray-500 text-center whitespace-nowrap">분석</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {visiblePopularPosts.length > 0 ? (
+                        visiblePopularPosts.map((post, i) => {
+                          const publishedAt = post.publishedAt ?? post.createdAt;
+                          const heartCount = firstFiniteNumber(
+                            post.sympathyCount,
+                            (post as BlogAnalysisRecentPost & { heartCount?: number | null }).heartCount,
+                            post.likeCount
+                          );
+                          const detailItems = [
+                            { label: "사진", value: firstFiniteNumber(post.imageCount) ?? 0, icon: ImageIcon },
+                            { label: "동영상", value: firstFiniteNumber(post.videoCount) ?? 0, icon: Video },
+                            { label: "글자", value: firstFiniteNumber(post.wordCount) ?? 0, icon: Type },
+                            { label: "댓글", value: firstFiniteNumber(post.commentCount) ?? 0, icon: MessageCircle },
+                            { label: "하트", value: heartCount ?? 0, icon: Heart },
+                          ];
+                          return (
+                            <tr key={`${post.url || post.title}-popular-${i}`} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="px-3 py-2 align-top text-[10px] text-gray-400 whitespace-nowrap tabular-nums">
+                                {formatPostDate(publishedAt)}
+                              </td>
+                              <td className="px-3 py-2 align-top min-w-0">
+                                <a href={post.url} target="_blank" rel="noreferrer" className="block text-xs font-bold text-[#111827] hover:text-[#2563EB] transition-colors truncate">
+                                  {post.title || "-"}
+                                </a>
+                                <div className="mt-1 flex max-w-[540px] flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium text-gray-400">
+                                  {detailItems.map((item) => (
+                                    <span key={item.label} className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                                      <item.icon className="h-3 w-3 text-gray-300" aria-hidden="true" />
+                                      <span className="sr-only">{item.label}</span>
+                                      <span>{formatPostMetric(item.value)}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top text-right text-[11px] font-bold text-slate-700 tabular-nums whitespace-nowrap">
+                                {post.averageDailyViews === null ? "-" : `${post.averageDailyViews.toLocaleString("ko-KR")}회`}
+                              </td>
+                              <td className="px-3 py-2 align-top text-right text-[11px] font-bold text-slate-700 tabular-nums whitespace-nowrap">
+                                {formatPercentMetric(post.trafficRatio)}
+                              </td>
+                              <td className="px-3 py-2 align-top text-center whitespace-nowrap">
+                                {post.url ? (
+                                  <a
+                                    href={post.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition-colors hover:bg-slate-800 hover:text-white"
+                                    aria-label="포스팅 열기"
+                                  >
+                                    <Search className="h-3.5 w-3.5" />
+                                  </a>
+                                ) : (
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-50 text-slate-300">
+                                    <Search className="h-3.5 w-3.5" />
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-8 text-center text-gray-400 text-xs">
+                            인기글 데이터 준비중입니다. 최근 포스팅 메트릭이 쌓이면 표시됩니다.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </div>
+                {canShowMorePopularPosts ? (
+                  <div className="border-t border-slate-100 bg-white px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setPopularPostsVisibleCount((count) => count + POPULAR_POSTS_ROWS_PER_PAGE)}
+                      className="flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                    >
+                      더보기
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
+            {activeTab === "keywords" ? (
+              <>
+                <div className="border-b border-slate-100 bg-slate-50/40 px-3 py-2">
+                  <p className="text-[10px] leading-relaxed text-slate-500">
+                    유효 키워드는 약 2주 간격으로 자동 갱신되며, 필요할 때 직접 업데이트할 수 있습니다.
+                  </p>
+                  {keywordRefreshError ? (
+                    <p className="mt-1.5 text-[10px] font-semibold text-red-600">{keywordRefreshError}</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white px-3 py-2">
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    유효 키워드 <span className="text-slate-900">{displayValidKeywords.length.toLocaleString("ko-KR")}개</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleManualKeywordRefresh()}
+                      disabled={
+                        loading ||
+                        isKeywordRefreshing ||
+                        !isValidNaverBlogId(String(resolvedBlogId || blogId).trim())
+                      }
+                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-45"
+                    >
+                      {isKeywordRefreshing ? "유효 키워드 업데이트 중..." : "유효 키워드 업데이트"}
+                    </button>
+                    <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                      표시 개수
+                      <select
+                        value={keywordPageSize}
+                        onChange={(event) => handleKeywordPageSizeChange(event.target.value)}
+                        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-bold text-slate-700 outline-none focus:border-slate-400"
+                      >
+                        {KEYWORD_PAGE_SIZE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}개
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[920px] text-left">
+                    <thead className="bg-slate-50/80 border-b border-slate-100">
+                      <tr>
+                        <th className="px-2.5 py-2 text-[10px] font-bold text-gray-500 whitespace-nowrap">키워드</th>
+                        <th className="px-2.5 py-2 text-[10px] font-bold text-gray-500 whitespace-nowrap">노출 위치</th>
+                        <th className="px-2.5 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">통합검색 노출 위치</th>
+                        <th className="px-2.5 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">스마트블록 개수</th>
+                        <th className="px-2.5 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">블로그 순위</th>
+                        <th className="px-2.5 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">월간 검색량</th>
+                        <th className="px-2.5 py-2 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap">콘텐츠 포화도</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {visibleValidKeywords.length > 0 ? (
+                        visibleValidKeywords.map((row, i) => (
+                          <tr key={`${row.keyword}-${keywordPageStart + i}`} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="px-2.5 py-2 text-[11px] font-semibold text-[#111827] whitespace-nowrap">{row.keyword}</td>
+                            <td className="px-2.5 py-2 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
+                              {getKeywordExposureLabel(row)}
+                            </td>
+                            <td className="px-2.5 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {row.integratedSearchBlock ?? formatRankDisplay(row.integratedSearchRank)}
+                            </td>
+                            <td className="px-2.5 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {formatSmartBlockCount(row.smartBlockCount)}
+                            </td>
+                            <td className="px-2.5 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {formatRankDisplay(row.blogRank)}
+                            </td>
+                            <td className="px-2.5 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {formatVolumeCell(row.monthlySearchVolume ?? row.totalVolume)}
+                            </td>
+                            <td className="px-2.5 py-2 text-[10px] text-gray-600 text-right tabular-nums whitespace-nowrap">
+                              {formatSaturation(row.contentSaturation)}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-8 text-center text-gray-400 text-xs">
+                            {validKeywordCount === null ? "키워드 후보·검색량 조회 전이거나 없습니다." : "유효 키워드가 없습니다."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {keywordTotalPages > 1 ? (
+                  <div className="border-t border-slate-100 bg-white px-3 py-3">
+                    <div className="flex flex-wrap items-center justify-center gap-1">
+                      {Array.from({ length: keywordTotalPages }, (_, index) => {
+                        const page = index + 1;
+                        const isActive = page === keywordPage;
+                        return (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => setKeywordPage(page)}
+                            className={`h-7 min-w-7 rounded-lg px-2 text-[11px] font-bold transition-colors ${
+                              isActive
+                                ? "bg-[#111827] text-white"
+                                : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                            }`}
+                            aria-current={isActive ? "page" : undefined}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </div>
         </div>
       </section>

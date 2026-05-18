@@ -52,6 +52,88 @@ function stripTags(html: string): string {
   ).replace(/\s+/g, " ");
 }
 
+function cleanPostTitle(rawTitle: string): string {
+  return decodeBasicEntities(String(rawTitle ?? ""))
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/\s*[:|]\s*네이버\s*블로그\s*$/i, "")
+    .replace(/\s*-\s*네이버\s*블로그\s*$/i, "")
+    .replace(/\s*네이버\s*블로그\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanTitleFromHtml(rawTitleHtml: string): string {
+  return cleanPostTitle(stripTags(rawTitleHtml));
+}
+
+function getMetaContent(html: string, propertyName: string): string | null {
+  const escaped = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escaped}["'][^>]*>`, "i"),
+  ];
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) return cleanPostTitle(match[1]);
+  }
+  return null;
+}
+
+function extractPageTitle(html: string): string | null {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match?.[1] ? cleanTitleFromHtml(match[1]) : null;
+}
+
+function extractRenderedTitle(html: string): string | null {
+  const titleModule = html.match(/<div[^>]*\bse-title-text\b[^>]*>([\s\S]{0,1000}?)<\/div>/i);
+  if (titleModule?.[1]) {
+    const title = cleanTitleFromHtml(titleModule[1]);
+    if (title && title !== "블로그") return title;
+  }
+
+  const h1 = html.match(/<h1[^>]*>([\s\S]{0,500}?)<\/h1>/i);
+  if (h1?.[1]) {
+    const title = cleanTitleFromHtml(h1[1]);
+    if (title && title !== "블로그") return title;
+  }
+
+  return null;
+}
+
+function selectTitleCandidate(html: string, rssTitle: string): {
+  rssTitle: string;
+  pageTitle: string | null;
+  ogTitle: string | null;
+  renderedTitle: string | null;
+  selectedTitle: string;
+  selectedTitleSource: string;
+} {
+  const rss = cleanPostTitle(rssTitle);
+  const pageTitle = extractPageTitle(html);
+  const ogTitle = getMetaContent(html, "og:title");
+  const renderedTitle = extractRenderedTitle(html);
+  const selectedTitle = renderedTitle ?? ogTitle ?? pageTitle ?? rss;
+  const selectedTitleSource = renderedTitle
+    ? "rendered-title"
+    : ogTitle
+      ? "og:title"
+      : pageTitle
+        ? "title-tag"
+        : "rss";
+  return {
+    rssTitle: rss,
+    pageTitle,
+    ogTitle,
+    renderedTitle,
+    selectedTitle,
+    selectedTitleSource,
+  };
+}
+
+function titleLengthForPattern(title: string): number {
+  return [...String(title ?? "").replace(/\s/g, "")].length;
+}
+
 function extractBalancedDivFragment(html: string, markerIndex: number): string | null {
   const start = html.lastIndexOf("<div", markerIndex);
   if (start === -1) return null;
@@ -90,14 +172,20 @@ function extractFragmentsByClass(html: string, className: string): string[] {
   return fragments;
 }
 
-function pickBestTextFragment(fragments: string[]): { fragment: string; text: string } | null {
+type MainFragment = {
+  fragment: string;
+  text: string;
+  source: string;
+};
+
+function pickBestTextFragment(fragments: string[], source: string): MainFragment | null {
   let best: { fragment: string; text: string } | null = null;
   for (const fragment of fragments) {
     const text = stripTags(fragment).trim();
     if (text.length < 15) continue;
     if (!best || text.length > best.text.length) best = { fragment, text };
   }
-  return best;
+  return best ? { ...best, source } : null;
 }
 
 /** `.se-text-paragraph` 블록 텍스트 수집 */
@@ -165,18 +253,43 @@ function extractFallbackBlocks(html: string): string {
   return chunks.join(" ").trim();
 }
 
-function countImgs(fragment: string): number {
+function imageStats(fragment: string): { imageCount: number; excludedImageCount: number } {
   const tags = fragment.match(/<img\b[^>]*>/gi) ?? [];
-  return tags.filter((tag) => {
-    const src = tag.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+  const seen = new Set<string>();
+  let imageCount = 0;
+  let excludedImageCount = 0;
+
+  for (const tag of tags) {
+    const src =
+      tag.match(/\b(?:data-lazy-src|data-src|src)\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
     const cls = tag.match(/\bclass\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
-    const text = `${src} ${cls}`.toLowerCase();
-    if (text.includes("profile")) return false;
-    if (text.includes("emoticon")) return false;
-    if (text.includes("sticker")) return false;
-    if (text.includes("icon")) return false;
-    return true;
-  }).length;
+    const alt = tag.match(/\balt\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    const text = `${src} ${cls} ${alt}`.toLowerCase();
+    const shouldExclude =
+      !src ||
+      text.includes("profile") ||
+      text.includes("emoticon") ||
+      text.includes("sticker") ||
+      text.includes("icon") ||
+      text.includes("common/sp") ||
+      text.includes("btn_") ||
+      text.includes("blank.gif");
+
+    if (shouldExclude) {
+      excludedImageCount += 1;
+      continue;
+    }
+
+    const normalizedSrc = src.replace(/([?&](?:type|w|h|width|height|quality)=[^&]+)/gi, "").trim();
+    if (seen.has(normalizedSrc)) {
+      excludedImageCount += 1;
+      continue;
+    }
+    seen.add(normalizedSrc);
+    imageCount += 1;
+  }
+
+  return { imageCount, excludedImageCount };
 }
 
 function countVideos(fragment: string): number {
@@ -188,21 +301,22 @@ function countVideos(fragment: string): number {
   return Math.max(tagCount, componentCount, moduleCount, videoClassCount, playerCount, 0);
 }
 
-function extractMainFragment(html: string): { fragment: string; text: string } | null {
-  const mainContainer = pickBestTextFragment(extractFragmentsByClass(html, "se-main-container"));
+function extractMainFragment(html: string): MainFragment | null {
+  const mainContainer = pickBestTextFragment(extractFragmentsByClass(html, "se-main-container"), "se-main-container");
   if (mainContainer) return mainContainer;
 
-  const componentContent = pickBestTextFragment(extractFragmentsByClass(html, "se-component-content"));
+  const componentContent = pickBestTextFragment(extractFragmentsByClass(html, "se-component-content"), "se-component-content");
   if (componentContent) return componentContent;
 
   const area = extractPostViewAreaFragment(html);
   if (area) {
     const text = stripTags(area).trim();
-    if (text.length >= 15) return { fragment: area, text };
+    if (text.length >= 15) return { fragment: area, text, source: "postViewArea" };
   }
 
   let fragment = "";
   let text = extractFromSeParagraphs(html);
+  let source = "se-text-paragraph";
   if (text.length >= 30) {
     const paraHtmlParts: string[] = [];
     const re = /<div[^>]*\bse-text-paragraph\b[^>]*>([\s\S]*?)<\/div>/gi;
@@ -217,6 +331,7 @@ function extractMainFragment(html: string): { fragment: string; text: string } |
     const pv = extractPostViewLike(html);
     if (pv.length > text.length) {
       text = pv;
+      source = "post-view-like";
       const re = /<(?:div|section)[^>]*\bpost-view\b[^>]*>([\s\S]*?)<\/(?:div|section)>/gi;
       let best = "";
       let m: RegExpExecArray | null;
@@ -231,6 +346,7 @@ function extractMainFragment(html: string): { fragment: string; text: string } |
     const fb = extractFallbackBlocks(html);
     if (fb.length > text.length) {
       text = fb;
+      source = "body-fallback";
       fragment = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html;
     }
   }
@@ -241,7 +357,7 @@ function extractMainFragment(html: string): { fragment: string; text: string } |
     fragment = html;
   }
 
-  return { fragment, text };
+  return { fragment, text, source };
 }
 
 export type BlogPostPatternMetrics = {
@@ -250,6 +366,21 @@ export type BlogPostPatternMetrics = {
   imageCount: number;
   videoCount: number;
   contentText: string;
+  debug?: {
+    postUrl?: string;
+    rssTitle: string;
+    pageTitle: string | null;
+    ogTitle: string | null;
+    renderedTitle: string | null;
+    selectedTitle: string;
+    selectedTitleSource: string;
+    selectedTitleLength: number;
+    selectedBodyContainer: string;
+    rawBodyTextLength: number;
+    cleanedBodyTextLength: number;
+    imageCount: number;
+    excludedImageCount: number;
+  };
 };
 
 export function scoreTitleLength(len: number): number {
@@ -296,14 +427,20 @@ async function fetchHtml(url: string, refererBlogUrl: string): Promise<string | 
 }
 
 /** 단일 포스트 HTML에서 메트릭 추출 (실패 시 null) */
-export function extractMetricsFromPostHtml(html: string, rssTitle: string): BlogPostPatternMetrics | null {
-  const titleLen = [...String(rssTitle ?? "").trim()].length;
+export function extractMetricsFromPostHtml(
+  html: string,
+  rssTitle: string,
+  postUrl?: string
+): BlogPostPatternMetrics | null {
+  const titleCandidate = selectTitleCandidate(html, rssTitle);
+  const titleLen = titleLengthForPattern(titleCandidate.selectedTitle);
   const main = extractMainFragment(html);
   if (!main) return null;
 
+  const rawBodyTextLength = main.text.length;
   const contentText = main.text.replace(/\u200b/g, "").replace(/\s+/g, " ").trim();
   const contentLength = [...contentText.replace(/\s/g, "")].length;
-  const imageCount = countImgs(main.fragment);
+  const { imageCount, excludedImageCount } = imageStats(main.fragment);
   const videoCount = countVideos(main.fragment);
 
   if (contentLength < 15) return null;
@@ -314,17 +451,27 @@ export function extractMetricsFromPostHtml(html: string, rssTitle: string): Blog
     imageCount,
     videoCount,
     contentText,
+    debug: {
+      postUrl,
+      ...titleCandidate,
+      selectedTitleLength: titleLen,
+      selectedBodyContainer: main.source,
+      rawBodyTextLength,
+      cleanedBodyTextLength: contentLength,
+      imageCount,
+      excludedImageCount,
+    },
   };
 }
 
 /**
- * 최근 RSS 포스트(최대 10개) 모바일 공개 HTML을 받아 평균 패턴·점수 산출.
+ * 최근 RSS 포스트(최대 5개) 모바일 공개 HTML을 받아 평균 패턴·점수 산출.
  * 개별 fetch/파싱 실패는 건너뜀. 성공 0건이면 null.
  */
 export async function analyzeBlogPostPatterns(
   posts: BlogAnalysisRecentPost[]
 ): Promise<BlogPostPatternAnalysis | null> {
-  const slice = posts.slice(0, 10);
+  const slice = posts.slice(0, 5);
   if (slice.length === 0) return null;
 
   const rows = await Promise.all(
@@ -334,7 +481,7 @@ export async function analyzeBlogPostPatterns(
       const referer = post.url.startsWith("http") ? post.url : `https://blog.naver.com/`;
       const html = await fetchHtml(mobileUrl, referer);
       if (!html) return null;
-      return extractMetricsFromPostHtml(html, post.title);
+      return extractMetricsFromPostHtml(html, post.title, post.url);
     })
   );
 
@@ -349,6 +496,20 @@ export async function analyzeBlogPostPatterns(
   const averageTitleLength = round1(sumTitle / n);
   const averageContentLength = round1(sumContent / n);
   const averageImageCount = round1(sumImg / n);
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[blog-post-pattern] metrics", {
+      analyzedPostCount: n,
+      requestedPostCount: slice.length,
+      postUrls: slice.map((post) => post.url),
+      rows: ok.map((row) => row.debug),
+      finalAverages: {
+        averageTitleLength,
+        averageContentLength,
+        averageImageCount,
+      },
+    });
+  }
 
   return {
     averageTitleLength,

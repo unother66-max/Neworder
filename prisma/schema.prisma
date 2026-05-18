@@ -557,6 +557,60 @@ model BlogPostMetricSnapshot {
   @@index([exposureStatus])
 }
 
+/** 블로그별 실제 검색 노출 기반 유효 키워드 캐시 */
+model BlogKeywordExposureSnapshot {
+  id                    String   @id @default(cuid())
+  blogId                String
+  keyword               String
+
+  /** valid | rank_only | volume_only | out_of_rank | low_volume | unchecked — 블로그 노출·검색량 확정 여부 */
+  keywordValidationStatus String?
+
+  exposureType          String?
+  integratedSearchRank  Int?
+  integratedSearchBlock String?
+  smartBlockCount       Int?
+  blogRank              Int?
+
+  monthlySearchVolume   Int?
+  mobileSearchVolume    Int?
+  pcSearchVolume        Int?
+  contentSaturation     Float?
+
+  sourcePostUrl         String?  @db.Text
+  sourcePostTitle       String?
+  checkedAt             DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([blogId, keyword])
+  @@index([blogId])
+  @@index([blogId, checkedAt])
+  @@index([exposureType])
+  @@index([blogRank])
+  @@index([monthlySearchVolume])
+}
+
+/**
+ * SearchAD 키워드 검색량 영속 캐시 (/top-blog·플레이스·keyword-refresh 등 공통).
+ * normalizedKeyword 기준 14일 TTL.
+ */
+model KeywordSearchVolumeCache {
+  id                   String   @id @default(cuid())
+  keyword              String   @db.VarChar(512)
+  normalizedKeyword    String   @unique @db.VarChar(512)
+  monthlyPcQcCnt       Int?
+  monthlyMobileQcCnt   Int?
+  totalVolume          Int
+  /** 월간 합계 기준 250 미만(또는 미발견 0건)으로 확정된 경우 SearchAD 재조회 생략에 사용 */
+  belowThreshold       Boolean  @default(false)
+  source               String   @default("naver-searchad")
+  checkedAt            DateTime @default(now())
+  raw                  Json?
+
+  @@index([checkedAt])
+}
+
 /** 블로그 분석 저장 목록: 고정/자동추적 상태 영구 저장 */
 model BlogAnalysisSaved {
   id           String   @id @default(cuid())

@@ -1,5 +1,6 @@
+import { confirmedMonthlyVolumes } from "@/lib/blog-keyword-volume";
+import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
 import { makePostMatchKey, searchNaverBlogRanks } from "@/lib/naver";
-import { getKeywordSearchVolume } from "@/lib/searchad";
 
 export async function POST(request: Request) {
   try {
@@ -21,13 +22,25 @@ export async function POST(request: Request) {
       });
     }
 
-    const [rankMap, searchVolume] = await Promise.all([
+    const [rankMap, volumeRaw] = await Promise.all([
       searchNaverBlogRanks(keyword, 300),
       getKeywordSearchVolume(keyword),
     ]);
 
     const key = makePostMatchKey(postLink);
     const foundRank = key ? rankMap.get(key) : undefined;
+
+    const normalized = confirmedMonthlyVolumes(volumeRaw);
+    const searchVolume =
+      normalized != null
+        ? {
+            ...volumeRaw,
+            ok: true,
+            total: normalized.totalVolume,
+            mobile: normalized.mobileVolume ?? volumeRaw.mobile,
+            pc: normalized.pcVolume ?? volumeRaw.pc,
+          }
+        : volumeRaw;
 
     return Response.json({
       rank: foundRank ? `${foundRank}위` : "300위 밖에",

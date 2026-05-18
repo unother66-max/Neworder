@@ -77,6 +77,16 @@ export async function GET(req: Request) {
       subscriberCount: r.subscriberCount,
     }));
 
+    if (process.env.NODE_ENV === "development") {
+      console.log("[blog-analysis/history] visitor db points", {
+        blogId,
+        points: points.map((point) => ({
+          analyzedAt: point.analyzedAt,
+          visitorCount: point.visitorCount ?? null,
+        })),
+      });
+    }
+
     return NextResponse.json({ ok: true as const, points });
   } catch (e) {
     console.warn("[blog-analysis/history] 조회 실패:", e);

@@ -1,4 +1,5 @@
 import type { BlogAnalysisRecentPost, BlogKeywordInsight, BlogValidKeyword } from "@/lib/blog-analysis-types";
+import { MONTHLY_VOLUME_VALID_THRESHOLD, primaryMonthlyVolume } from "@/lib/blog-keyword-blogtalk";
 
 const FALLBACK_REPRESENTATIVE_LIMIT = 5;
 
@@ -43,10 +44,8 @@ function normalizeTitle(value: string): string {
     .toLowerCase();
 }
 
-function safeVolume(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+function meetsRepresentativeVolumeThreshold(row: BlogValidKeyword): boolean {
+  return primaryMonthlyVolume(row) >= MONTHLY_VOLUME_VALID_THRESHOLD;
 }
 
 function titleMatchCount(recentPosts: BlogAnalysisRecentPost[], keyword: string): number {
@@ -90,7 +89,7 @@ export function computeRepresentativeValidKeywords({
   const representative = keywords.filter((keyword) => {
     const normalizedKeyword = normalizeKeyword(keyword.keyword);
     if (!normalizedKeyword || GENERIC_KEYWORDS.has(normalizedKeyword)) return false;
-    if (safeVolume(keyword.totalVolume) <= 0) return false;
+    if (!meetsRepresentativeVolumeThreshold(keyword)) return false;
 
     const insight = insights.get(normalizedKeyword);
     const matchedPostCount =
@@ -104,6 +103,6 @@ export function computeRepresentativeValidKeywords({
   if (representative.length > 0) return representative;
 
   return keywords
-    .filter((keyword) => safeVolume(keyword.totalVolume) > 0)
+    .filter((keyword) => meetsRepresentativeVolumeThreshold(keyword))
     .slice(0, FALLBACK_REPRESENTATIVE_LIMIT);
 }
