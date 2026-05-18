@@ -41,6 +41,7 @@ import {
 import { uaDeviceBrowserHint } from "@/lib/user-agent-hint";
 
 import { AdminTrendChart } from "./admin-trend-chart";
+import { BlogRankAutomationStatus } from "./blog-rank-automation-status";
 import { AdminUserMemoBlock } from "./admin-user-memo";
 
 /** findMany(select) 결과와 동일 구조 — prisma schema User와 맞춤 */
@@ -444,6 +445,8 @@ export default async function AdminUsersPage() {
             </Link>
           ))}
         </div>
+
+        <BlogRankAutomationStatus />
 
         <div className="mb-8 grid gap-5 lg:grid-cols-12">
           <div className="space-y-5 lg:col-span-8">
