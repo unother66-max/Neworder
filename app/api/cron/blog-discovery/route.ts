@@ -18,7 +18,7 @@ function parseBoundedInt(value: string | null, fallback: number, min: number, ma
   return Math.min(max, Math.max(min, n));
 }
 
-export async function POST(req: NextRequest) {
+async function handleBlogDiscoveryCron(req: NextRequest) {
   if (!authorizeCron(req)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -45,4 +45,12 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(req: NextRequest) {
+  return handleBlogDiscoveryCron(req);
+}
+
+export async function POST(req: NextRequest) {
+  return handleBlogDiscoveryCron(req);
 }

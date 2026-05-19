@@ -137,7 +137,7 @@ async function persistRankingPoolSnapshot(blogId: string, snap: LightBlogCollect
   });
 }
 
-export async function POST(req: NextRequest) {
+async function handleBlogDiscoveryAnalyzeCron(req: NextRequest) {
   if (!authorizeCron(req)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -203,4 +203,12 @@ export async function POST(req: NextRequest) {
     failed,
     results,
   });
+}
+
+export async function GET(req: NextRequest) {
+  return handleBlogDiscoveryAnalyzeCron(req);
+}
+
+export async function POST(req: NextRequest) {
+  return handleBlogDiscoveryAnalyzeCron(req);
 }

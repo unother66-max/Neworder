@@ -12,7 +12,7 @@ function authorizeCron(req: NextRequest): boolean {
   return false;
 }
 
-export async function POST(req: NextRequest) {
+async function handleBlogRankSnapshotCron(req: NextRequest) {
   if (!authorizeCron(req)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -38,4 +38,12 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(req: NextRequest) {
+  return handleBlogRankSnapshotCron(req);
+}
+
+export async function POST(req: NextRequest) {
+  return handleBlogRankSnapshotCron(req);
 }
