@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { BlogAnalysisRecentPost } from "@/lib/blog-analysis-types";
+import { requireAdminApi } from "@/lib/require-admin-api";
 import { extractBlogId } from "@/lib/scraper";
 import { refreshBlogKeywords } from "@/lib/blog-keyword-refresh-service";
 import { buildBlogPostMetricIdentity, publishedAtDate, withBlogPostMetricIdentity } from "@/lib/blog-post-metric-cache";
@@ -38,6 +39,9 @@ function popularPostRecheckCooldownHours(): { hours: number; source: "default" |
 }
 
 export async function POST(request: Request) {
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
+
   try {
     const body = (await request.json()) as {
       blogUrl?: unknown;

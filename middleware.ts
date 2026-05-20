@@ -5,13 +5,16 @@ import { isAdminEmail } from "@/lib/admin-emails";
 
 const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
 
+function isBlogAnalysisPath(path: string): boolean {
+  return path === "/blog-analysis" || path.startsWith("/blog-analysis/");
+}
+
 function isLegacyAuthPath(path: string): boolean {
   if (path.startsWith("/top-blog")) return true;
   if (path.startsWith("/place-analysis")) return true;
   if (path.startsWith("/place-review")) return true;
   if (path === "/place" || path.startsWith("/place/")) return true;
   if (path === "/community" || path.startsWith("/community/")) return true;
-  if (path === "/blog-analysis" || path.startsWith("/blog-analysis/")) return true;
   return false;
 }
 
@@ -27,9 +30,32 @@ function redirectLogin(req: NextRequest) {
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
+  if (path.startsWith("/api/blog-analysis")) {
+    if (!secret) {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+    const token = await getToken({ req, secret });
+    const email = typeof token?.email === "string" ? token.email : "";
+    if (!token || !isAdminEmail(email)) {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+    return NextResponse.next();
+  }
+
   if (path.startsWith("/admin")) {
     if (!secret)
       return NextResponse.redirect(new URL("/", req.url));
+    const token = await getToken({ req, secret });
+    if (!token) return redirectLogin(req);
+    const email = typeof token.email === "string" ? token.email : "";
+    if (!isAdminEmail(email)) {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+    return NextResponse.next();
+  }
+
+  if (isBlogAnalysisPath(path)) {
+    if (!secret) return redirectLogin(req);
     const token = await getToken({ req, secret });
     if (!token) return redirectLogin(req);
     const email = typeof token.email === "string" ? token.email : "";
@@ -51,6 +77,7 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    "/api/blog-analysis/:path*",
     "/((?!api(?:/|$)|_next(?:/|$)|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|woff2?|woff|ttf|eot|map|txt|xml|json|csv|pdf|wasm|js|css)$).*)",
   ],
 };

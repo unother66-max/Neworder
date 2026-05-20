@@ -29,6 +29,7 @@ import {
   BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE,
 } from "@/lib/blog-recent-posts-config";
 import { mergeRecentPostsWithMetricCache } from "@/lib/merge-recent-posts-with-metric-cache";
+import { requireAdminApi } from "@/lib/require-admin-api";
 import {
   computePostingFrequency7d,
   extractBlogId,
@@ -432,6 +433,9 @@ async function fetchText(url: string, extraHeaders?: Record<string, string>): Pr
 }
 
 export async function POST(request: Request) {
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
+
   const requestStartedAt = Date.now();
   const perf = {
     totalMs: 0,

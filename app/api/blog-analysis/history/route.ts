@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import type { BlogAnalysisHistoryPoint } from "@/lib/blog-analysis-types";
 import { prisma } from "@/lib/prisma";
+import { requireAdminApi } from "@/lib/require-admin-api";
 
 function kstDateKey(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 }
 
 export async function GET(req: Request) {
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const blogId = searchParams.get("blogId")?.trim();

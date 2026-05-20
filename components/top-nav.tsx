@@ -251,6 +251,7 @@ const TopNav = (_props: TopNavProps) => {
   const isDeveloperBuild = process.env.NODE_ENV !== "production";
   const canAccessPlusStore =
     status === "authenticated" && (isAdminUser || isDeveloperBuild);
+  const canAccessBlogAnalysis = sessionIsEnvAdmin || isAdminUser;
 
   const isBlogTopActive = pathname.startsWith("/top-blog");
   const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); 
@@ -330,7 +331,9 @@ const TopNav = (_props: TopNavProps) => {
       active: isBlogActive,
       links: [
         { href: "/top-blog", label: "상위 블로그 찾기", active: isBlogTopActive },
-        { href: "/blog-analysis", label: "블로그 분석", active: isBlogAnalysisActive },
+        ...(canAccessBlogAnalysis
+          ? [{ href: "/blog-analysis", label: "블로그 분석", active: isBlogAnalysisActive }]
+          : []),
       ],
     },
     {
@@ -563,26 +566,28 @@ const TopNav = (_props: TopNavProps) => {
                       체험단 / 상위 블로그 확인
                     </span>
                   </Link>
-                  <Link
-                    href="/blog-analysis"
-                    aria-current={isBlogAnalysisActive ? "page" : undefined}
-                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
-                      isBlogAnalysisActive ? "bg-blue-50/40 pl-6" : ""
-                    }`}
-                  >
-                    <span
-                      className={`text-sm font-bold ${
-                        isBlogAnalysisActive
-                          ? "text-[#0051FF]"
-                          : "text-slate-800 group-hover/item:text-[#0051FF]"
+                  {canAccessBlogAnalysis ? (
+                    <Link
+                      href="/blog-analysis"
+                      aria-current={isBlogAnalysisActive ? "page" : undefined}
+                      className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                        isBlogAnalysisActive ? "bg-blue-50/40 pl-6" : ""
                       }`}
                     >
-                      블로그 분석
-                    </span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
-                      내 블로그 지수 및 채널 정밀 분석
-                    </span>
-                  </Link>
+                      <span
+                        className={`text-sm font-bold ${
+                          isBlogAnalysisActive
+                            ? "text-[#0051FF]"
+                            : "text-slate-800 group-hover/item:text-[#0051FF]"
+                        }`}
+                      >
+                        블로그 분석
+                      </span>
+                      <span className="text-[11px] text-slate-400 mt-0.5">
+                        내 블로그 지수 및 채널 정밀 분석
+                      </span>
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             </div>

@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { mergeRecentPostsWithMetricCache } from "@/lib/merge-recent-posts-with-metric-cache";
+import { requireAdminApi } from "@/lib/require-admin-api";
 import { extractBlogId, fetchBlogPostTitleListPage } from "@/lib/scraper";
 
 export async function GET(req: Request) {
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const blogIdRaw = searchParams.get("blogId")?.trim() ?? "";

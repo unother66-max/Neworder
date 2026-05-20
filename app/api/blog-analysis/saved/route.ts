@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requireAdminApi } from "@/lib/require-admin-api";
 
 function clampLimit(raw: string | null): number {
   const n = Number.parseInt(String(raw ?? "20"), 10);
@@ -66,6 +67,9 @@ async function findLatestHistory(blogId: string) {
 }
 
 export async function GET(req: Request) {
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const limit = clampLimit(searchParams.get("limit"));
@@ -165,6 +169,9 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
+
   try {
     const body = (await req.json()) as {
       blogId?: unknown;
@@ -230,6 +237,9 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
+
   try {
     const blogId = new URL(req.url).searchParams.get("blogId")?.trim();
     if (!blogId) {

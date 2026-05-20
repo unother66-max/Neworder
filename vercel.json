@@ -21,10 +21,6 @@
       "schedule": "0 19 * * *"
     },
     {
-      "path": "/api/cron/blog-discovery",
-      "schedule": "30 17 * * *"
-    },
-    {
       "path": "/api/cron/blog-discovery-analyze",
       "schedule": "30 18 * * *"
     },
