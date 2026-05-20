@@ -247,11 +247,17 @@ const TopNav = (_props: TopNavProps) => {
   const isSmartstorePriceActive = pathname === "/smartstore";
   const isSmartstoreReviewActive = pathname.startsWith("/smartstore/review-track");
   const isSmartstorePlusActive = pathname.startsWith("/smartstore/plus-store-ranking-track");
+  const isSmartstoreProductRankingAnalyzeActive = pathname.startsWith(
+    "/smartstore/product-ranking-analyze"
+  );
+  const isSmartstoreStoreAnalyzeActive = pathname.startsWith("/smartstore/store-analyze");
+  const isSmartstoreKeywordAnalyzeActive = pathname.startsWith("/smartstore/keyword-analyze");
   const isAdminUser = Boolean(quota?.isAdmin);
   const isDeveloperBuild = process.env.NODE_ENV !== "production";
   const canAccessPlusStore =
     status === "authenticated" && (isAdminUser || isDeveloperBuild);
   const canAccessBlogAnalysis = sessionIsEnvAdmin || isAdminUser;
+  const canAccessSmartstoreAdminOnly = sessionIsEnvAdmin || isAdminUser;
 
   const isBlogTopActive = pathname.startsWith("/top-blog");
   const isBlogAnalysisActive = pathname.startsWith("/blog-analysis"); 
@@ -321,7 +327,28 @@ const TopNav = (_props: TopNavProps) => {
         ...(canAccessPlusStore
           ? [{ href: "/smartstore/plus-store-ranking-track", label: "플러스스토어 순위 추적", active: isSmartstorePlusActive }]
           : []),
-        { href: "/smartstore/review-track", label: "리뷰 분석", active: isSmartstoreReviewActive },
+        {
+          href: "/smartstore/product-ranking-analyze",
+          label: "상품 순위 분석",
+          active: isSmartstoreProductRankingAnalyzeActive,
+        },
+        ...(canAccessSmartstoreAdminOnly
+          ? [
+              {
+                href: "/smartstore/store-analyze",
+                label: "스마트스토어 분석",
+                active: isSmartstoreStoreAnalyzeActive,
+              },
+            ]
+          : []),
+        {
+          href: "/smartstore/keyword-analyze",
+          label: "상품 키워드 분석",
+          active: isSmartstoreKeywordAnalyzeActive,
+        },
+        ...(canAccessSmartstoreAdminOnly
+          ? [{ href: "/smartstore/review-track", label: "리뷰 분석", active: isSmartstoreReviewActive }]
+          : []),
       ],
     },
     {
@@ -488,25 +515,89 @@ const TopNav = (_props: TopNavProps) => {
                     </Link>
                   ) : null}
                   <Link
-                    href="/smartstore/review-track"
-                    aria-current={isSmartstoreReviewActive ? "page" : undefined}
+                    href="/smartstore/product-ranking-analyze"
+                    aria-current={isSmartstoreProductRankingAnalyzeActive ? "page" : undefined}
                     className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
-                      isSmartstoreReviewActive ? "bg-blue-50/40 pl-6" : ""
+                      isSmartstoreProductRankingAnalyzeActive ? "bg-blue-50/40 pl-6" : ""
                     }`}
                   >
                     <span
                       className={`text-sm font-bold ${
-                        isSmartstoreReviewActive
+                        isSmartstoreProductRankingAnalyzeActive
                           ? "text-[#0051FF]"
                           : "text-slate-800 group-hover/item:text-[#0051FF]"
                       }`}
                     >
-                      리뷰 분석
+                      상품 순위 분석
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
-                      리뷰 변화/알림 관리
+                      키워드별 쇼핑 1~40위 조회
                     </span>
                   </Link>
+                  {canAccessSmartstoreAdminOnly ? (
+                    <Link
+                      href="/smartstore/store-analyze"
+                      aria-current={isSmartstoreStoreAnalyzeActive ? "page" : undefined}
+                      className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                        isSmartstoreStoreAnalyzeActive ? "bg-blue-50/40 pl-6" : ""
+                      }`}
+                    >
+                      <span
+                        className={`text-sm font-bold ${
+                          isSmartstoreStoreAnalyzeActive
+                            ? "text-[#0051FF]"
+                            : "text-slate-800 group-hover/item:text-[#0051FF]"
+                        }`}
+                      >
+                        스마트스토어 분석
+                      </span>
+                      <span className="text-[11px] text-slate-400 mt-0.5">
+                        스토어 상품 목록 분석
+                      </span>
+                    </Link>
+                  ) : null}
+                  <Link
+                    href="/smartstore/keyword-analyze"
+                    aria-current={isSmartstoreKeywordAnalyzeActive ? "page" : undefined}
+                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                      isSmartstoreKeywordAnalyzeActive ? "bg-blue-50/40 pl-6" : ""
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-bold ${
+                        isSmartstoreKeywordAnalyzeActive
+                          ? "text-[#0051FF]"
+                          : "text-slate-800 group-hover/item:text-[#0051FF]"
+                      }`}
+                    >
+                      상품 키워드 분석
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                      검색량/상품량 경쟁률 분석
+                    </span>
+                  </Link>
+                  {canAccessSmartstoreAdminOnly ? (
+                    <Link
+                      href="/smartstore/review-track"
+                      aria-current={isSmartstoreReviewActive ? "page" : undefined}
+                      className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                        isSmartstoreReviewActive ? "bg-blue-50/40 pl-6" : ""
+                      }`}
+                    >
+                      <span
+                        className={`text-sm font-bold ${
+                          isSmartstoreReviewActive
+                            ? "text-[#0051FF]"
+                            : "text-slate-800 group-hover/item:text-[#0051FF]"
+                        }`}
+                      >
+                        리뷰 분석
+                      </span>
+                      <span className="text-[11px] text-slate-400 mt-0.5">
+                        리뷰 변화/알림 관리
+                      </span>
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             </div>

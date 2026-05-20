@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
+import { ADMIN_ONLY_FEATURE_ERROR, requireAdminApi } from "@/lib/require-admin-api";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import {
@@ -21,7 +22,28 @@ function trackedDateKey(d = new Date()): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+async function buildExistingSummaryForPartial(target: NonNullable<Awaited<ReturnType<typeof prisma.smartstoreReviewTarget.findFirst>>>) {
+  const latestHistory = await prisma.smartstoreReviewHistory.findFirst({
+    where: { targetId: target.id },
+    orderBy: [{ trackedDate: "desc" }, { createdAt: "desc" }],
+    select: { id: true },
+  });
+  const hasCollectedMetrics = latestHistory != null;
+  return {
+    reviewCount: hasCollectedMetrics ? target.reviewCount : null,
+    reviewRating: hasCollectedMetrics ? target.reviewRating : null,
+    photoVideoReviewCount: hasCollectedMetrics ? target.reviewPhotoVideoCount : null,
+    monthlyUseReviewCount: hasCollectedMetrics ? target.reviewMonthlyUseCount : null,
+    repurchaseReviewCount: hasCollectedMetrics ? target.reviewRepurchaseCount : null,
+    storePickReviewCount: hasCollectedMetrics ? target.reviewStorePickCount : null,
+    starScoreSummary: hasCollectedMetrics ? target.reviewStarSummary : null,
+  };
+}
+
 export async function POST(req: Request) {
+  const admin = await requireAdminApi({ errorMessage: ADMIN_ONLY_FEATURE_ERROR });
+  if (!admin.ok) return admin.response;
+
   let logContext: { targetId?: string; productId?: string; productUrl?: string } | null = null;
   // target을 catch 블록에서도 접근할 수 있도록 스코프 호이스팅
   let resolvedTarget: Awaited<ReturnType<typeof prisma.smartstoreReviewTarget.findFirst>> | null = null;
@@ -72,9 +94,17 @@ export async function POST(req: Request) {
     const snap = await fetchSmartstoreReviewSnapshot({
       productUrl: cleanMobileUrl,
       productId: target.productId,
+      reviewProductId: target.reviewProductId ?? null,
       productName: target.name ?? null,
       storeName: target.storeName ?? null,
       leafCategoryId: target.leafCategoryId ?? null,
+    });
+    console.log("[smartstore-review-source-trace]", {
+      file: "app/api/smartstore-review-sync/route.ts",
+      function: "POST",
+      readsFrom: "fetchSmartstoreReviewSnapshot",
+      writesTo: ["SmartstoreReviewTarget", "SmartstoreReviewHistory"],
+      productId: target.productId,
     });
 
     const count = snap.summary.reviewCount;
@@ -88,6 +118,36 @@ export async function POST(req: Request) {
       starSummary == null
         ? (target.reviewStarSummary ?? Prisma.JsonNull)
         : (starSummary as Prisma.InputJsonValue);
+    const hasFreshReviewMetric = [
+      count,
+      rating,
+      photoVideo,
+      monthlyUse,
+      repurchase,
+      storePick,
+      starSummary,
+    ].some((v) => v != null);
+
+    if (!hasFreshReviewMetric) {
+      const existingSummary = await buildExistingSummaryForPartial(target);
+      console.warn("[smartstore-review-fetcher-lite] review-summary fallback failed keep-existing", {
+        productId: target.productId,
+        targetId: target.id,
+        reason: "no-review-summary-data",
+        hasCollectedMetrics: existingSummary.reviewCount != null,
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          partial: true,
+          targetId: target.id,
+          message:
+            "리뷰 요약 소스를 찾지 못해 최신 리뷰 지표를 갱신하지 못했습니다. 기존 데이터를 유지합니다.",
+          summary: existingSummary,
+        },
+        { status: 200 }
+      );
+    }
 
     const today = trackedDateKey();
 
@@ -109,7 +169,7 @@ export async function POST(req: Request) {
         },
       });
 
-      if (count != null) {
+      if (count != null && hasFreshReviewMetric) {
         await tx.smartstoreReviewHistory.upsert({
           where: { targetId_trackedDate: { targetId: target.id, trackedDate: today } },
           update: {
@@ -206,14 +266,15 @@ export async function POST(req: Request) {
     const isRateLimit = isSmartstoreNaverRateLimitedError(e);
     const isBlocked = e instanceof SmartstoreReviewBlockedError;
     if ((isRateLimit || isBlocked) && resolvedTarget) {
+      const existingSummary = await buildExistingSummaryForPartial(resolvedTarget);
       const msg = isRateLimit
         ? "네이버 요청 차단(429)으로 최신 리뷰를 갱신하지 못했습니다. 기존 데이터를 유지합니다."
         : "네이버 차단/검증 감지. 기존 리뷰 데이터를 유지합니다.";
       console.warn("[smartstore-review-sync] partial 응답 반환", {
         ...logContext,
         isRateLimit,
-        existingReviewCount: resolvedTarget.reviewCount,
-        existingReviewRating: resolvedTarget.reviewRating,
+        existingReviewCount: existingSummary.reviewCount,
+        existingReviewRating: existingSummary.reviewRating,
       });
       return NextResponse.json(
         {
@@ -222,15 +283,7 @@ export async function POST(req: Request) {
           blocked: true,
           targetId: resolvedTarget.id,
           message: msg,
-          summary: {
-            reviewCount: resolvedTarget.reviewCount,
-            reviewRating: resolvedTarget.reviewRating,
-            photoVideoReviewCount: resolvedTarget.reviewPhotoVideoCount,
-            monthlyUseReviewCount: resolvedTarget.reviewMonthlyUseCount,
-            repurchaseReviewCount: resolvedTarget.reviewRepurchaseCount,
-            storePickReviewCount: resolvedTarget.reviewStorePickCount,
-            starScoreSummary: resolvedTarget.reviewStarSummary,
-          },
+          summary: existingSummary,
         },
         { status: 200 }
       );
@@ -263,4 +316,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "리뷰 동기화에 실패했습니다." }, { status: 502 });
   }
 }
-

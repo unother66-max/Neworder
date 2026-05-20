@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
+import { ADMIN_ONLY_FEATURE_ERROR, requireAdminApi } from "@/lib/require-admin-api";
 import { prisma } from "@/lib/prisma";
 import type { SmartstoreSpace } from "@prisma/client";
 import { executeSmartstoreProductSavePost } from "@/lib/execute-smartstore-product-save";
@@ -22,6 +23,9 @@ function formatKoDateTime(d: Date): string {
 // 1. GET: 목록 조회 로직 (원본 보존)
 // ==========================================
 export async function GET() {
+  const admin = await requireAdminApi({ errorMessage: ADMIN_ONLY_FEATURE_ERROR });
+  if (!admin.ok) return admin.response;
+
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;
@@ -40,6 +44,8 @@ export async function GET() {
         name: true,
         imageUrl: true,
         storeName: true,
+        reviewProductId: true,
+        leafCategoryId: true,
         reviewCount: true,
         reviewRating: true,
         reviewPhotoVideoCount: true,
@@ -50,6 +56,19 @@ export async function GET() {
         createdAt: true,
         updatedAt: true,
       },
+    });
+    console.log("[smartstore-review-source-trace]", {
+      file: "app/api/smartstore-review-targets/route.ts",
+      function: "GET",
+      readsFrom: ["SmartstoreReviewTarget", "SmartstoreReviewHistory"],
+      uiFields: [
+        "reviewCount",
+        "reviewRating",
+        "reviewPhotoVideoCount",
+        "reviewMonthlyUseCount",
+        "reviewRepurchaseCount",
+        "reviewStorePickCount",
+      ],
     });
 
     const targetIds = targets.map((t) => t.id);
@@ -97,6 +116,7 @@ export async function GET() {
       const h2 = latest2ByTargetId.get(t.id) ?? [];
       const latest = h2[0] ?? null;
       const prev = h2[1] ?? null;
+      const hasCollectedMetrics = latest != null;
       const deltaCount =
         latest && prev ? latest.reviewCount - prev.reviewCount : null;
       const deltaRating =
@@ -130,13 +150,13 @@ export async function GET() {
           name: t.name,
           imageUrl: t.imageUrl ?? null,
           storeName: t.storeName ?? null,
-          reviewCount: t.reviewCount ?? null,
-          reviewRating: t.reviewRating ?? null,
-          reviewPhotoVideoCount: t.reviewPhotoVideoCount ?? null,
-          reviewMonthlyUseCount: t.reviewMonthlyUseCount ?? null,
-          reviewRepurchaseCount: t.reviewRepurchaseCount ?? null,
-          reviewStorePickCount: t.reviewStorePickCount ?? null,
-          reviewStarSummary: t.reviewStarSummary ?? null,
+          reviewCount: hasCollectedMetrics ? t.reviewCount ?? null : null,
+          reviewRating: hasCollectedMetrics ? t.reviewRating ?? null : null,
+          reviewPhotoVideoCount: hasCollectedMetrics ? t.reviewPhotoVideoCount ?? null : null,
+          reviewMonthlyUseCount: hasCollectedMetrics ? t.reviewMonthlyUseCount ?? null : null,
+          reviewRepurchaseCount: hasCollectedMetrics ? t.reviewRepurchaseCount ?? null : null,
+          reviewStorePickCount: hasCollectedMetrics ? t.reviewStorePickCount ?? null : null,
+          reviewStarSummary: hasCollectedMetrics ? t.reviewStarSummary ?? null : null,
           updatedAtLabel: formatKoDateTime(t.updatedAt),
         },
         latestHistory: latest
@@ -187,6 +207,9 @@ export async function GET() {
 // 2. POST: /smartstore와 동일한 등록 파이프라인 (space=NAVER_REVIEW) + 리뷰 타깃 동기화
 // ==========================================
 export async function POST(req: Request) {
+  const admin = await requireAdminApi({ errorMessage: ADMIN_ONLY_FEATURE_ERROR });
+  if (!admin.ok) return admin.response;
+
   try {
     const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const manualNameRaw = raw?.manualName != null ? String(raw.manualName).trim() : "";
@@ -221,6 +244,9 @@ export async function POST(req: Request) {
 // 3. DELETE: 삭제 로직 (원본 보존)
 // ==========================================
 export async function DELETE(req: Request) {
+  const admin = await requireAdminApi({ errorMessage: ADMIN_ONLY_FEATURE_ERROR });
+  if (!admin.ok) return admin.response;
+
   try {
     const session = (await getServerSession(authOptions as any)) as any;
     const userId = session?.user?.id as string | undefined;

@@ -9,6 +9,25 @@ function isBlogAnalysisPath(path: string): boolean {
   return path === "/blog-analysis" || path.startsWith("/blog-analysis/");
 }
 
+function isSmartstoreAdminOnlyPath(path: string): boolean {
+  return (
+    path === "/smartstore/store-analyze" ||
+    path.startsWith("/smartstore/store-analyze/") ||
+    path === "/smartstore/review-track" ||
+    path.startsWith("/smartstore/review-track/")
+  );
+}
+
+function isSmartstoreAdminOnlyApiPath(path: string): boolean {
+  return (
+    path.startsWith("/api/smartstore/store-analyze") ||
+    path.startsWith("/api/smartstore-review-targets") ||
+    path.startsWith("/api/smartstore-review-sync")
+  );
+}
+
+const SMARTSTORE_ADMIN_ONLY_API_ERROR = "관리자만 사용할 수 있는 기능입니다.";
+
 function isLegacyAuthPath(path: string): boolean {
   if (path.startsWith("/top-blog")) return true;
   if (path.startsWith("/place-analysis")) return true;
@@ -30,14 +49,33 @@ function redirectLogin(req: NextRequest) {
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
-  if (path.startsWith("/api/blog-analysis")) {
+  if (path.startsWith("/api/blog-analysis") || isSmartstoreAdminOnlyApiPath(path)) {
     if (!secret) {
-      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+      return NextResponse.json(
+        { ok: false, error: isSmartstoreAdminOnlyApiPath(path) ? SMARTSTORE_ADMIN_ONLY_API_ERROR : "FORBIDDEN" },
+        { status: 403 }
+      );
     }
     const token = await getToken({ req, secret });
     const email = typeof token?.email === "string" ? token.email : "";
     if (!token || !isAdminEmail(email)) {
-      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: isSmartstoreAdminOnlyApiPath(path) ? SMARTSTORE_ADMIN_ONLY_API_ERROR : "FORBIDDEN",
+        },
+        { status: 403 }
+      );
+    }
+    return NextResponse.next();
+  }
+
+  if (isSmartstoreAdminOnlyPath(path)) {
+    if (!secret) return NextResponse.redirect(new URL("/smartstore", req.url));
+    const token = await getToken({ req, secret });
+    const email = typeof token?.email === "string" ? token.email : "";
+    if (!token || !isAdminEmail(email)) {
+      return NextResponse.redirect(new URL("/smartstore", req.url));
     }
     return NextResponse.next();
   }
@@ -78,6 +116,9 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/api/blog-analysis/:path*",
+    "/api/smartstore/store-analyze",
+    "/api/smartstore-review-targets",
+    "/api/smartstore-review-sync",
     "/((?!api(?:/|$)|_next(?:/|$)|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|woff2?|woff|ttf|eot|map|txt|xml|json|csv|pdf|wasm|js|css)$).*)",
   ],
 };

@@ -1,9 +1,11 @@
 import {
   cooldownOn429,
+  isSmartstoreNaverRateLimitedError,
   randomSmartstoreDelay,
   SmartstoreNaverRateLimitedError,
 } from "@/lib/smartstore-bot-shield";
 import {
+  buildNaverJsonFetchHeadersUnified,
   buildSmartstoreMobileDocumentFetchHeaders,
   loadSystemConfigNaverCookie,
   SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
@@ -32,6 +34,31 @@ const NOT_FOUND_HTML_PATTERNS = [
 ];
 
 type ProductUrlKind = "SMARTSTORE" | "BRAND" | "CATALOG" | "UNKNOWN";
+type ReviewSummaryCandidate = {
+  url: string;
+  source: string;
+  verifiedBy?: "html" | "script" | "embedded-json" | null;
+  disabledReason?: string | null;
+};
+
+type ParsedReviewSummary = SmartstoreReviewSnapshot["summary"] & {
+  hasReviewData: boolean;
+};
+
+type DetectedReviewSummarySource = {
+  reviewProductId: string | null;
+  leafCategoryId: number | null;
+  verifiedSummaryUrl: string | null;
+  discoveredSource: "html-script" | "network-confirmed-pattern" | null;
+  productReviewInfo: Record<string, unknown> | null;
+  recentProductReviewInfo: Record<string, unknown> | null;
+  identifiers: Array<{ path: string; key: string; value: unknown }>;
+};
+
+const REVIEW_SOURCE_KEYWORDS =
+  /(review|reviews|score|average|total|product-review|productReview|merchantNo|originProductNo|channelNo|accountNo|productNo|nvMid|catalogue|catalog|summary)/i;
+
+const blockedReviewSourceUrls = new Set<string>();
 
 export class SmartstoreReviewProductNotFoundError extends Error {
   constructor(message = "상품이 존재하지 않거나 접근할 수 없습니다.") {
@@ -76,14 +103,503 @@ export type SmartstoreReviewSnapshot = {
   recentReviews: SmartstoreRecentReview[];
 };
 
-function jsonRecord(v: unknown): Record<string, unknown> | null {
-  if (v !== null && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+function parseOptionalNumber(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const cleaned = v.trim().replace(/,/g, "");
+    if (!cleaned) return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
   return null;
 }
 
-function finiteNumber(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
+function parseOptionalNonNegativeInt(v: unknown): number | null {
+  const n = parseOptionalNumber(v);
+  if (n == null) return null;
+  return Math.max(0, Math.trunc(n));
+}
+
+function collectValuesByKeys(root: unknown, keys: readonly string[]): unknown[] {
+  const wanted = new Set(keys);
+  const out: unknown[] = [];
+  const seen = new WeakSet<object>();
+
+  const walk = (node: unknown) => {
+    if (node == null || typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (wanted.has(key)) out.push(value);
+      if (value != null && typeof value === "object") walk(value);
+    }
+  };
+
+  walk(root);
+  return out;
+}
+
+function asPlainRecord(v: unknown): Record<string, unknown> | null {
+  if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
+  }
   return null;
+}
+
+function collectRecordsByKey(
+  root: unknown,
+  targetKey: string,
+  limit = 10
+): Array<{ path: string; value: Record<string, unknown> }> {
+  const out: Array<{ path: string; value: Record<string, unknown> }> = [];
+  const seen = new WeakSet<object>();
+
+  const walk = (node: unknown, path: string) => {
+    if (out.length >= limit) return;
+    if (node == null || typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (let i = 0; i < Math.min(node.length, 40); i += 1) {
+        walk(node[i], `${path}[${i}]`);
+        if (out.length >= limit) return;
+      }
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      const nextPath = path ? `${path}.${key}` : key;
+      const rec = asPlainRecord(value);
+      if (key === targetKey && rec) {
+        out.push({ path: nextPath, value: rec });
+        if (out.length >= limit) return;
+      }
+      if (value != null && typeof value === "object") walk(value, nextPath);
+      if (out.length >= limit) return;
+    }
+  };
+
+  walk(root, "");
+  return out;
+}
+
+function collectFirstNumberWithPath(
+  root: unknown,
+  keys: readonly string[]
+): { path: string; key: string; value: number } | null {
+  const wanted = new Set(keys);
+  const seen = new WeakSet<object>();
+
+  const walk = (node: unknown, path: string): { path: string; key: string; value: number } | null => {
+    if (node == null || typeof node !== "object") return null;
+    if (seen.has(node)) return null;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (let i = 0; i < Math.min(node.length, 80); i += 1) {
+        const found = walk(node[i], `${path}[${i}]`);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (wanted.has(key)) {
+        const n = parseOptionalNonNegativeInt(value);
+        if (n != null) return { path: nextPath, key, value: n };
+      }
+      const found = walk(value, nextPath);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  return walk(root, "");
+}
+
+function collectReviewRelatedEntries(
+  root: unknown,
+  limit = 80
+): Array<{ path: string; key: string; value: unknown }> {
+  const out: Array<{ path: string; key: string; value: unknown }> = [];
+  const seen = new WeakSet<object>();
+
+  const walk = (node: unknown, path: string) => {
+    if (out.length >= limit) return;
+    if (node == null || typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (let i = 0; i < Math.min(node.length, 20); i += 1) {
+        walk(node[i], `${path}[${i}]`);
+        if (out.length >= limit) return;
+      }
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (REVIEW_SOURCE_KEYWORDS.test(key)) {
+        out.push({
+          path: nextPath,
+          key,
+          value:
+            typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+              ? value
+              : Array.isArray(value)
+              ? `[array:${value.length}]`
+              : value && typeof value === "object"
+              ? "[object]"
+              : value,
+        });
+        if (out.length >= limit) return;
+      }
+      if (typeof value === "string" && REVIEW_SOURCE_KEYWORDS.test(value)) {
+        out.push({ path: nextPath, key, value: value.slice(0, 240) });
+        if (out.length >= limit) return;
+      }
+      if (value != null && typeof value === "object") walk(value, nextPath);
+      if (out.length >= limit) return;
+    }
+  };
+
+  walk(root, "");
+  return out;
+}
+
+function dedupeReviewTraceEntries(
+  entries: Array<{ path: string; key: string; value: unknown }>
+): Array<{ path: string; key: string; value: unknown }> {
+  const seen = new Set<string>();
+  const out: Array<{ path: string; key: string; value: unknown }> = [];
+  for (const e of entries) {
+    const sig = `${e.path}:${e.key}:${String(e.value)}`;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    out.push(e);
+  }
+  return out;
+}
+
+function pickFirstNumber(root: unknown, keys: readonly string[]): number | null {
+  for (const value of collectValuesByKeys(root, keys)) {
+    const n = parseOptionalNumber(value);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function pickFirstInt(root: unknown, keys: readonly string[]): number | null {
+  for (const value of collectValuesByKeys(root, keys)) {
+    const n = parseOptionalNonNegativeInt(value);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function parseStarScoreSummary(root: unknown): Record<"1" | "2" | "3" | "4" | "5", number> | null {
+  const summary = {
+    "1": pickFirstInt(root, ["score1ReviewCount", "score1Count"]) ?? 0,
+    "2": pickFirstInt(root, ["score2ReviewCount", "score2Count"]) ?? 0,
+    "3": pickFirstInt(root, ["score3ReviewCount", "score3Count"]) ?? 0,
+    "4": pickFirstInt(root, ["score4ReviewCount", "score4Count"]) ?? 0,
+    "5": pickFirstInt(root, ["score5ReviewCount", "score5Count"]) ?? 0,
+  };
+  return Object.values(summary).some((n) => n > 0) ? summary : null;
+}
+
+function parseReviewSummaryFromUnknown(root: unknown): ParsedReviewSummary {
+  const reviewCount = pickFirstInt(root, [
+    "reviewCount",
+    "totalReviewCount",
+    "totalCount",
+    "reviewTotalCount",
+  ]);
+  const reviewRating = pickFirstNumber(root, [
+    "reviewRating",
+    "averageReviewScore",
+    "averageScore",
+    "score",
+    "reviewScore",
+  ]);
+
+  let photoVideoReviewCount = pickFirstInt(root, [
+    "photoVideoReviewCount",
+    "photoReviewCount",
+    "mediaReviewCount",
+    "photoCount",
+  ]);
+  const videoReviewCount = pickFirstInt(root, ["videoReviewCount", "videoCount"]);
+  if (photoVideoReviewCount != null && videoReviewCount != null) {
+    photoVideoReviewCount += videoReviewCount;
+  }
+
+  const monthlyUseReviewCount = pickFirstInt(root, [
+    "afterUseReviewCount",
+    "monthReviewCount",
+    "monthlyReviewCount",
+  ]);
+  const repurchaseReviewCount = pickFirstInt(root, [
+    "repurchaseReviewCount",
+    "repurchaseCount",
+  ]);
+  const storePickReviewCount = pickFirstInt(root, [
+    "storePickReviewCount",
+    "storePickCount",
+  ]);
+  const starScoreSummary = parseStarScoreSummary(root);
+
+  const hasReviewData = [
+    reviewCount,
+    reviewRating,
+    photoVideoReviewCount,
+    monthlyUseReviewCount,
+    repurchaseReviewCount,
+    storePickReviewCount,
+    starScoreSummary,
+  ].some((v) => v != null);
+
+  return {
+    reviewCount,
+    reviewRating,
+    photoVideoReviewCount,
+    monthlyUseReviewCount,
+    repurchaseReviewCount,
+    storePickReviewCount,
+    starScoreSummary,
+    hasReviewData,
+  };
+}
+
+function buildVerifiedProductSummaryUrl(input: {
+  productUrlKind: ProductUrlKind;
+  reviewProductId: string;
+  leafCategoryId: number;
+}): string {
+  const origin =
+    input.productUrlKind === "BRAND"
+      ? "https://brand.naver.com/n"
+      : "https://smartstore.naver.com/i";
+  const u = new URL(
+    `${origin}/v1/contents/reviews/product-summary/${encodeURIComponent(input.reviewProductId)}`
+  );
+  u.searchParams.set("leafCategoryId", String(input.leafCategoryId));
+  return u.toString();
+}
+
+function buildProductDetailSourceUrl(input: {
+  productUrlKind: ProductUrlKind;
+  channelSlug: string | null;
+  urlProductId: string;
+}): string | null {
+  if (!input.channelSlug || !/^\d+$/.test(input.urlProductId)) return null;
+  const slug = encodeURIComponent(input.channelSlug);
+  const pid = encodeURIComponent(input.urlProductId);
+  if (input.productUrlKind === "BRAND") {
+    return `https://brand.naver.com/n/v2/channels/${slug}/products/${pid}?withWindow=false`;
+  }
+  if (input.productUrlKind === "SMARTSTORE") {
+    return `https://smartstore.naver.com/i/v2/channels/${slug}/products/${pid}?withWindow=false`;
+  }
+  return null;
+}
+
+async function tryDetectReviewSummarySourceFromProductDetailApi(input: {
+  productUrl: string;
+  urlProductId: string;
+  productUrlKind: ProductUrlKind;
+  channelSlug: string | null;
+  naverCookie: string;
+}): Promise<DetectedReviewSummarySource | null> {
+  const sourceUrl = buildProductDetailSourceUrl({
+    productUrlKind: input.productUrlKind,
+    channelSlug: input.channelSlug,
+    urlProductId: input.urlProductId,
+  });
+  if (!sourceUrl) return null;
+  if (blockedReviewSourceUrls.has(sourceUrl)) return null;
+
+  await randomSmartstoreDelay("ranking");
+  console.log("[smartstore-review-source-trace] fetch product-detail source start", {
+    productId: input.urlProductId,
+    sourceUrl: safeCandidateUrlForLog(sourceUrl),
+  });
+  const res = await fetch(sourceUrl, {
+    method: "GET",
+    cache: "no-store",
+    headers: buildNaverJsonFetchHeadersUnified({
+      productId: input.urlProductId,
+      naverCookie: input.naverCookie,
+      productPageUrl: input.productUrl,
+      requestUrl: sourceUrl,
+    }),
+  });
+  if (res.status === 429) {
+    blockedReviewSourceUrls.add(sourceUrl);
+    console.warn("[smartstore-review-source-trace] hit 429 cooldown", {
+      productId: input.urlProductId,
+      sourceUrl: safeCandidateUrlForLog(sourceUrl),
+    });
+    await cooldownOn429();
+    throw new SmartstoreNaverRateLimitedError("네이버 상품 상세 소스 조회 제한 발생 (429)");
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    console.warn("[smartstore-review-source-trace] product-detail source failed", {
+      productId: input.urlProductId,
+      status: res.status,
+      head: text.slice(0, 160),
+    });
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+  const detected = detectReviewSummarySourceFromJson(parsed, {
+    urlProductId: input.urlProductId,
+    productUrlKind: input.productUrlKind,
+  });
+  console.log("[smartstore-review-source-trace]", {
+    productId: input.urlProductId,
+    source: "product-detail-json",
+    detectedReviewProductId: detected.reviewProductId,
+    detectedLeafCategoryId: detected.leafCategoryId,
+    verifiedSummaryUrl: detected.verifiedSummaryUrl
+      ? safeCandidateUrlForLog(detected.verifiedSummaryUrl)
+      : null,
+  });
+  return detected.verifiedSummaryUrl
+    ? { ...detected, discoveredSource: "network-confirmed-pattern" }
+    : detected;
+}
+
+function detectReviewSummarySourceFromJson(
+  root: unknown,
+  input: {
+    urlProductId: string;
+    productUrlKind: ProductUrlKind;
+    fallbackLeafCategoryId?: number | null;
+  }
+): DetectedReviewSummarySource {
+  const productReviewInfo = collectRecordsByKey(root, "productReviewInfo", 3)[0]?.value ?? null;
+  const recentProductReviewInfo =
+    collectRecordsByKey(root, "recentProductReviewInfo", 3)[0]?.value ?? null;
+  const identifiers = collectReviewRelatedEntries(root, 120).filter((e) =>
+    /reviewProductId|productReviewInfo|recentProductReviewInfo|merchantNo|originProductNo|channelNo|accountNo|productNo|nvMid|catalogue|catalog|channelProductNo|saleProductNo|contentProductNo|leafCategoryId/i.test(
+      e.key
+    )
+  );
+
+  const leaf =
+    collectFirstNumberWithPath(root, ["leafCategoryId", "leafCategoryNo"])?.value ??
+    input.fallbackLeafCategoryId ??
+    null;
+
+  const explicitReviewId =
+    parseOptionalNonNegativeInt(productReviewInfo?.id) ??
+    parseOptionalNonNegativeInt(recentProductReviewInfo?.id) ??
+    collectFirstNumberWithPath(root, [
+      "reviewProductId",
+      "productReviewId",
+      "contentProductNo",
+      "originProductNo",
+      "saleProductNo",
+      "productNo",
+      "channelProductNo",
+    ])?.value ??
+    null;
+
+  const reviewProductId =
+    explicitReviewId != null && String(explicitReviewId) !== input.urlProductId
+      ? String(explicitReviewId)
+      : null;
+  const verifiedSummaryUrl =
+    reviewProductId != null && leaf != null
+      ? buildVerifiedProductSummaryUrl({
+          productUrlKind: input.productUrlKind,
+          reviewProductId,
+          leafCategoryId: leaf,
+        })
+      : null;
+
+  return {
+    reviewProductId,
+    leafCategoryId: leaf,
+    verifiedSummaryUrl,
+    discoveredSource: verifiedSummaryUrl ? "network-confirmed-pattern" : null,
+    productReviewInfo,
+    recentProductReviewInfo,
+    identifiers,
+  };
+}
+
+function detectReviewSummarySourceFromHtml(
+  html: string,
+  input: {
+    urlProductId: string;
+    productUrlKind: ProductUrlKind;
+    fallbackLeafCategoryId?: number | null;
+  }
+): DetectedReviewSummarySource {
+  let best: DetectedReviewSummarySource = {
+    reviewProductId: null,
+    leafCategoryId: input.fallbackLeafCategoryId ?? null,
+    verifiedSummaryUrl: null,
+    discoveredSource: null,
+    productReviewInfo: null,
+    recentProductReviewInfo: null,
+    identifiers: [],
+  };
+
+  for (const embedded of extractEmbeddedJsonCandidates(html)) {
+    const detected = detectReviewSummarySourceFromJson(embedded.value, input);
+    if (detected.identifiers.length > best.identifiers.length) {
+      best = { ...detected, discoveredSource: detected.discoveredSource ?? "html-script" };
+    }
+    if (detected.verifiedSummaryUrl) {
+      return { ...detected, discoveredSource: "html-script" };
+    }
+  }
+
+  const leaf =
+    parseOptionalNonNegativeInt(
+      html.match(/"leafCategoryId"\s*:\s*"?(\d+)"?/i)?.[1] ??
+        html.match(/"leafCategoryNo"\s*:\s*"?(\d+)"?/i)?.[1]
+    ) ?? best.leafCategoryId;
+  const htmlId =
+    parseOptionalNonNegativeInt(
+      html.match(/"recentProductReviewInfo"\s*:\s*\{[^{}]*"id"\s*:\s*"?(\d+)"?/i)?.[1] ??
+        html.match(/"productReviewInfo"\s*:\s*\{[^{}]*"id"\s*:\s*"?(\d+)"?/i)?.[1]
+    ) ?? null;
+  if (htmlId != null && String(htmlId) !== input.urlProductId && leaf != null) {
+    const reviewProductId = String(htmlId);
+    return {
+      ...best,
+      reviewProductId,
+      leafCategoryId: leaf,
+      verifiedSummaryUrl: buildVerifiedProductSummaryUrl({
+        productUrlKind: input.productUrlKind,
+        reviewProductId,
+        leafCategoryId: leaf,
+      }),
+      discoveredSource: "html-script",
+    };
+  }
+
+  return { ...best, leafCategoryId: leaf };
 }
 
 function normalizePcProductReferer(productUrl: string): string {
@@ -103,119 +619,292 @@ function normalizePcProductReferer(productUrl: string): string {
   }
 }
 
-/** 쿠키 없음 — HTML 수집 전 1순위. 실패 시 null → 기존 HTML·fallback. */
-async function trySmartstoreReviewProductSummaryApi(input: {
+function extractChannelSlugFromProductUrl(productUrl: string): string | null {
+  const u = normalizeUrl(productUrl);
+  if (!u) return null;
+  const segs = u.pathname.split("/").filter(Boolean);
+  const pi = segs.indexOf("products");
+  if (pi > 0) return segs[pi - 1] ?? null;
+  return null;
+}
+
+function safeCandidateUrlForLog(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
+function decodeScriptJsonText(raw: string): string {
+  return raw
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function extractEmbeddedJsonCandidates(html: string): Array<{ source: string; value: unknown }> {
+  const out: Array<{ source: string; value: unknown }> = [];
+  const pushJson = (source: string, raw: string) => {
+    const text = decodeScriptJsonText(raw);
+    if (!text || !/^\s*[\[{]/.test(text)) return;
+    try {
+      out.push({ source, value: JSON.parse(text) as unknown });
+    } catch {
+      /* ignore invalid embedded snippets */
+    }
+  };
+
+  for (const match of html.matchAll(
+    /<script\b[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/gi
+  )) {
+    pushJson("__NEXT_DATA__", match[1] ?? "");
+  }
+  for (const match of html.matchAll(
+    /<script\b[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi
+  )) {
+    pushJson("script:application/json", match[1] ?? "");
+  }
+  return out;
+}
+
+function normalizeDiscoveredReviewUrl(raw: string, baseUrl: string): string | null {
+  const cleaned = raw
+    .replace(/\\u002F/g, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&")
+    .trim();
+  if (!cleaned || !REVIEW_SOURCE_KEYWORDS.test(cleaned)) return null;
+  try {
+    if (/^https?:\/\//i.test(cleaned)) return new URL(cleaned).toString();
+    if (cleaned.startsWith("/")) return new URL(cleaned, baseUrl).toString();
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function extractReviewUrlCandidatesFromText(
+  text: string,
+  baseUrl: string,
+  source: string
+): ReviewSummaryCandidate[] {
+  const found = new Map<string, ReviewSummaryCandidate>();
+  const push = (raw: string) => {
+    const url = normalizeDiscoveredReviewUrl(raw, baseUrl);
+    if (!url) return;
+    if (blockedReviewSourceUrls.has(url)) {
+      found.set(url, {
+        url,
+        source,
+        verifiedBy: "script",
+        disabledReason: "blocked-after-429",
+      });
+      return;
+    }
+    found.set(url, { url, source, verifiedBy: "script", disabledReason: null });
+  };
+
+  for (const m of text.matchAll(/https?:\/\/[^"'`\s<>]+/gi)) {
+    push(m[0]);
+  }
+  for (const m of text.matchAll(/["'`]((?:\/[^"'`<>\s]*)?(?:review|reviews|product-review|summary)[^"'`<>\s]*)["'`]/gi)) {
+    push(m[1] ?? "");
+  }
+
+  return Array.from(found.values());
+}
+
+function dedupeReviewCandidates(candidates: ReviewSummaryCandidate[]): ReviewSummaryCandidate[] {
+  const seen = new Map<string, ReviewSummaryCandidate>();
+  for (const c of candidates) {
+    if (!seen.has(c.url)) seen.set(c.url, c);
+  }
+  return Array.from(seen.values());
+}
+
+export function buildSmartstoreReviewSummaryCandidates(input: {
   productId: string;
-  leafCategoryId: number;
+  storeName?: string | null;
+  channelSlug?: string | null;
+  productUrlKind: ProductUrlKind;
+  leafCategoryId?: number | null;
+}): ReviewSummaryCandidate[] {
+  const productId = input.productId.trim();
+  const leaf =
+    typeof input.leafCategoryId === "number" &&
+    Number.isFinite(input.leafCategoryId) &&
+    Math.trunc(input.leafCategoryId) > 0
+      ? Math.trunc(input.leafCategoryId)
+      : null;
+  if (!/^\d+$/.test(productId)) return [];
+
+  const dedup = new Map<string, ReviewSummaryCandidate>();
+  const add = (url: string, source: string) => {
+    if (!dedup.has(url)) {
+      dedup.set(url, {
+        url,
+        source,
+        verifiedBy: null,
+        disabledReason: "unverified-guessed-endpoint",
+      });
+    }
+  };
+  const addProductSummary = (origin: string, apiPrefix: "i" | "n", source: string) => {
+    const u = new URL(
+      `${origin}/${apiPrefix}/v1/contents/reviews/product-summary/${encodeURIComponent(productId)}`
+    );
+    if (leaf != null) {
+      u.searchParams.set("leafCategoryId", String(leaf));
+    }
+    add(u.toString(), source);
+  };
+
+  if (input.productUrlKind === "BRAND") {
+    addProductSummary("https://brand.naver.com", "n", "brand-product-summary");
+    addProductSummary("https://smartstore.naver.com", "i", "smartstore-product-summary");
+  } else {
+    addProductSummary("https://smartstore.naver.com", "i", "smartstore-product-summary");
+    addProductSummary("https://brand.naver.com", "n", "brand-product-summary");
+  }
+
+  return Array.from(dedup.values());
+}
+
+/** HTML/script에서 발견된 검증 후보만 호출한다. 429는 즉시 중단하고 route에서 기존 DB를 유지한다. */
+async function trySmartstoreReviewSummaryApi(input: {
+  productId: string;
+  productUrlKind: ProductUrlKind;
+  storeName?: string | null;
+  channelSlug?: string | null;
+  leafCategoryId?: number | null;
   refererPcUrl: string;
+  candidates: ReviewSummaryCandidate[];
 }): Promise<SmartstoreReviewSnapshot | null> {
   try {
-    const leaf = Math.trunc(input.leafCategoryId);
-    if (!Number.isFinite(leaf) || leaf <= 0) return null;
-
-    const url = new URL(
-      `https://smartstore.naver.com/i/v1/contents/reviews/product-summary/${encodeURIComponent(
-        input.productId
-      )}`
-    );
-    url.searchParams.set("leafCategoryId", String(leaf));
+    const candidates = dedupeReviewCandidates(input.candidates).filter((c) => !c.disabledReason);
+    console.log("[smartstore-review-summary-api] candidates", {
+      productId: input.productId,
+      productUrlKind: input.productUrlKind,
+      candidateCount: candidates.length,
+      candidates: candidates.map((c) => ({
+        source: c.source,
+        url: safeCandidateUrlForLog(c.url),
+        verifiedBy: c.verifiedBy ?? null,
+      })),
+    });
+    if (candidates.length === 0) return null;
 
     const refererPc = normalizePcProductReferer(input.refererPcUrl);
 
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json, text/plain, */*",
-        "Accept-Language": SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
-        Referer: refererPc,
-        "User-Agent": SMARTSTORE_UNIFIED_USER_AGENT,
-        "X-Client-Version": "20260429185405",
-        "X-Service-Type": "NONE",
-      },
-    });
-
-    if (res.status === 429) {
-      console.warn(`${LOG_P} product-summary rate-limit`, {
+    for (const candidate of candidates) {
+      if (blockedReviewSourceUrls.has(candidate.url)) {
+        console.warn("[smartstore-review-summary-api] fetch skipped", {
+          productId: input.productId,
+          source: candidate.source,
+          reason: "blocked-after-429",
+          url: safeCandidateUrlForLog(candidate.url),
+        });
+        continue;
+      }
+      await randomSmartstoreDelay("ranking");
+      console.log("[smartstore-review-summary-api] fetch start", {
         productId: input.productId,
-        leafCategoryId: leaf,
+        source: candidate.source,
+        url: safeCandidateUrlForLog(candidate.url),
+      });
+
+      const res = await fetch(candidate.url, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          "Accept-Language": SMARTSTORE_UNIFIED_ACCEPT_LANGUAGE,
+          Referer: refererPc,
+          "User-Agent": SMARTSTORE_UNIFIED_USER_AGENT,
+          "X-Client-Version": "20260429185405",
+          "X-Service-Type": "NONE",
+        },
+      });
+
+      if (res.status === 429) {
+        blockedReviewSourceUrls.add(candidate.url);
+        console.warn("[smartstore-review-summary-api] hit 429 cooldown", {
+          productId: input.productId,
+          source: candidate.source,
+          status: res.status,
+        });
+        await cooldownOn429();
+        throw new SmartstoreNaverRateLimitedError("네이버 리뷰 요약 API 제한 발생 (429)");
+      }
+
+      const rawText = await res.text();
+      if (!res.ok) {
+        console.warn("[smartstore-review-summary-api] fetch failed", {
+          productId: input.productId,
+          source: candidate.source,
+          status: res.status,
+          head: rawText.slice(0, 160),
+        });
+        continue;
+      }
+
+      console.log("[smartstore-review-summary-api] fetch success", {
+        productId: input.productId,
+        source: candidate.source,
         status: res.status,
       });
-      return null;
-    }
 
-    if (!res.ok) {
-      console.warn(`${LOG_P} product-summary non-OK`, {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawText) as unknown;
+      } catch {
+        console.warn("[smartstore-review-summary-api] fetch failed", {
+          productId: input.productId,
+          source: candidate.source,
+          status: res.status,
+          reason: "json-parse",
+          head: rawText.slice(0, 160),
+        });
+        continue;
+      }
+
+      const parsedSummary = parseReviewSummaryFromUnknown(parsed);
+      console.log("[smartstore-review-summary-api] parsed", {
         productId: input.productId,
-        leafCategoryId: leaf,
-        status: res.status,
+        source: candidate.source,
+        reviewCount: parsedSummary.reviewCount,
+        averageReviewScore: parsedSummary.reviewRating,
+        photoVideoReviewCount: parsedSummary.photoVideoReviewCount,
+        afterUseReviewCount: parsedSummary.monthlyUseReviewCount,
+        repurchaseReviewCount: parsedSummary.repurchaseReviewCount,
+        storePickReviewCount: parsedSummary.storePickReviewCount,
+        hasReviewData: parsedSummary.hasReviewData,
       });
-      return null;
+      if (!parsedSummary.hasReviewData) continue;
+
+      return {
+        productPageUrl: refererPc,
+        summary: {
+          reviewCount: parsedSummary.reviewCount,
+          reviewRating: parsedSummary.reviewRating,
+          photoVideoReviewCount: parsedSummary.photoVideoReviewCount,
+          monthlyUseReviewCount: parsedSummary.monthlyUseReviewCount,
+          repurchaseReviewCount: parsedSummary.repurchaseReviewCount,
+          storePickReviewCount: parsedSummary.storePickReviewCount,
+          starScoreSummary: parsedSummary.starScoreSummary,
+        },
+        recentReviews: [],
+      };
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(await res.text()) as unknown;
-    } catch {
-      console.warn(`${LOG_P} product-summary JSON parse fail`, { productId: input.productId });
-      return null;
-    }
-
-    const info = jsonRecord(jsonRecord(parsed)?.productReviewInfo);
-    if (!info) {
-      console.warn(`${LOG_P} product-summary missing productReviewInfo`, {
-        productId: input.productId,
-      });
-      return null;
-    }
-
-    const reviewCount = finiteNumber(info.reviewCount);
-    const avg = finiteNumber(info.averageReviewScore);
-    if (reviewCount == null && avg == null) {
-      console.warn(`${LOG_P} product-summary no summary signal`, { productId: input.productId });
-      return null;
-    }
-
-    const photo = finiteNumber(info.photoReviewCount);
-    const video = finiteNumber(info.videoReviewCount);
-    const photoVideoReviewCount =
-      photo == null && video == null ? null : Math.trunc((photo ?? 0) + (video ?? 0));
-
-    const monthlyRaw = finiteNumber(info.afterUseReviewCount);
-    const monthlyUseReviewCount =
-      monthlyRaw == null ? null : Math.max(0, Math.trunc(monthlyRaw));
-
-    const starScoreSummary: Record<"1" | "2" | "3" | "4" | "5", number> = {
-      "1": Math.max(0, Math.trunc(finiteNumber(info.score1ReviewCount) ?? 0)),
-      "2": Math.max(0, Math.trunc(finiteNumber(info.score2ReviewCount) ?? 0)),
-      "3": Math.max(0, Math.trunc(finiteNumber(info.score3ReviewCount) ?? 0)),
-      "4": Math.max(0, Math.trunc(finiteNumber(info.score4ReviewCount) ?? 0)),
-      "5": Math.max(0, Math.trunc(finiteNumber(info.score5ReviewCount) ?? 0)),
-    };
-
-    console.log(`${LOG_P} product-summary 성공`, {
-      productId: input.productId,
-      leafCategoryId: leaf,
-      reviewCount,
-      avg,
-    });
-
-    return {
-      productPageUrl: refererPc,
-      summary: {
-        reviewCount:
-          reviewCount == null ? null : Math.max(0, Math.trunc(reviewCount)),
-        reviewRating: avg,
-        photoVideoReviewCount,
-        monthlyUseReviewCount,
-        repurchaseReviewCount: null,
-        storePickReviewCount: null,
-        starScoreSummary,
-      },
-      recentReviews: [],
-    };
+    return null;
   } catch (e) {
-    console.warn(`${LOG_P} product-summary exception`, {
+    if (isSmartstoreNaverRateLimitedError(e)) throw e;
+    console.warn("[smartstore-review-summary-api] fetch failed", {
       productId: input.productId,
       error: String(e),
     });
@@ -236,13 +925,13 @@ function extractDataByBulldozer(html: string) {
     };
   };
 
-  const reviewCount = getNum(/"(?:reviewCount|totalReviewCount|totalElements)"\s*:\s*(\d+)/i);
-  const averageReviewScore = getNum(/"(?:averageReviewScore|ratingValue)"\s*:\s*"?([\d.]+)"?/i);
+  const reviewCount = getNum(/"(?:reviewCount|totalReviewCount|totalCount|reviewTotalCount|totalElements)"\s*:\s*(\d+)/i);
+  const averageReviewScore = getNum(/"(?:reviewRating|averageReviewScore|averageScore|reviewScore|ratingValue)"\s*:\s*"?([\d.]+)"?/i);
   const photoReviewCount = getNum(
-    /"(?:photoReviewCount|photoReviewCnt|photoVideoReviewCount)"\s*:\s*(\d+)/i
+    /"(?:photoVideoReviewCount|photoReviewCount|photoReviewCnt|mediaReviewCount|photoCount)"\s*:\s*(\d+)/i
   );
   const afterUseReviewCount = getNum(
-    /"(?:afterUseReviewCount|monthlyUseReviewCount)"\s*:\s*(\d+)/i
+    /"(?:afterUseReviewCount|monthReviewCount|monthlyReviewCount|monthlyUseReviewCount)"\s*:\s*(\d+)/i
   );
   const repurchaseReviewCount = getNum(/"(?:repurchaseReviewCount|repurchaseCount)"\s*:\s*(\d+)/i);
   const storePickReviewCount = getNum(/"(?:storePickReviewCount|storePickCount)"\s*:\s*(\d+)/i);
@@ -359,8 +1048,9 @@ async function tryFallbackViaShoppingSearchApi(input: {
     matchedProductId: meta.matchedProductId,
     pickedTitle: meta.name,
     pickedMallName: meta.mallName,
-    reviewCount: meta.reviewCount,
-    reviewRating: meta.reviewRating,
+    reviewCount: null,
+    reviewRating: null,
+    reviewMetricSource: "ignored-search-api",
   });
 
   // 상품 매칭에 실패하면 null 반환 (다음 단계에서 throw)
@@ -373,20 +1063,19 @@ async function tryFallbackViaShoppingSearchApi(input: {
     return null;
   }
 
-  // 매칭 성공 — review 데이터 유무와 관계없이 스냅샷 반환.
-  // route.ts는 reviewCount/reviewRating이 null이면 기존 DB 값을 그대로 유지하고
-  // 히스토리 레코드도 생성하지 않으므로 데이터가 덮어쓰이지 않는다.
-  const hasReviewData = meta.reviewCount != null || meta.reviewRating != null;
+  // 매칭 성공 — search-api는 상품명/이미지/가격/카테고리 보강용이다.
+  // 네이버 쇼핑 검색 API에는 리뷰 상세 지표가 없으므로 리뷰 성공으로 보지 않는다.
+  const hasReviewData = false;
   console.log(
-    `${LOG_P} fallback ${hasReviewData ? "성공 (리뷰 데이터 포함)" : "부분성공 (메타만, 리뷰 없음 — 기존 DB 값 유지)"}`,
+    `${LOG_P} fallback 부분성공 (메타만, 리뷰 없음 — 기존 DB 값 유지)`,
     {
       productId: input.productId,
       failureStage: input.failureStage,
       matchedProductId: meta.matchedProductId,
       pickedTitle: meta.name,
       pickedMallName: meta.mallName,
-      reviewCount: meta.reviewCount,
-      reviewRating: meta.reviewRating,
+      reviewCount: null,
+      reviewRating: null,
       hasReviewData,
     }
   );
@@ -395,8 +1084,8 @@ async function tryFallbackViaShoppingSearchApi(input: {
     productPageUrl: input.failurePageUrl,
     summary: {
       // null이면 route.ts가 기존 DB 값을 유지함
-      reviewCount: meta.reviewCount,
-      reviewRating: meta.reviewRating,
+      reviewCount: null,
+      reviewRating: null,
       photoVideoReviewCount: null,
       monthlyUseReviewCount: null,
       repurchaseReviewCount: null,
@@ -444,9 +1133,268 @@ function buildCandidateProductPages(
   return Array.from(dedup);
 }
 
+export type SmartstoreReviewSourceTraceResult = {
+  input: {
+    productUrl: string;
+    productId: string;
+    storeName: string | null;
+    shoppingProductId: string | null;
+    productUrlKind: ProductUrlKind;
+    channelSlug: string | null;
+    leafCategoryId: number | null;
+  };
+  fetchMode: "dryRun" | "singleFetch";
+  guessedCandidatesDisabled: Array<{ source: string; url: string; reason: string | null }>;
+  urlProductId: string;
+  detectedReviewProductId: string | null;
+  detectedLeafCategoryId: number | null;
+  verifiedSummaryUrl: string | null;
+  parsedProductReviewInfo: Record<string, unknown> | null;
+  recentProductReviewInfo: Record<string, unknown> | null;
+  discoveredSource: "html-script" | "network-confirmed-pattern" | null;
+  discoveredReviewUrlCandidates: Array<{
+    source: string;
+    url: string;
+    disabledReason: string | null;
+  }>;
+  embeddedJson: Array<{
+    source: string;
+    parsedSummary: ParsedReviewSummary;
+    reviewRelatedEntries: Array<{ path: string; key: string; value: unknown }>;
+  }>;
+  identifiers: Array<{ path: string; key: string; value: unknown }>;
+  fetchAttempt: null | {
+    url: string;
+    status: number;
+    ok: boolean;
+    stoppedBecause?: string;
+    htmlPreview?: string;
+  };
+};
+
+export async function traceSmartstoreReviewSources(input: {
+  productUrl?: string | null;
+  productId: string;
+  storeName?: string | null;
+  shoppingProductId?: string | null;
+  leafCategoryId?: number | null;
+  fetchMode?: "dryRun" | "singleFetch";
+}): Promise<SmartstoreReviewSourceTraceResult> {
+  const productId = String(input.productId ?? "").trim();
+  const storeName = input.storeName?.trim() || null;
+  const productUrl =
+    input.productUrl?.trim() ||
+    (storeName
+      ? `https://smartstore.naver.com/${encodeURIComponent(storeName)}/products/${encodeURIComponent(productId)}`
+      : `https://smartstore.naver.com/products/${encodeURIComponent(productId)}`);
+  const parsedUrl = normalizeUrl(productUrl);
+  const productUrlKind = classifyProductUrl(parsedUrl);
+  const channelSlug = extractChannelSlugFromProductUrl(productUrl) ?? storeName;
+  const leafCategoryId =
+    typeof input.leafCategoryId === "number" &&
+    Number.isFinite(input.leafCategoryId) &&
+    Math.trunc(input.leafCategoryId) > 0
+      ? Math.trunc(input.leafCategoryId)
+      : null;
+  const fetchMode = input.fetchMode ?? "dryRun";
+
+  const guessedCandidatesDisabled = buildSmartstoreReviewSummaryCandidates({
+    productId,
+    productUrlKind,
+    storeName,
+    channelSlug,
+    leafCategoryId,
+  }).map((c) => ({
+    source: c.source,
+    url: safeCandidateUrlForLog(c.url),
+    reason: c.disabledReason ?? null,
+  }));
+
+  const result: SmartstoreReviewSourceTraceResult = {
+    input: {
+      productUrl,
+      productId,
+      storeName,
+      shoppingProductId: input.shoppingProductId?.trim() || null,
+      productUrlKind,
+      channelSlug,
+      leafCategoryId,
+    },
+    fetchMode,
+    guessedCandidatesDisabled,
+    urlProductId: productId,
+    detectedReviewProductId: null,
+    detectedLeafCategoryId: leafCategoryId,
+    verifiedSummaryUrl: null,
+    parsedProductReviewInfo: null,
+    recentProductReviewInfo: null,
+    discoveredSource: null,
+    discoveredReviewUrlCandidates: [],
+    embeddedJson: [],
+    identifiers: [],
+    fetchAttempt: null,
+  };
+
+  console.log("[smartstore-review-source-trace]", {
+    mode: "debug",
+    productId,
+    storeName,
+    shoppingProductId: result.input.shoppingProductId,
+    guessedCandidatesDisabled,
+    fetchMode,
+  });
+
+  if (fetchMode === "dryRun") return result;
+
+  const naverCookie = await loadSystemConfigNaverCookie();
+  const productDetailSourceUrl = buildProductDetailSourceUrl({
+    productUrlKind,
+    channelSlug,
+    urlProductId: productId,
+  });
+  const detectedFromProductDetail = await tryDetectReviewSummarySourceFromProductDetailApi({
+    productUrl,
+    urlProductId: productId,
+    productUrlKind,
+    channelSlug,
+    naverCookie,
+  });
+  if (detectedFromProductDetail) {
+    result.fetchAttempt = {
+      url: safeCandidateUrlForLog(
+        buildProductDetailSourceUrl({ productUrlKind, channelSlug, urlProductId: productId }) ??
+          productUrl
+      ),
+      status: detectedFromProductDetail.verifiedSummaryUrl ? 200 : 204,
+      ok: Boolean(detectedFromProductDetail.verifiedSummaryUrl),
+    };
+    result.detectedReviewProductId = detectedFromProductDetail.reviewProductId;
+    result.detectedLeafCategoryId = detectedFromProductDetail.leafCategoryId;
+    result.verifiedSummaryUrl = detectedFromProductDetail.verifiedSummaryUrl
+      ? safeCandidateUrlForLog(detectedFromProductDetail.verifiedSummaryUrl)
+      : null;
+    result.parsedProductReviewInfo = detectedFromProductDetail.productReviewInfo;
+    result.recentProductReviewInfo = detectedFromProductDetail.recentProductReviewInfo;
+    result.discoveredSource = detectedFromProductDetail.discoveredSource;
+    result.identifiers = dedupeReviewTraceEntries([
+      ...result.identifiers,
+      ...detectedFromProductDetail.identifiers,
+    ]);
+    console.log("[smartstore-review-source-trace]", {
+      mode: "debug-result",
+      productId,
+      detectedReviewProductId: result.detectedReviewProductId,
+      detectedLeafCategoryId: result.detectedLeafCategoryId,
+      verifiedSummaryUrl: result.verifiedSummaryUrl,
+      discoveredSource: result.discoveredSource,
+    });
+    if (detectedFromProductDetail.verifiedSummaryUrl) return result;
+  }
+  if (productDetailSourceUrl) {
+    result.fetchAttempt ??= {
+      url: safeCandidateUrlForLog(productDetailSourceUrl),
+      status: 204,
+      ok: false,
+      stoppedBecause: "single-fetch-budget-used",
+    };
+    return result;
+  }
+
+  const candidatePages = buildCandidateProductPages(productUrlKind, parsedUrl, productId);
+  const pageUrl = candidatePages[0] ?? productUrl;
+  await randomSmartstoreDelay("ranking");
+  const headers = buildSmartstoreMobileDocumentFetchHeaders({
+    mobileUrl: pageUrl,
+    normalizedProductUrl: productUrl,
+    productId,
+    naverCookie,
+  });
+
+  const res = await fetch(pageUrl, { method: "GET", headers, cache: "no-store" });
+  if (res.status === 429) {
+    blockedReviewSourceUrls.add(pageUrl);
+    result.fetchAttempt = {
+      url: safeCandidateUrlForLog(pageUrl),
+      status: res.status,
+      ok: false,
+      stoppedBecause: "429",
+    };
+    console.warn("[smartstore-review-source-trace] hit 429 cooldown", result.fetchAttempt);
+    await cooldownOn429();
+    return result;
+  }
+
+  const html = await res.text();
+  result.fetchAttempt = {
+    url: safeCandidateUrlForLog(pageUrl),
+    status: res.status,
+    ok: res.ok,
+    htmlPreview: html.slice(0, 240).replace(/\s+/g, " "),
+  };
+  if (!res.ok) return result;
+
+  result.discoveredReviewUrlCandidates = extractReviewUrlCandidatesFromText(
+    html,
+    pageUrl,
+    "html-script"
+  ).map((c) => ({
+    source: c.source,
+    url: safeCandidateUrlForLog(c.url),
+    disabledReason: c.disabledReason ?? null,
+  }));
+
+  const embedded = extractEmbeddedJsonCandidates(html);
+  for (const item of embedded) {
+    const reviewRelatedEntries = collectReviewRelatedEntries(item.value, 80);
+    result.embeddedJson.push({
+      source: item.source,
+      parsedSummary: parseReviewSummaryFromUnknown(item.value),
+      reviewRelatedEntries,
+    });
+    result.identifiers.push(
+      ...reviewRelatedEntries.filter((e) =>
+        /merchantNo|originProductNo|channelNo|accountNo|productNo|nvMid|catalogue|catalog|channelProductNo/i.test(
+          e.key
+        )
+      )
+    );
+  }
+
+  const detected = detectReviewSummarySourceFromHtml(html, {
+    urlProductId: productId,
+    productUrlKind,
+    fallbackLeafCategoryId: leafCategoryId,
+  });
+  result.detectedReviewProductId = detected.reviewProductId;
+  result.detectedLeafCategoryId = detected.leafCategoryId;
+  result.verifiedSummaryUrl = detected.verifiedSummaryUrl
+    ? safeCandidateUrlForLog(detected.verifiedSummaryUrl)
+    : null;
+  result.parsedProductReviewInfo = detected.productReviewInfo;
+  result.recentProductReviewInfo = detected.recentProductReviewInfo;
+  result.discoveredSource = detected.discoveredSource;
+  result.identifiers = dedupeReviewTraceEntries([...result.identifiers, ...detected.identifiers]);
+
+  console.log("[smartstore-review-source-trace]", {
+    mode: "debug-result",
+    productId,
+    detectedReviewProductId: result.detectedReviewProductId,
+    detectedLeafCategoryId: result.detectedLeafCategoryId,
+    verifiedSummaryUrl: result.verifiedSummaryUrl,
+    fetchAttempt: result.fetchAttempt,
+    discoveredReviewUrlCandidates: result.discoveredReviewUrlCandidates,
+    embeddedJsonCount: result.embeddedJson.length,
+    identifierCount: result.identifiers.length,
+  });
+
+  return result;
+}
+
 export async function fetchSmartstoreReviewSnapshot(input: {
   productUrl: string;
   productId: string;
+  /** 리뷰 product-summary API path id. URL productId와 다를 수 있다. */
+  reviewProductId?: string | null;
   /** DB에 저장된 상품명 — fallback 검색에 적극 활용 */
   productName?: string | null;
   /** DB에 저장된 스토어명 — fallback 검색 보조 */
@@ -455,6 +1403,7 @@ export async function fetchSmartstoreReviewSnapshot(input: {
   leafCategoryId?: number | null;
 }): Promise<SmartstoreReviewSnapshot> {
   const productId = String(input.productId).trim();
+  const reviewProductId = String(input.reviewProductId ?? "").trim() || null;
   const parsedUrl = normalizeUrl(input.productUrl);
   const productUrlKind = classifyProductUrl(parsedUrl);
   const candidateUrls = buildCandidateProductPages(productUrlKind, parsedUrl, productId);
@@ -468,6 +1417,7 @@ export async function fetchSmartstoreReviewSnapshot(input: {
 
   console.log(`${LOG_P} 리뷰 요약 수집 시작`, {
     productId,
+    reviewProductId,
     productUrl: input.productUrl,
     productUrlKind,
     productName: input.productName ?? null,
@@ -475,196 +1425,123 @@ export async function fetchSmartstoreReviewSnapshot(input: {
     leafCategoryId: trimmedLeaf,
     candidateUrls,
   });
+  console.log("[smartstore-review-source-trace]", {
+    file: "lib/smartstore-review-fetcher.ts",
+    function: "fetchSmartstoreReviewSnapshot",
+    sources: [
+      "smartstore-review-summary-api",
+      "smartstore-product-html-json",
+      "smartstore-search-api-meta-only",
+    ],
+    productId,
+    reviewProductId,
+    productUrlKind,
+  });
+  const channelSlug = extractChannelSlugFromProductUrl(input.productUrl);
+  const guessedDisabledCandidates = buildSmartstoreReviewSummaryCandidates({
+    productId,
+    productUrlKind,
+    storeName: input.storeName ?? null,
+    channelSlug,
+    leafCategoryId: trimmedLeaf,
+  });
+  console.log("[smartstore-review-summary-api] candidates", {
+    productId,
+    productUrlKind,
+    candidateCount: 0,
+    disabledGuessCount: guessedDisabledCandidates.length,
+    disabledGuesses: guessedDisabledCandidates.map((c) => ({
+      source: c.source,
+      url: safeCandidateUrlForLog(c.url),
+      reason: c.disabledReason,
+    })),
+  });
 
-  // 1. 실제 사람처럼 보이게 딜레이 살짝 (봇 방패 우회)
-  await randomSmartstoreDelay("ranking");
-
-  if (
-    trimmedLeaf != null &&
-    (productUrlKind === "SMARTSTORE" || productUrlKind === "BRAND") &&
-    /^\d+$/.test(productId)
-  ) {
-    const viaApi = await trySmartstoreReviewProductSummaryApi({
+  if (reviewProductId != null && trimmedLeaf != null) {
+    const verifiedSummaryUrl = buildVerifiedProductSummaryUrl({
+      productUrlKind,
+      reviewProductId,
+      leafCategoryId: trimmedLeaf,
+    });
+    console.log("[smartstore-review-source-trace] using stored review source ids", {
       productId,
+      reviewProductId,
+      leafCategoryId: trimmedLeaf,
+    });
+    console.log("[smartstore-review-summary-api] verified url", {
+      productId,
+      urlProductId: productId,
+      reviewProductId,
+      leafCategoryId: trimmedLeaf,
+      url: safeCandidateUrlForLog(verifiedSummaryUrl),
+    });
+    const viaVerifiedApi = await trySmartstoreReviewSummaryApi({
+      productId,
+      productUrlKind,
+      storeName: input.storeName ?? null,
+      channelSlug,
       leafCategoryId: trimmedLeaf,
       refererPcUrl: input.productUrl,
-    });
-    if (viaApi) return viaApi;
-  }
-
-  // 2. 소장님의 네이버 신분증(쿠키) 로드 — HTML 페이지용 (product-summary API는 비쿠키)
-  const naverCookie = await loadSystemConfigNaverCookie();
-  let sawBlocked = false;
-  let sawNotFound = false;
-  let lastParseFailure: { url: string; status: number; htmlPreview: string } | null = null;
-
-  for (const pageUrl of candidateUrls) {
-    const headers = buildSmartstoreMobileDocumentFetchHeaders({
-      mobileUrl: pageUrl,
-      normalizedProductUrl: input.productUrl,
-      productId,
-      naverCookie,
-    });
-
-    const res = await fetch(pageUrl, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    });
-
-    if (res.status === 429) {
-      console.error(`${LOG_P} 단계 실패: fetch(429)`, { productId, pageUrl, productUrlKind });
-      const fallback = await tryFallbackViaShoppingSearchApi({
-        productUrl: input.productUrl,
-        productId,
-        productUrlKind,
-        failureStage: "fetch(429)",
-        failurePageUrl: pageUrl,
-        existingProductName: input.productName,
-        existingStoreName: input.storeName,
-      });
-      if (fallback) return fallback;
-      await cooldownOn429();
-      throw new SmartstoreNaverRateLimitedError("네이버 IP 차단 발생 (429)");
-    }
-
-    const html = await res.text();
-    const htmlPreview = html.slice(0, 240).replace(/\s+/g, " ");
-
-    if ([401, 403, 406, 418, 503].includes(res.status)) {
-      sawBlocked = true;
-      console.error(`${LOG_P} 단계 실패: fetch(blocked-status)`, {
-        productId,
-        pageUrl,
-        status: res.status,
-        htmlPreview,
-      });
-      continue;
-    }
-
-    if (!res.ok) {
-      console.error(`${LOG_P} 단계 실패: fetch(non-ok)`, {
-        productId,
-        pageUrl,
-        status: res.status,
-        htmlPreview,
-      });
-      if (res.status === 404) sawNotFound = true;
-      continue;
-    }
-
-    if (BLOCKED_HTML_PATTERNS.some((p) => p.test(html))) {
-      sawBlocked = true;
-      console.error(`${LOG_P} 단계 실패: fetch(blocked-html)`, {
-        productId,
-        pageUrl,
-        status: res.status,
-        htmlPreview,
-      });
-      continue;
-    }
-    if (NOT_FOUND_HTML_PATTERNS.some((p) => p.test(html))) {
-      sawNotFound = true;
-      console.error(`${LOG_P} 단계 실패: fetch(not-found-html)`, {
-        productId,
-        pageUrl,
-        status: res.status,
-        htmlPreview,
-      });
-      continue;
-    }
-
-    const data = extractDataByBulldozer(html);
-    if (!data.hasAnySignal) {
-      lastParseFailure = { url: pageUrl, status: res.status, htmlPreview };
-      console.error(`${LOG_P} 단계 실패: parse(no-signal)`, {
-        productId,
-        pageUrl,
-        status: res.status,
-        htmlPreview,
-      });
-      continue;
-    }
-
-    console.log(`${LOG_P} 수집 성공`, {
-      productId,
-      pageUrl,
-      productUrlKind,
-      reviewCount: data.reviewCount,
-      reviewRating: data.averageReviewScore,
-    });
-
-    return {
-      productPageUrl: pageUrl,
-      summary: {
-        reviewCount: data.reviewCount,
-        reviewRating: data.averageReviewScore,
-        photoVideoReviewCount: data.photoReviewCount,
-        monthlyUseReviewCount: data.afterUseReviewCount,
-        repurchaseReviewCount: data.repurchaseReviewCount,
-        storePickReviewCount: data.storePickReviewCount,
-        starScoreSummary: {
-          "1": data.score1Count,
-          "2": data.score2Count,
-          "3": data.score3Count,
-          "4": data.score4Count,
-          "5": data.score5Count,
+      candidates: [
+        {
+          url: verifiedSummaryUrl,
+          source: "network-confirmed-product-summary",
+          verifiedBy: "embedded-json",
+          disabledReason: null,
         },
+      ],
+    });
+    if (viaVerifiedApi) {
+      console.log(`${LOG_P} review-summary fallback success`, {
+        productId,
+        reviewCount: viaVerifiedApi.summary.reviewCount,
+        reviewRating: viaVerifiedApi.summary.reviewRating,
+        photoVideoReviewCount: viaVerifiedApi.summary.photoVideoReviewCount,
+        monthlyUseReviewCount: viaVerifiedApi.summary.monthlyUseReviewCount,
+        repurchaseReviewCount: viaVerifiedApi.summary.repurchaseReviewCount,
+        storePickReviewCount: viaVerifiedApi.summary.storePickReviewCount,
+      });
+      return viaVerifiedApi;
+    }
+    console.warn("[smartstore-review-fetcher-lite] review-summary fallback failed keep-existing", {
+      productId,
+      reviewProductId,
+      leafCategoryId: trimmedLeaf,
+      reason: "verified-summary-empty-or-parse-failed",
+    });
+    return {
+      productPageUrl: input.productUrl,
+      summary: {
+        reviewCount: null,
+        reviewRating: null,
+        photoVideoReviewCount: null,
+        monthlyUseReviewCount: null,
+        repurchaseReviewCount: null,
+        storePickReviewCount: null,
+        starScoreSummary: null,
       },
       recentReviews: [],
     };
   }
 
-  // 모든 후보 URL이 실패한 경우, 상품명 기반 검색 fallback을 마지막으로 시도
-  const failureStage = sawBlocked
-    ? "all-blocked"
-    : sawNotFound
-    ? "all-not-found"
-    : "all-parse-failed";
-
-  console.warn(`${LOG_P} 모든 HTML 수집 실패, 검색 API fallback 마지막 시도`, {
+  console.warn("[smartstore-review-source-trace] review source ids missing", {
     productId,
-    failureStage,
-    sawBlocked,
-    sawNotFound,
-    existingProductName: input.productName ?? null,
+    reviewProductId,
+    leafCategoryId: trimmedLeaf,
+    action: "keep-existing-without-network-source-discovery",
   });
+  return {
+    productPageUrl: input.productUrl,
+    summary: {
+      reviewCount: null,
+      reviewRating: null,
+      photoVideoReviewCount: null,
+      monthlyUseReviewCount: null,
+      repurchaseReviewCount: null,
+      storePickReviewCount: null,
+      starScoreSummary: null,
+    },
+    recentReviews: [],
+  };
 
-  const lastFallback = await tryFallbackViaShoppingSearchApi({
-    productUrl: input.productUrl,
-    productId,
-    productUrlKind,
-    failureStage,
-    failurePageUrl: input.productUrl,
-    existingProductName: input.productName,
-    existingStoreName: input.storeName,
-  }).catch((e) => {
-    console.error(`${LOG_P} fallback 자체 오류`, { productId, error: String(e) });
-    return null;
-  });
-
-  if (lastFallback) return lastFallback;
-
-  if (sawBlocked) {
-    throw new SmartstoreReviewBlockedError(
-      "네이버가 요청을 차단하거나 로그인/검증 페이지를 반환했습니다."
-    );
-  }
-  if (sawNotFound) {
-    throw new SmartstoreReviewProductNotFoundError(
-      "상품이 존재하지 않거나 현재 URL 유형에서 리뷰 페이지를 찾을 수 없습니다."
-    );
-  }
-  if (productUrlKind === "CATALOG") {
-    throw new SmartstoreReviewParseError(
-      "카탈로그 상품은 리뷰 요약 소스가 제공되지 않거나 파싱이 불가능합니다."
-    );
-  }
-  throw new SmartstoreReviewParseError(
-    `리뷰 데이터 파싱에 실패했습니다.${
-      lastParseFailure
-        ? ` 마지막 시도: ${lastParseFailure.url} (status=${lastParseFailure.status})`
-        : ""
-    }`
-  );
 }

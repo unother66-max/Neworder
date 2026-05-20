@@ -144,17 +144,6 @@ function parsePrice(l: string | undefined, h: string | undefined): number | null
   return Number.isFinite(n) ? n : null;
 }
 
-function parseOptionalNumber(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const t = v.trim().replace(/,/g, "");
-    if (!t) return null;
-    const n = Number(t);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
-}
-
 /** 쇼핑 검색 쿼리용: 브랜드 접미사·괄호·특수문자 정제 */
 function sanitizeShoppingSearchQuery(raw: string): string {
   let s = raw.trim();
@@ -409,8 +398,10 @@ function itemToMeta(
     mallName: mall,
     category: joinCategories(it),
     price,
-    reviewCount: parseOptionalNumber(it.reviewCount ?? it.review),
-    reviewRating: parseOptionalNumber(it.rating ?? it.score),
+    // 네이버 쇼핑 검색 API는 리뷰 상세 지표의 신뢰 가능한 출처가 아니다.
+    // 검색 fallback은 상품명/이미지/가격/카테고리 보강까지만 담당한다.
+    reviewCount: null,
+    reviewRating: null,
     matchedProductId: mid || targetProductId,
     matchedLink: link,
     isStrongMatch: opts?.isStrongMatch === true,

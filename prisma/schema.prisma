@@ -275,7 +275,9 @@ model SmartstoreReviewTarget {
   name                  String
   imageUrl              String?
   storeName             String?
-  /** 리뷰 요약 JSON API(leafCategoryId 쿼리) — 미확보 시 HTML·검색 fallback */
+  /** 리뷰 요약 JSON API path id — URL productId와 다를 수 있음 */
+  reviewProductId       String?
+  /** 리뷰 요약 JSON API(leafCategoryId 쿼리) */
   leafCategoryId        Int?
   reviewCount           Int?     @default(0)
   reviewRating          Float?

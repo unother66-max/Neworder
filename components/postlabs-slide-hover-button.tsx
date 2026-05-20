@@ -79,6 +79,15 @@ export function PostlabsSlideHoverButton({
       <div
         aria-hidden
         className={`
+          pointer-events-none absolute -inset-y-6 left-0 z-20 w-1/2 -skew-x-12
+          bg-gradient-to-r from-transparent via-white/35 to-transparent blur-[1px]
+          transition-all duration-700 ease-out motion-reduce:hidden
+          ${activeGlow ? "translate-x-[260%] opacity-100" : "-translate-x-[120%] opacity-0"}
+        `}
+      />
+      <div
+        aria-hidden
+        className={`
           absolute -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full blur-2xl motion-reduce:transition-none md:h-32 md:w-32
           ${activeGlow ? "opacity-100" : "opacity-0"}
         `}
