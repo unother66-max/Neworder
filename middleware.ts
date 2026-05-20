@@ -26,7 +26,24 @@ function isSmartstoreAdminOnlyApiPath(path: string): boolean {
   );
 }
 
+function isSmartstoreAuthRequiredPath(path: string): boolean {
+  return (
+    path === "/smartstore/product-ranking-analyze" ||
+    path.startsWith("/smartstore/product-ranking-analyze/") ||
+    path === "/smartstore/keyword-analyze" ||
+    path.startsWith("/smartstore/keyword-analyze/")
+  );
+}
+
+function isSmartstoreAuthRequiredApiPath(path: string): boolean {
+  return (
+    path.startsWith("/api/smartstore/product-ranking-analyze") ||
+    path.startsWith("/api/smartstore/keyword-analyze")
+  );
+}
+
 const SMARTSTORE_ADMIN_ONLY_API_ERROR = "관리자만 사용할 수 있는 기능입니다.";
+const LOGIN_REQUIRED_API_ERROR = "로그인이 필요한 기능입니다.";
 
 function isLegacyAuthPath(path: string): boolean {
   if (path.startsWith("/top-blog")) return true;
@@ -49,6 +66,17 @@ function redirectLogin(req: NextRequest) {
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
+  if (isSmartstoreAuthRequiredApiPath(path)) {
+    if (!secret) {
+      return NextResponse.json({ ok: false, error: LOGIN_REQUIRED_API_ERROR }, { status: 401 });
+    }
+    const token = await getToken({ req, secret });
+    if (!token) {
+      return NextResponse.json({ ok: false, error: LOGIN_REQUIRED_API_ERROR }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
   if (path.startsWith("/api/blog-analysis") || isSmartstoreAdminOnlyApiPath(path)) {
     if (!secret) {
       return NextResponse.json(
@@ -67,6 +95,13 @@ export async function middleware(req: NextRequest) {
         { status: 403 }
       );
     }
+    return NextResponse.next();
+  }
+
+  if (isSmartstoreAuthRequiredPath(path)) {
+    if (!secret) return redirectLogin(req);
+    const token = await getToken({ req, secret });
+    if (!token) return redirectLogin(req);
     return NextResponse.next();
   }
 
@@ -117,6 +152,9 @@ export const config = {
   matcher: [
     "/api/blog-analysis/:path*",
     "/api/smartstore/store-analyze",
+    "/api/smartstore/product-ranking-analyze",
+    "/api/smartstore/keyword-analyze",
+    "/api/smartstore/keyword-analyze/detail",
     "/api/smartstore-review-targets",
     "/api/smartstore-review-sync",
     "/((?!api(?:/|$)|_next(?:/|$)|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|woff2?|woff|ttf|eot|map|txt|xml|json|csv|pdf|wasm|js|css)$).*)",

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuthApi } from "@/lib/require-auth-api";
 import { analyzeSmartstoreKeywordDetail } from "@/lib/smartstore-keyword-analyze";
 import { isSmartstoreNaverRateLimitedError } from "@/lib/smartstore-bot-shield";
 
@@ -6,6 +7,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const auth = await requireAuthApi();
+  if (!auth.ok) return auth.response;
+
   try {
     const body = (await req.json().catch(() => ({}))) as { keyword?: unknown };
     const keyword = String(body.keyword ?? "").trim();
