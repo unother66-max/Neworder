@@ -27,13 +27,13 @@ export const KEYWORD_REFRESH_METRIC_SNAPSHOT_TAKE = 520;
 
 export const HEAVY_KEYWORD_RANK_LIMIT = 280;
 export const HEAVY_KEYWORD_VOLUME_LIMIT = 340;
-export const HEAVY_KEYWORD_CANDIDATE_LIMIT = 960;
+export const HEAVY_KEYWORD_CANDIDATE_LIMIT = 1400;
 /** 순위·통합검색 등 노출 재검사: 스냅샷 stale 초과 후보를 매 실행당 최대 이 개수만 처리 */
 export const DEFAULT_STALE_EXPOSURE_RECHECK_LIMIT = 50;
 
 const TITLE_LIST_EXPOSURE_FALLBACK_MIN_POSTS = 350;
 
-export type KeywordRefreshSource = "manual" | "cron";
+export type KeywordRefreshSource = "manual" | "cron" | "post-page";
 
 export type RefreshBlogKeywordsParams = {
   blogId: string;
@@ -44,6 +44,9 @@ export type RefreshBlogKeywordsParams = {
   staleExposureRecheckLimit?: number;
   /** 기본 14일 — `rankRefreshCutoffMs` 및 historic 필터에 사용 */
   revalidateWindowMs?: number;
+  mode?: "full" | "post-page";
+  sourcePosts?: BlogAnalysisRecentPost[];
+  page?: number | null;
 };
 
 export type RefreshBlogKeywordsSuccess = {
@@ -89,6 +92,9 @@ export async function refreshBlogKeywords(params: RefreshBlogKeywordsParams): Pr
     strictIncrementalVolumeLookup = true,
     staleExposureRecheckLimit = DEFAULT_STALE_EXPOSURE_RECHECK_LIMIT,
     revalidateWindowMs = 14 * 24 * 60 * 60 * 1000,
+    mode = "full",
+    sourcePosts = [],
+    page = null,
   } = params;
 
   const started = Date.now();
@@ -103,28 +109,10 @@ export async function refreshBlogKeywords(params: RefreshBlogKeywordsParams): Pr
     });
   }
 
-  const rssResponse = await fetch(`https://rss.blog.naver.com/${blogId}.xml`, {
-    headers: {
-      ...fetchHeaders,
-      Accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-      Referer: `https://blog.naver.com/${blogId}`,
-    },
-    cache: "no-store",
-  });
-  if (!rssResponse.ok) {
-    return {
-      ok: false,
-      blogId,
-      error: "RSS를 불러오지 못했습니다.",
-      httpStatus: 502,
-    };
-  }
-
-  const rssText = await rssResponse.text();
-  const recentPosts = parseBlogRssItems(rssText, 28).map(withBlogPostMetricIdentity);
-  const rssWidePosts = parseBlogRssItems(rssText, KEYWORD_REFRESH_RSS_WIDE_LIMIT);
-
   const cacheCutoff = new Date(Date.now() - revalidateWindowMs);
+
+  const normalizedSourcePosts = dedupePostsByMatchKey(sourcePosts.map(withBlogPostMetricIdentity));
+  const isPostPageMode = mode === "post-page" && normalizedSourcePosts.length > 0;
 
   const [allExposureSnapshots, metricSnapshotsForKeywords] = await Promise.all([
     prisma.blogKeywordExposureSnapshot.findMany({
@@ -144,19 +132,51 @@ export async function refreshBlogKeywords(params: RefreshBlogKeywordsParams): Pr
     }),
   ]);
 
-  const titleListBundle = await fetchBlogPostTitleListPostsWithDiagnostics(blogId, {
-    maxPages: KEYWORD_REFRESH_TITLE_LIST_MAX_PAGES,
-    countPerPage: KEYWORD_REFRESH_TITLE_LIST_COUNT_PER_PAGE,
-    expandPagesToReportedTotal: true,
-  });
+  let recentPosts: BlogAnalysisRecentPost[] = [];
+  let rssWidePosts: BlogAnalysisRecentPost[] = [];
+  let titleListAsyncPosts: BlogAnalysisRecentPost[] = [];
+  let titleListDiagnostics = null as Awaited<ReturnType<typeof fetchBlogPostTitleListPostsWithDiagnostics>>["diagnostics"] | null;
 
-  const titleListAsyncPosts = titleListBundle.posts;
-  const titleListDiagnostics = titleListBundle.diagnostics;
+  if (isPostPageMode) {
+    recentPosts = normalizedSourcePosts;
+    rssWidePosts = [];
+    titleListAsyncPosts = normalizedSourcePosts;
+  } else {
+    const rssResponse = await fetch(`https://rss.blog.naver.com/${blogId}.xml`, {
+      headers: {
+        ...fetchHeaders,
+        Accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+        Referer: `https://blog.naver.com/${blogId}`,
+      },
+      cache: "no-store",
+    });
+    if (!rssResponse.ok) {
+      return {
+        ok: false,
+        blogId,
+        error: "RSS를 불러오지 못했습니다.",
+        httpStatus: 502,
+      };
+    }
+
+    const rssText = await rssResponse.text();
+    recentPosts = parseBlogRssItems(rssText, 28).map(withBlogPostMetricIdentity);
+    rssWidePosts = parseBlogRssItems(rssText, KEYWORD_REFRESH_RSS_WIDE_LIMIT);
+
+    const titleListBundle = await fetchBlogPostTitleListPostsWithDiagnostics(blogId, {
+      maxPages: KEYWORD_REFRESH_TITLE_LIST_MAX_PAGES,
+      countPerPage: KEYWORD_REFRESH_TITLE_LIST_COUNT_PER_PAGE,
+      expandPagesToReportedTotal: true,
+    });
+    titleListAsyncPosts = titleListBundle.posts;
+    titleListDiagnostics = titleListBundle.diagnostics;
+  }
 
   const exposureFallbackPosts = postsFromKeywordExposureSnapshotTitles(allExposureSnapshots);
   const needExposureFallback =
-    titleListDiagnostics.titleListAsyncFirstError != null ||
-    titleListAsyncPosts.length < TITLE_LIST_EXPOSURE_FALLBACK_MIN_POSTS;
+    !isPostPageMode &&
+    (titleListDiagnostics?.titleListAsyncFirstError != null ||
+      titleListAsyncPosts.length < TITLE_LIST_EXPOSURE_FALLBACK_MIN_POSTS);
 
   const titleListPostsForKeywords = dedupePostsByMatchKey([
     ...titleListAsyncPosts,
@@ -188,16 +208,19 @@ export async function refreshBlogKeywords(params: RefreshBlogKeywordsParams): Pr
     preloadSnapshots,
     historicExposureKeywords,
     rankRefreshCutoffMs: cacheCutoff.getTime(),
-    rankCheckLimit: HEAVY_KEYWORD_RANK_LIMIT,
-    volumeCheckLimit: HEAVY_KEYWORD_VOLUME_LIMIT,
-    candidateLimit: HEAVY_KEYWORD_CANDIDATE_LIMIT,
+    rankCheckLimit: isPostPageMode ? 40 : HEAVY_KEYWORD_RANK_LIMIT,
+    volumeCheckLimit: isPostPageMode ? 24 : HEAVY_KEYWORD_VOLUME_LIMIT,
+    candidateLimit: isPostPageMode ? 220 : HEAVY_KEYWORD_CANDIDATE_LIMIT,
     keywordRefreshTitleListDiagnostics: titleListDiagnostics,
     strictIncrementalVolumeLookup,
     staleExposureRecheckLimit,
+    integratedSearchCheckLimit: isPostPageMode ? 8 : undefined,
   });
 
   await upsertBlogKeywordExposureSnapshotsForKeywords(blogId, exposureKeywords.persistableKeywords);
-  await deleteBlogKeywordExposureSnapshotsNotInKeywordList(blogId, exposureKeywords.persistableKeywords);
+  if (!isPostPageMode) {
+    await deleteBlogKeywordExposureSnapshotsNotInKeywordList(blogId, exposureKeywords.persistableKeywords);
+  }
 
   const refreshMs = Date.now() - started;
   const dbg = exposureKeywords.debug;
@@ -207,6 +230,9 @@ export async function refreshBlogKeywords(params: RefreshBlogKeywordsParams): Pr
     JSON.stringify({
       blogId,
       source,
+      mode,
+      page,
+      pagePostCount: isPostPageMode ? normalizedSourcePosts.length : undefined,
       refreshMs,
       titleListAsyncRequestCount: dbg.titleListAsyncRequestCount,
       titleListAsyncSuccessPages: dbg.titleListAsyncSuccessPages,
@@ -242,6 +268,8 @@ export async function refreshBlogKeywords(params: RefreshBlogKeywordsParams): Pr
       volumeCacheSnapshotSyncUpsertCount: dbg.volumeCacheSnapshotSyncUpsertCount,
       volumeCacheSnapshotSyncDuplicateSkipped: dbg.volumeCacheSnapshotSyncDuplicateSkipped,
       strictIncrementalVolumeLookup: dbg.strictIncrementalVolumeLookup,
+      confirmedVolumeKeywordCount: dbg.confirmedVolumeKeywordCount,
+      remainingVolumeUnknownKeywordCount: dbg.remainingVolumeUnknownKeywordCount,
       ...(dbg.strictIncrementalVolumeLookup
         ? {
             totalCandidateKeywordCount: dbg.volumeLookupPlanTotalEntries,
@@ -265,6 +293,29 @@ export async function refreshBlogKeywords(params: RefreshBlogKeywordsParams): Pr
         : {}),
     })
   );
+
+  if (isPostPageMode) {
+    const validCountBefore = preloadSnapshots.filter((row) => row.keywordValidationStatus === "valid").length;
+    console.log(
+      "[blog-post-page-keyword-refresh]",
+      JSON.stringify({
+        blogId,
+        page,
+        pagePostCount: normalizedSourcePosts.length,
+        candidateKeywordCount: dbg.candidateKeywordCount,
+        confirmedVolumeKeywordCount: dbg.confirmedVolumeKeywordCount,
+        validKeywordCountBefore: validCountBefore,
+        validKeywordCountAfter: exposureKeywords.validKeywordCount,
+        newlyAddedValidKeywordCount: Math.max(0, exposureKeywords.validKeywordCount - validCountBefore),
+        searchAdAttemptedCount: dbg.searchAdAttemptedCount,
+        searchAd429Stopped: dbg.searchAd429Stopped,
+        sampleNewValidKeywords: exposureKeywords.validKeywords
+          .filter((row) => !preloadSnapshots.some((prev) => prev.keyword === row.keyword))
+          .slice(0, 20)
+          .map((row) => row.keyword),
+      })
+    );
+  }
 
   return {
     ok: true,

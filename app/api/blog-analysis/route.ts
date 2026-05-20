@@ -20,18 +20,19 @@ import { inferBlogTopic } from "@/lib/blog-topic";
 import { prisma } from "@/lib/prisma";
 import type { BlogKeywordExposureSnapshot } from "@prisma/client";
 import { analyzeBlogPostPatterns } from "@/lib/blog-post-pattern";
-import {
-  fetchBlogPostMetricDraft,
-  isBlogPostMetricCacheFresh,
-  mergeBlogPostMetricSnapshot,
-  publishedAtDate,
-  withBlogPostMetricIdentity,
-} from "@/lib/blog-post-metric-cache";
+import { withBlogPostMetricIdentity } from "@/lib/blog-post-metric-cache";
 import { computeBlogTopicAverageComparison } from "@/lib/blog-topic-average";
+import {
+  BLOG_RECENT_POSTS_INITIAL_DISPLAY_LIMIT,
+  BLOG_RECENT_POSTS_INITIAL_METRIC_FETCH_LIMIT,
+  BLOG_RECENT_POSTS_INITIAL_TITLE_LIST_PAGES,
+  BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE,
+} from "@/lib/blog-recent-posts-config";
+import { mergeRecentPostsWithMetricCache } from "@/lib/merge-recent-posts-with-metric-cache";
 import {
   computePostingFrequency7d,
   extractBlogId,
-  fetchBlogPostTitleListPosts,
+  fetchBlogPostTitleListPostsWithDiagnostics,
   parseBlogRssItems,
 } from "@/lib/scraper";
 
@@ -47,6 +48,10 @@ const FAST_KEYWORD_NEW_RANK_LIMIT = 25;
 const FAST_KEYWORD_VOLUME_LIMIT = 8;
 const FAST_KEYWORD_CANDIDATE_LIMIT = 90;
 const FAST_RSS_KEYWORD_PARSE_LIMIT = 48;
+const FAST_RECENT_POST_TITLE_LIST_PAGES = BLOG_RECENT_POSTS_INITIAL_TITLE_LIST_PAGES;
+const FAST_RECENT_POST_TITLE_LIST_PAGE_SIZE = BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE;
+const RECENT_POST_DISPLAY_LIMIT = BLOG_RECENT_POSTS_INITIAL_DISPLAY_LIMIT;
+const RECENT_POST_METRIC_FETCH_LIMIT = BLOG_RECENT_POSTS_INITIAL_METRIC_FETCH_LIMIT;
 
 const NAVER_OFFICIAL_BLOG_TOPICS = [
   "일상·생각",
@@ -322,107 +327,36 @@ function computeRecentActivityScore(postingFrequency: number | null | undefined)
   return Math.min(100, Math.max(0, frequency * 100));
 }
 
-async function mergeRecentPostsWithMetricCache(
-  blogId: string,
-  posts: BlogAnalysisResult["recentPosts"]
-): Promise<NonNullable<BlogAnalysisResult["recentPosts"]>> {
-  const postsWithKeys = (posts ?? []).map(withBlogPostMetricIdentity);
-  const postKeys = postsWithKeys.map((post) => post.postKey).filter((key): key is string => Boolean(key));
-  if (postKeys.length === 0) return postsWithKeys;
+function recentPostSortTime(post: BlogAnalysisRecentPost): number {
+  const raw = post.publishedAt ?? post.createdAt ?? null;
+  if (!raw) return 0;
+  const time = new Date(raw).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
 
-  try {
-    const cachedRows = await prisma.blogPostMetricSnapshot.findMany({
-      where: {
-        blogId,
-        postKey: { in: postKeys },
-      },
-    });
-    const cacheByKey = new Map(cachedRows.map((row) => [row.postKey, row]));
-    const now = new Date();
-    const enriched: NonNullable<BlogAnalysisResult["recentPosts"]> = [];
+function mergeRecentPostSources(input: {
+  titleListPosts: BlogAnalysisRecentPost[];
+  rssPosts: BlogAnalysisRecentPost[];
+  metricPosts: BlogAnalysisRecentPost[];
+}): BlogAnalysisRecentPost[] {
+  const seen = new Set<string>();
+  const merged: BlogAnalysisRecentPost[] = [];
 
-    for (const post of postsWithKeys) {
-      const cached = post.postKey ? cacheByKey.get(post.postKey) : null;
-      if (cached && isBlogPostMetricCacheFresh(cached, now)) {
-        enriched.push(mergeBlogPostMetricSnapshot(post, cached));
-        continue;
-      }
+  const add = (post: BlogAnalysisRecentPost) => {
+    const withIdentity = withBlogPostMetricIdentity(post);
+    const key = withIdentity.postKey || withIdentity.url;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(withIdentity);
+  };
 
-      const draft = await fetchBlogPostMetricDraft(post);
-      if (!draft || !post.postKey) {
-        enriched.push(cached ? mergeBlogPostMetricSnapshot(post, cached) : post);
-        continue;
-      }
+  for (const post of input.titleListPosts) add(post);
+  for (const post of input.rssPosts) add(post);
+  for (const post of input.metricPosts) add(post);
 
-      try {
-        const saved = await prisma.blogPostMetricSnapshot.upsert({
-          where: {
-            blogId_postKey: {
-              blogId,
-              postKey: post.postKey,
-            },
-          },
-          create: {
-            blogId,
-            postKey: post.postKey,
-            postUrl: post.url,
-            orgUrl: post.orgUrl ?? post.url,
-            logNo: post.logNo ?? null,
-            title: post.title || "-",
-            publishedAt: publishedAtDate(post),
-            thumbnail: post.thumbnail ?? null,
-            wordCount: draft.wordCount ?? null,
-            imageCount: draft.imageCount ?? null,
-            videoCount: draft.videoCount ?? null,
-            commentCount: draft.commentCount ?? 0,
-            sympathyCount: draft.sympathyCount ?? 0,
-            shareCount: draft.shareCount ?? 0,
-            titleScore: draft.titleScore ?? null,
-            contentLengthScore: draft.contentLengthScore ?? null,
-            imageScore: draft.imageScore ?? null,
-            potentialScore: draft.potentialScore ?? null,
-            reactivityScore: draft.reactivityScore ?? null,
-            relatednessScore: draft.relatednessScore ?? null,
-            exposureStatus: draft.exposureStatus ?? "analyzed",
-            foundOnSearch: draft.foundOnSearch ?? null,
-            analyzedAt: now,
-          },
-          update: {
-            postUrl: post.url,
-            orgUrl: post.orgUrl ?? post.url,
-            logNo: post.logNo ?? null,
-            title: post.title || "-",
-            publishedAt: publishedAtDate(post),
-            thumbnail: post.thumbnail ?? null,
-            wordCount: draft.wordCount ?? null,
-            imageCount: draft.imageCount ?? null,
-            videoCount: draft.videoCount ?? null,
-            commentCount: draft.commentCount ?? 0,
-            sympathyCount: draft.sympathyCount ?? 0,
-            shareCount: draft.shareCount ?? 0,
-            titleScore: draft.titleScore ?? null,
-            contentLengthScore: draft.contentLengthScore ?? null,
-            imageScore: draft.imageScore ?? null,
-            potentialScore: draft.potentialScore ?? null,
-            reactivityScore: draft.reactivityScore ?? null,
-            relatednessScore: draft.relatednessScore ?? null,
-            exposureStatus: draft.exposureStatus ?? "analyzed",
-            foundOnSearch: draft.foundOnSearch ?? null,
-            analyzedAt: now,
-          },
-        });
-        enriched.push(mergeBlogPostMetricSnapshot(post, saved));
-      } catch (e) {
-        console.warn("[blog-analysis] 포스팅 메트릭 캐시 저장 실패:", e);
-        enriched.push(cached ? mergeBlogPostMetricSnapshot(post, cached) : { ...post, ...draft });
-      }
-    }
-
-    return enriched;
-  } catch (e) {
-    console.warn("[blog-analysis] 포스팅 메트릭 캐시 조회 실패:", e);
-    return postsWithKeys;
-  }
+  return merged
+    .sort((a, b) => recentPostSortTime(b) - recentPostSortTime(a))
+    .slice(0, RECENT_POST_DISPLAY_LIMIT);
 }
 
 function visitorDateFromNaverId(rawDate: string): { date: string; label: string } | null {
@@ -565,7 +499,7 @@ export async function POST(request: Request) {
       widgetListHtml,
       prologueListHtml,
       rssBundle,
-      titleListPostsForKeywords,
+      titleListBundle,
     ] = await Promise.all([
       visitorGraphPromise,
       fetchNaverMobileBlogInfo(blogId),
@@ -611,11 +545,19 @@ export async function POST(request: Request) {
           return { ui: [], keywords: [] };
         }
       })(),
-      fetchBlogPostTitleListPosts(
+      fetchBlogPostTitleListPostsWithDiagnostics(
         blogId,
-        SKIP_HEAVY_KEYWORD_INGEST ? { maxPages: 0, countPerPage: 30 } : { maxPages: 15, countPerPage: 30 }
+        SKIP_HEAVY_KEYWORD_INGEST
+          ? {
+              maxPages: FAST_RECENT_POST_TITLE_LIST_PAGES,
+              countPerPage: FAST_RECENT_POST_TITLE_LIST_PAGE_SIZE,
+            }
+          : { maxPages: 15, countPerPage: 30 }
       ),
     ]);
+
+    const titleListPostsForKeywords = titleListBundle.posts;
+    const titleListDiagnostics = titleListBundle.diagnostics;
 
     perf.visitorMs = visitorFetchMs;
     if (subscriberCount === null) {
@@ -667,7 +609,86 @@ export async function POST(request: Request) {
       scrapCount = parseScrapCountFromHtml(pcHtml);
     }
 
-    const recentPosts = await mergeRecentPostsWithMetricCache(blogId, rssBundle.ui);
+    let metricSnapshotRecentPosts: BlogAnalysisRecentPost[] = [];
+    try {
+      const metricRows = await prisma.blogPostMetricSnapshot.findMany({
+        where: { blogId },
+        orderBy: [{ publishedAt: "desc" }, { updatedAt: "desc" }],
+        take: RECENT_POST_DISPLAY_LIMIT,
+        select: {
+          title: true,
+          postUrl: true,
+          orgUrl: true,
+          logNo: true,
+          publishedAt: true,
+          thumbnail: true,
+          wordCount: true,
+          imageCount: true,
+          videoCount: true,
+          commentCount: true,
+          sympathyCount: true,
+          shareCount: true,
+          potentialScore: true,
+          reactivityScore: true,
+          relatednessScore: true,
+          postLevel: true,
+          exposureStatus: true,
+          foundOnSearch: true,
+          keywordAnalyzedAt: true,
+        },
+      });
+      metricSnapshotRecentPosts = metricRows.map((row) =>
+        withBlogPostMetricIdentity({
+          title: row.title || "-",
+          url: row.postUrl,
+          orgUrl: row.orgUrl ?? row.postUrl,
+          logNo: row.logNo,
+          publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+          createdAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+          thumbnail: row.thumbnail,
+          wordCount: row.wordCount,
+          imageCount: row.imageCount,
+          videoCount: row.videoCount,
+          commentCount: row.commentCount,
+          sympathyCount: row.sympathyCount,
+          shareCount: row.shareCount,
+          potentialScore: row.potentialScore,
+          reactivityScore: row.reactivityScore,
+          relatednessScore: row.relatednessScore,
+          postLevel: row.postLevel,
+          exposureStatus: row.exposureStatus,
+          foundOnSearch: row.foundOnSearch,
+          keywordAnalyzedAt: row.keywordAnalyzedAt ? row.keywordAnalyzedAt.toISOString() : null,
+        })
+      );
+    } catch (e) {
+      console.warn("[blog-analysis] 최근 포스팅 메트릭 스냅샷 조회 실패:", e);
+    }
+
+    const recentPostSources = mergeRecentPostSources({
+      titleListPosts: titleListPostsForKeywords,
+      rssPosts: rssBundle.ui,
+      metricPosts: metricSnapshotRecentPosts,
+    });
+    const recentPosts = await mergeRecentPostsWithMetricCache(blogId, recentPostSources, {
+      metricFetchLimit: RECENT_POST_METRIC_FETCH_LIMIT,
+    });
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("[blog-analysis recent-posts]", {
+        blogId,
+        rssRecentCount: rssBundle.ui.length,
+        titleListRecentCount: titleListPostsForKeywords.length,
+        metricSnapshotRecentCount: metricSnapshotRecentPosts.length,
+        mergedRecentPostCount: recentPosts.length,
+        sampleRecentPostTitles: recentPosts.slice(0, 12).map((post) => post.title),
+        newestPublishedAt: recentPosts[0]?.publishedAt ?? recentPosts[0]?.createdAt ?? null,
+        oldestDisplayedPublishedAt:
+          recentPosts[recentPosts.length - 1]?.publishedAt ??
+          recentPosts[recentPosts.length - 1]?.createdAt ??
+          null,
+      });
+    }
 
     const postingFrequency = computePostingFrequency7d(recentPosts);
 
@@ -1186,6 +1207,17 @@ export async function POST(request: Request) {
       keywordCacheAgeDays: keywordCacheAgeDaysComputed,
       latestKeywordCheckedAt: latestKeywordCheckedAtIso,
       usedCachedKeywordCount: usedCachedKeywordCountTop,
+      recentPostsPagination: {
+        nextTitleListPage: FAST_RECENT_POST_TITLE_LIST_PAGES + 1,
+        pageSize: FAST_RECENT_POST_TITLE_LIST_PAGE_SIZE,
+        hasMore:
+          titleListDiagnostics.titleListAsyncReportedTotalPostCount != null &&
+          titleListDiagnostics.titleListAsyncReportedTotalPostCount > 0
+            ? titleListDiagnostics.titleListAsyncSuccessPages * FAST_RECENT_POST_TITLE_LIST_PAGE_SIZE <
+              titleListDiagnostics.titleListAsyncReportedTotalPostCount
+            : titleListPostsForKeywords.length >= FAST_RECENT_POST_TITLE_LIST_PAGE_SIZE,
+        totalCount: titleListDiagnostics.titleListAsyncReportedTotalPostCount,
+      },
     };
     if (process.env.NODE_ENV === "development") {
       console.log("[blog-analysis] visitor api response", {

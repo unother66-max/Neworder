@@ -621,7 +621,9 @@ export async function checkNaverIntegratedBlogExposure({
   if (!keyword.trim() || !normalizedBlogId) return emptyExposure();
 
   const candidateByKey = candidateMapFromUrls(candidatePostUrls, candidatePostTitles);
-  const shouldRestrictToCandidates = candidateByKey.size > 0;
+  // 통합검색은 전체/과거 글 노출이 섞일 수 있으므로 후보 풀에 없는 같은 blogId 포스트도 인정한다.
+  // candidateByKey는 매칭된 글의 제목/URL 보강에만 사용한다.
+  const shouldRestrictToCandidates = false;
   const candidatePostKeysList = [...candidateByKey.keys()].slice(0, 30);
   const enc = encodeURIComponent(keyword);
 

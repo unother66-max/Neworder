@@ -236,6 +236,31 @@ function decodePostTitleParam(encoded: string): string {
 
 function parseNaverPostListAddDateIso(addDate: string | undefined): string | null {
   const raw = String(addDate ?? "").trim();
+  if (!raw) return null;
+
+  const now = Date.now();
+  if (/방금/.test(raw)) return new Date(now).toISOString();
+
+  const relativeMinute = raw.match(/(\d+)\s*분\s*전/);
+  if (relativeMinute) {
+    const minutes = Number(relativeMinute[1]);
+    if (Number.isFinite(minutes)) return new Date(now - minutes * 60 * 1000).toISOString();
+  }
+
+  const relativeHour = raw.match(/(\d+)\s*시간\s*전/);
+  if (relativeHour) {
+    const hours = Number(relativeHour[1]);
+    if (Number.isFinite(hours)) return new Date(now - hours * 60 * 60 * 1000).toISOString();
+  }
+
+  const relativeDay = raw.match(/(\d+)\s*일\s*전/);
+  if (relativeDay) {
+    const days = Number(relativeDay[1]);
+    if (Number.isFinite(days)) return new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  if (/어제/.test(raw)) return new Date(now - 24 * 60 * 60 * 1000).toISOString();
+
   const m = raw.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
   if (!m) return null;
   const y = m[1];
@@ -467,7 +492,9 @@ export async function fetchBlogPostTitleListPostsWithDiagnostics(
         out.push({
           title: title || `글 ${logNo}`,
           url: postUrl,
+          logNo,
           createdAt,
+          publishedAt: createdAt,
         });
         addedThisPage += 1;
       }
@@ -533,6 +560,86 @@ export async function fetchBlogPostTitleListPosts(
 ): Promise<BlogAnalysisRecentPost[]> {
   const r = await fetchBlogPostTitleListPostsWithDiagnostics(blogId, opts);
   return r.posts;
+}
+
+export type BlogPostTitleListPageResult = {
+  posts: BlogAnalysisRecentPost[];
+  page: number;
+  limit: number;
+  totalCount: number | null;
+  hasMore: boolean;
+};
+
+/** PostTitleListAsync 단일 페이지만 조회 (load-more·페이지네이션용) */
+export async function fetchBlogPostTitleListPage(
+  blogId: string,
+  page: number,
+  countPerPage: number = 30
+): Promise<BlogPostTitleListPageResult> {
+  const bid = blogId.trim();
+  const safePage = Math.max(1, Math.floor(page));
+  const safeLimit = Math.min(50, Math.max(1, Math.floor(countPerPage)));
+
+  if (!bid) {
+    return { posts: [], page: safePage, limit: safeLimit, totalCount: null, hasMore: false };
+  }
+
+  const url =
+    `https://blog.naver.com/PostTitleListAsync.naver?blogId=${encodeURIComponent(bid)}` +
+    `&viewdate=&currentPage=${safePage}&categoryNo=0&parentCategoryNo=0&countPerPage=${safeLimit}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        ...TITLE_LIST_HEADERS,
+        Referer: `https://blog.naver.com/PostList.naver?blogId=${encodeURIComponent(bid)}`,
+      },
+      cache: "no-store",
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      return { posts: [], page: safePage, limit: safeLimit, totalCount: null, hasMore: false };
+    }
+
+    const payload = parsePostTitleListAsyncPayload(text);
+    if (payload.resultCode && payload.resultCode !== "S") {
+      return { posts: [], page: safePage, limit: safeLimit, totalCount: payload.totalCount, hasMore: false };
+    }
+
+    const list = payload.postList ?? [];
+    const seenLog = new Set<string>();
+    const posts: BlogAnalysisRecentPost[] = [];
+
+    for (const row of list) {
+      const logNo = String(row.logNo ?? "").trim();
+      if (!logNo || seenLog.has(logNo)) continue;
+      seenLog.add(logNo);
+
+      const title = decodePostTitleParam(String(row.title ?? ""));
+      const postUrl = `https://m.blog.naver.com/${encodeURIComponent(bid)}/${logNo}`;
+      const createdAt = parseNaverPostListAddDateIso(row.addDate);
+
+      posts.push({
+        title: title || `글 ${logNo}`,
+        url: postUrl,
+        logNo,
+        createdAt,
+        publishedAt: createdAt,
+      });
+    }
+
+    const totalCount = payload.totalCount;
+    const hasMore =
+      posts.length > 0 &&
+      (totalCount != null && totalCount > 0
+        ? safePage * safeLimit < totalCount
+        : list.length >= safeLimit);
+
+    return { posts, page: safePage, limit: safeLimit, totalCount, hasMore };
+  } catch {
+    return { posts: [], page: safePage, limit: safeLimit, totalCount: null, hasMore: false };
+  }
 }
 
 export async function getRecentLinksFromPage(

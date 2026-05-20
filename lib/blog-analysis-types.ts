@@ -39,6 +39,7 @@ export interface BlogAnalysisRecentPost {
   postLevel?: number | string | null;
   exposureStatus?: string | null;
   foundOnSearch?: boolean | null;
+  keywordAnalyzedAt?: string | null;
   /** RSS 등에서 추출한 태그 문자열 목록 */
   tags?: string[] | null;
 };
@@ -205,4 +206,12 @@ export type BlogAnalysisResult = {
   latestKeywordCheckedAt?: string | null;
   /** DB 노출 스냅샷 행 수 (= 후보 캐시 행 수) */
   usedCachedKeywordCount?: number;
+
+  /** PostTitleListAsync 추가 로드용 (기본 분석 첫 응답) */
+  recentPostsPagination?: {
+    nextTitleListPage: number;
+    pageSize: number;
+    hasMore: boolean;
+    totalCount: number | null;
+  };
 };

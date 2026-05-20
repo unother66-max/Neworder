@@ -547,6 +547,7 @@ model BlogPostMetricSnapshot {
   foundOnSearch      Boolean?
 
   analyzedAt         DateTime?
+  keywordAnalyzedAt  DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -554,6 +555,7 @@ model BlogPostMetricSnapshot {
   @@index([blogId])
   @@index([blogId, publishedAt])
   @@index([blogId, analyzedAt])
+  @@index([blogId, keywordAnalyzedAt])
   @@index([exposureStatus])
 }
 

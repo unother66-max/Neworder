@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, KeyRound, FileText, Type, AlignLeft, ImageIcon, Video, MessageCircle, Heart, Search } from "lucide-react";
+import { BarChart3, KeyRound, FileText, Type, AlignLeft, ImageIcon, Video, MessageCircle, Heart, Search, X, ExternalLink } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import TopNav from "@/components/top-nav";
 import { GlobalLoading } from "@/components/global-loading";
@@ -25,6 +25,20 @@ import { buildBlogAnalysisSummary } from "@/lib/blog-analysis-summary";
 import { computeBlogKeywordInsights } from "@/lib/blog-keyword-insight";
 import { computeRepresentativeValidKeywords } from "@/lib/blog-representative-keywords";
 import { computeBlogScore, type BlogScoreResult } from "@/lib/blog-score";
+import {
+  BLOG_RECENT_POSTS_INITIAL_TITLE_LIST_PAGES,
+  BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE,
+} from "@/lib/blog-recent-posts-config";
+import {
+  dedupeRecentPosts,
+  recentPostDedupeKey,
+  recentPostPublishedTime,
+  sortRecentPostsByPublishedAtDesc,
+} from "@/lib/blog-recent-posts-dedupe";
+import {
+  applyRecentPostsLocalCacheOnLoad,
+  saveRecentPostsLocalCache,
+} from "@/lib/blog-recent-posts-local-cache";
 import { extractBlogId, isValidNaverBlogId } from "@/lib/scraper";
 
 function formatPostDate(iso: string | null | undefined): string {
@@ -32,6 +46,41 @@ function formatPostDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "-";
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function postPageKeywordRefreshKey(post: BlogAnalysisRecentPost, blogId: string): string {
+  const logNo = String(post.logNo ?? "").trim();
+  if (logNo) return `${blogId}:${logNo}`;
+  const url = String(post.url ?? post.orgUrl ?? "").trim();
+  if (url) return `${blogId}:url:${url}`;
+  const title = String(post.title ?? "").trim();
+  const publishedAt = String(post.publishedAt ?? post.createdAt ?? "").trim();
+  return `${blogId}:title:${title}:${publishedAt}`;
+}
+
+function buildPopularPostRankMap(
+  posts: BlogAnalysisRecentPost[],
+  blogId: string,
+  maxRank: number
+): Map<string, number> {
+  const ranked = sortRecentPostsByPublishedAtDesc(dedupeRecentPosts(posts, blogId))
+    .map((post) => ({
+      post,
+      score: estimateDailyViewsFromPost(post) ?? 0,
+      publishedTime: recentPostPublishedTime(post),
+    }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.publishedTime - a.publishedTime;
+    })
+    .slice(0, Math.max(0, maxRank));
+
+  const map = new Map<string, number>();
+  ranked.forEach((row, index) => {
+    map.set(postPageKeywordRefreshKey(row.post, blogId), index + 1);
+  });
+  return map;
 }
 
 function firstFiniteNumber(...values: Array<number | string | null | undefined>): number | null {
@@ -245,6 +294,240 @@ function formatRankDisplay(rank: number | null | undefined): string {
   const n = Number(rank);
   if (!Number.isFinite(n) || n < 1) return "-";
   return `${Math.floor(n).toLocaleString()}위`;
+}
+
+function naverIntegratedSearchUrl(keyword: string): string {
+  return `https://search.naver.com/search.naver?where=nexearch&query=${encodeURIComponent(keyword)}`;
+}
+
+function hasBlogKeywordExposure(row: BlogValidKeyword): boolean {
+  const rank = firstFiniteNumber(row.blogRank);
+  return rank !== null && rank >= 1;
+}
+
+function hasIntegratedKeywordExposure(row: BlogValidKeyword): boolean {
+  const block = String(row.integratedSearchBlock ?? "").trim();
+  const rank = firstFiniteNumber(row.integratedSearchRank);
+  return block.length > 0 || (rank !== null && rank >= 1);
+}
+
+function formatIntegratedExposureRank(row: BlogValidKeyword): string {
+  const rank = firstFiniteNumber(row.integratedSearchRank);
+  if (rank !== null && rank >= 1) return `${Math.floor(rank)}위`;
+  if (String(row.integratedSearchBlock ?? "").trim().length > 0) return "1위";
+  return "-";
+}
+
+type KeywordExposureModalTab = "blog" | "integrated";
+
+const EXPOSURE_MODAL_TITLE_CLASS =
+  "text-sm sm:text-base font-semibold leading-snug line-clamp-2 break-words";
+const EXPOSURE_MODAL_TITLE_PLAIN_CLASS = `${EXPOSURE_MODAL_TITLE_CLASS} text-[#111827]`;
+
+function ExposurePostTitleLink({ title, url }: { title: string; url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="블로그 글 새 탭에서 보기"
+      aria-label={`블로그 글 새 탭에서 보기: ${title}`}
+      className="group flex w-full min-w-0 cursor-pointer items-center gap-2 text-left"
+    >
+      <span
+        className={`min-w-0 flex-1 ${EXPOSURE_MODAL_TITLE_CLASS} text-[#2563EB] group-hover:underline`}
+        title={title}
+      >
+        {title}
+      </span>
+      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] sm:text-[11px] font-bold text-[#2563EB] ring-1 ring-blue-100 transition-colors group-hover:bg-blue-100">
+        글 보기
+        <ExternalLink className="h-3 w-3 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
+      </span>
+    </a>
+  );
+}
+
+function ExposureIntegratedPositionLink({ keyword, block }: { keyword: string; block: string }) {
+  const label = block ? `${block} 보기` : "통합검색 보기";
+  return (
+    <a
+      href={naverIntegratedSearchUrl(keyword)}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="네이버 통합검색 결과에서 위치 확인"
+      aria-label={`네이버 통합검색 결과에서 위치 확인: ${label}`}
+      className="inline-flex cursor-pointer items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-[#2563EB] transition-colors hover:border-blue-300 hover:bg-blue-100"
+    >
+      {label}
+    </a>
+  );
+}
+
+function ExposureRankBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex rounded-md bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-slate-700 tabular-nums ring-1 ring-amber-100/70">
+      {label}
+    </span>
+  );
+}
+
+function KeywordExposureModal({ row, onClose }: { row: BlogValidKeyword; onClose: () => void }) {
+  const [tab, setTab] = useState<KeywordExposureModalTab>("blog");
+  const keyword = String(row.keyword ?? "").trim();
+
+  useEffect(() => {
+    setTab("blog");
+  }, [keyword]);
+  const postTitle = String(row.sourcePostTitle ?? "").trim() || "노출 포스팅";
+  const postUrl = String(row.sourcePostUrl ?? "").trim();
+  const blogHasExposure = hasBlogKeywordExposure(row);
+  const integratedHasExposure = hasIntegratedKeywordExposure(row);
+  const integratedBlock = String(row.integratedSearchBlock ?? "").trim();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-3 py-4 backdrop-blur-[3px]"
+      onClick={onClose}
+      role="presentation"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="flex max-h-[85vh] w-[calc(100vw-24px)] max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)] sm:w-[calc(100vw-32px)]"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyword-exposure-modal-title"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-4 sm:p-6 sm:pb-5">
+          <h2 id="keyword-exposure-modal-title" className="min-w-0 pr-2 text-sm font-bold text-[#111827] sm:text-base">
+            <span className="break-all text-[#2563EB]">{keyword || "-"}</span>
+            <span className="text-slate-700"> 노출 결과</span>
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+            aria-label="닫기"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="border-b border-slate-100 p-4 sm:px-6 sm:py-4">
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100/80 p-1">
+            {(
+              [
+                { key: "blog" as const, label: "블로그" },
+                { key: "integrated" as const, label: "통합검색" },
+              ] as const
+            ).map((item) => {
+              const isActive = tab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setTab(item.key)}
+                  className={`h-9 rounded-lg text-[12px] font-bold transition-all ${
+                    isActive
+                      ? "bg-slate-800 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 sm:text-xs">
+            제목을 클릭하면 해당 블로그 글로 이동하고, 통합검색 위치를 클릭하면 네이버 검색 결과를 확인할 수 있습니다.
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto p-4 sm:p-6">
+          {tab === "blog" ? (
+            !blogHasExposure ? (
+              <p className="py-8 text-center text-xs text-slate-400">블로그 노출 결과가 없습니다.</p>
+            ) : (
+              <table className="w-full min-w-[320px] table-fixed text-left sm:min-w-0">
+                <colgroup>
+                  <col />
+                  <col className="w-24 sm:w-28" />
+                </colgroup>
+                <thead className="border-b border-slate-100 bg-slate-50/80">
+                  <tr>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-gray-500 sm:px-4">제목</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap sm:px-4">
+                      순위
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-slate-50 last:border-0">
+                    <td className="px-3 py-3 align-middle min-w-0 sm:px-4">
+                      {postUrl ? (
+                        <ExposurePostTitleLink title={postTitle} url={postUrl} />
+                      ) : (
+                        <span className={`block ${EXPOSURE_MODAL_TITLE_PLAIN_CLASS}`} title={postTitle}>
+                          {postTitle}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-middle text-right whitespace-nowrap sm:px-4">
+                      <ExposureRankBadge label={formatRankDisplay(row.blogRank)} />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            )
+          ) : !integratedHasExposure ? (
+            <p className="py-8 text-center text-xs text-slate-400">통합검색 노출 결과가 없습니다.</p>
+          ) : (
+            <table className="w-full min-w-[420px] table-fixed text-left sm:min-w-0">
+              <colgroup>
+                <col className="w-28 sm:w-32" />
+                <col />
+                <col className="w-24 sm:w-28" />
+              </colgroup>
+              <thead className="border-b border-slate-100 bg-slate-50/80">
+                <tr>
+                  <th className="px-3 py-2.5 text-[10px] font-bold text-gray-500 whitespace-nowrap sm:px-4">위치</th>
+                  <th className="px-3 py-2.5 text-[10px] font-bold text-gray-500 sm:px-4">제목</th>
+                  <th className="px-3 py-2.5 text-[10px] font-bold text-gray-500 text-right whitespace-nowrap sm:px-4">
+                    순위
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-50 last:border-0">
+                  <td className="px-3 py-3 align-middle whitespace-nowrap sm:px-4">
+                    <ExposureIntegratedPositionLink keyword={keyword} block={integratedBlock} />
+                  </td>
+                  <td className="px-3 py-3 align-middle min-w-0 sm:px-4">
+                    {postUrl ? (
+                      <ExposurePostTitleLink title={postTitle} url={postUrl} />
+                    ) : (
+                      <span className={`block ${EXPOSURE_MODAL_TITLE_PLAIN_CLASS}`} title={postTitle}>
+                        {postTitle}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 align-middle text-right whitespace-nowrap sm:px-4">
+                    <ExposureRankBadge label={formatIntegratedExposureRank(row)} />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 }
 
 function formatAnalyzedAt(iso: string | null | undefined): string {
@@ -626,8 +909,43 @@ function patternPeerItem(
 
 type Props = { blogId: string; forceKeywordRefreshDev?: boolean };
 type BottomTab = "recent" | "popular" | "keywords";
-const RECENT_POSTS_ROWS_PER_PAGE = 10;
+/** 최근 포스팅 1페이지 더보기 단계 (최대 30) */
+const RECENT_POST_PAGE_SIZE_STEPS = [5, 10, 20, 30] as const;
+const RECENT_POST_MAX_PAGE_SIZE = 30;
+const RECENT_POST_INITIAL_PAGE_SIZE = RECENT_POST_PAGE_SIZE_STEPS[0];
 const POPULAR_POSTS_ROWS_PER_PAGE = 10;
+
+function getNextRecentPostDisplaySize(current: number): number | null {
+  const exactIdx = RECENT_POST_PAGE_SIZE_STEPS.findIndex((size) => size === current);
+  if (exactIdx >= 0 && exactIdx < RECENT_POST_PAGE_SIZE_STEPS.length - 1) {
+    return RECENT_POST_PAGE_SIZE_STEPS[exactIdx + 1];
+  }
+  const next = RECENT_POST_PAGE_SIZE_STEPS.find((size) => size > current);
+  return next ?? null;
+}
+
+function getRecentPostsSliceRange(
+  page: number,
+  displayPageSize: number
+): { start: number; end: number; sliceSize: number } {
+  if (page <= 1) {
+    const end = Math.min(displayPageSize, RECENT_POST_MAX_PAGE_SIZE);
+    return { start: 0, end, sliceSize: end };
+  }
+  const start = (page - 1) * RECENT_POST_MAX_PAGE_SIZE;
+  const end = page * RECENT_POST_MAX_PAGE_SIZE;
+  return { start, end, sliceSize: RECENT_POST_MAX_PAGE_SIZE };
+}
+
+/** dedupe·sort 후 로드된 글 수 + hasMore 기준 페이지 버튼 개수 (페이지당 30) */
+function getRecentPostsPaginationPageCount(loadedCount: number, hasMore: boolean): number {
+  const loadedPages = Math.max(1, Math.ceil(loadedCount / RECENT_POST_MAX_PAGE_SIZE));
+  return loadedPages + (hasMore ? 1 : 0);
+}
+
+function getEffectiveRecentPostsPageSize(page: number, displayPageSize: number): number {
+  return page <= 1 ? displayPageSize : RECENT_POST_MAX_PAGE_SIZE;
+}
 const KEYWORD_PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
 /** 동일 blogId 자동 keyword-refresh 동시/연속 호출 완화 (sessionStorage + ref) */
 const KEYWORD_AUTO_REFRESH_INFLIGHT_MS = 12 * 60 * 1000;
@@ -641,7 +959,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
   const [searchInput, setSearchInput] = useState(blogId);
   const [activeTab, setActiveTab] = useState<BottomTab>("recent");
   const [recentPostsPage, setRecentPostsPage] = useState(1);
-  const [recentPostsVisibleCount, setRecentPostsVisibleCount] = useState(RECENT_POSTS_ROWS_PER_PAGE);
+  const [recentPostsPageSize, setRecentPostsPageSize] = useState<number>(RECENT_POST_INITIAL_PAGE_SIZE);
   const [popularPostsVisibleCount, setPopularPostsVisibleCount] = useState(POPULAR_POSTS_ROWS_PER_PAGE);
   const [keywordPage, setKeywordPage] = useState(1);
   const [keywordPageSize, setKeywordPageSize] = useState<(typeof KEYWORD_PAGE_SIZE_OPTIONS)[number]>(30);
@@ -683,9 +1001,23 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
   /** 자동·수동 keyword-refresh 진행 중 (중복 호출 방지; sessionStorage 자동 락과 무관) */
   const [isKeywordRefreshing, setIsKeywordRefreshing] = useState(false);
   const [keywordRefreshError, setKeywordRefreshError] = useState<string | null>(null);
+  const [postPageKeywordRefreshStatus, setPostPageKeywordRefreshStatus] = useState<string | null>(null);
+  const [selectedKeywordExposure, setSelectedKeywordExposure] = useState<BlogValidKeyword | null>(null);
   const keywordRefreshInFlightRef = useRef(false);
   /** 수동 업데이트: 동기식 중복 클릭 방지 (자동 refresh의 sessionStorage 락과 별도) */
   const manualKeywordRefreshBusyRef = useRef(false);
+  const postPageKeywordRefreshInFlightRef = useRef(false);
+  const postPageKeywordRefreshDoneRef = useRef<Set<string>>(new Set());
+  const [recentPostsLoadMoreBusy, setRecentPostsLoadMoreBusy] = useState(false);
+  const [recentPostsHasMore, setRecentPostsHasMore] = useState(true);
+  const titleListNextPageRef = useRef(BLOG_RECENT_POSTS_INITIAL_TITLE_LIST_PAGES + 1);
+  const recentPostsRef = useRef<BlogAnalysisRecentPost[]>([]);
+  const recentPostsHasMoreRef = useRef(true);
+  const recentPostsTotalCountRef = useRef<number | null>(null);
+  const recentPostsPageRef = useRef(1);
+  const recentPostsPageSizeRef = useRef<number>(RECENT_POST_INITIAL_PAGE_SIZE);
+  const recentPostsLocalCacheHydratedRef = useRef(false);
+  const persistRecentPostsLocalCacheRef = useRef<() => void>(() => {});
 
   const applyKeywordRefresh = useCallback(
     (kws: BlogValidKeyword[], cnt: number | null, postsOverride?: BlogAnalysisRecentPost[]) => {
@@ -748,6 +1080,9 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
     setPatternAnalysis(null);
     setTopicAverageComparison(null);
     setBlogScoreResult(null);
+    setPostPageKeywordRefreshStatus(null);
+    postPageKeywordRefreshDoneRef.current.clear();
+    recentPostsLocalCacheHydratedRef.current = false;
 
     setAnalysisPerformance(null);
 
@@ -781,9 +1116,45 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
             visitorChartData: data.visitorChartData ?? [],
           });
         }
-        setRecentPosts(data.recentPosts ?? []);
-        setRecentPostsPage(1);
-        setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
+        const targetBlogId = String(data.blogId).trim();
+        const apiPosts = data.recentPosts ?? [];
+        const apiNextTitleListPage =
+          data.recentPostsPagination?.nextTitleListPage ??
+          BLOG_RECENT_POSTS_INITIAL_TITLE_LIST_PAGES + 1;
+        const apiHasMore =
+          data.recentPostsPagination?.hasMore ??
+          apiPosts.length >= BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE;
+        const apiTotalCount = data.recentPostsPagination?.totalCount ?? null;
+
+        const restoredRecentPosts = applyRecentPostsLocalCacheOnLoad({
+          blogId: targetBlogId,
+          apiPosts,
+          apiNextTitleListPage,
+          apiHasMore,
+          apiTotalCount,
+        });
+
+        setRecentPosts(restoredRecentPosts.posts);
+        recentPostsRef.current = restoredRecentPosts.posts;
+        setRecentPostsPage(restoredRecentPosts.currentPage);
+        setRecentPostsPageSize(restoredRecentPosts.pageSize);
+        recentPostsPageRef.current = restoredRecentPosts.currentPage;
+        recentPostsPageSizeRef.current = restoredRecentPosts.pageSize;
+        titleListNextPageRef.current = restoredRecentPosts.nextTitleListPage;
+        setRecentPostsHasMore(restoredRecentPosts.hasMore);
+        recentPostsHasMoreRef.current = restoredRecentPosts.hasMore;
+        recentPostsTotalCountRef.current = restoredRecentPosts.totalCount;
+        postPageKeywordRefreshDoneRef.current.clear();
+        recentPostsLocalCacheHydratedRef.current = true;
+        saveRecentPostsLocalCache({
+          blogId: targetBlogId,
+          posts: restoredRecentPosts.posts,
+          nextTitleListPage: restoredRecentPosts.nextTitleListPage,
+          hasMore: restoredRecentPosts.hasMore,
+          totalCount: restoredRecentPosts.totalCount,
+          currentPage: restoredRecentPosts.currentPage,
+          pageSize: restoredRecentPosts.pageSize,
+        });
         setPostCount(data.postCount ?? null);
         setScrapCount(data.scrapCount ?? null);
         setPostingFrequency(data.postingFrequency ?? null);
@@ -1002,6 +1373,169 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
     resolvedBlogId,
   ]);
 
+  const triggerPostPageKeywordRefresh = useCallback(
+    async (posts: BlogAnalysisRecentPost[], page: number) => {
+      const targetId = String(resolvedBlogId || blogId).trim();
+      if (!isValidNaverBlogId(targetId)) return;
+      if (postPageKeywordRefreshInFlightRef.current) return;
+
+      const popularRankByKey = buildPopularPostRankMap(
+        [...recentPostsRef.current, ...posts],
+        targetId,
+        20
+      );
+      const sourcePosts = posts
+        .filter((post) => post?.title && post?.url)
+        .map((post) => {
+          const popularRank = popularRankByKey.get(postPageKeywordRefreshKey(post, targetId)) ?? null;
+          return {
+            title: post.title,
+            url: post.url,
+            orgUrl: post.orgUrl ?? post.url,
+            logNo: post.logNo ?? null,
+            isPopularRecheckCandidate: popularRank != null,
+            popularRank,
+            createdAt: post.createdAt ?? null,
+            publishedAt: post.publishedAt ?? null,
+            description: post.description ?? null,
+            tags: post.tags ?? null,
+          };
+        });
+      if (sourcePosts.length === 0) return;
+
+      const pageKey = posts
+        .filter((post) => post?.title && post?.url)
+        .map((post) => postPageKeywordRefreshKey(post, targetId))
+        .sort()
+        .join("|");
+      if (!pageKey || postPageKeywordRefreshDoneRef.current.has(pageKey)) return;
+      postPageKeywordRefreshDoneRef.current.add(pageKey);
+
+      postPageKeywordRefreshInFlightRef.current = true;
+      setPostPageKeywordRefreshStatus("현재 페이지 포스팅의 키워드 후보를 확인 중입니다...");
+      try {
+        const beforeCount = validKeywordCount ?? validKeywords.length;
+        const response = await fetch("/api/blog-analysis/keyword-refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            blogId: targetId,
+            mode: "post-page",
+            page,
+            sourcePosts,
+            ...(forceKeywordRefreshDev ? { force: true } : {}),
+          }),
+        });
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          validKeywords?: BlogValidKeyword[];
+          validKeywordCount?: number | null;
+          error?: string;
+          skipped?: boolean;
+          debug?: {
+            candidateKeywordCount?: number;
+            confirmedVolumeKeywordCount?: number;
+            displayedPostCount?: number;
+            candidatePostCount?: number;
+            skippedFreshPostCount?: number;
+            stalePostCount?: number;
+            newPostCount?: number;
+            popularRecheckPostCount?: number;
+            popularRecheckLimit?: number;
+            popularRecheckCooldownHours?: number;
+            requestedPostCount?: number;
+            refreshedPostCount?: number;
+            sampleRequestedPostTitles?: string[];
+            samplePopularRecheckTitles?: string[];
+            sampleSkippedPostTitles?: string[];
+            searchAdAttemptedCount?: number;
+            searchAd429Stopped?: boolean;
+          };
+        };
+
+        if (!response.ok || !payload.ok) {
+          setPostPageKeywordRefreshStatus("포스팅 키워드 후보 확인을 잠시 후 다시 시도해주세요.");
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[blog-post-page-keyword-refresh client]", {
+              blogId: targetId,
+              page,
+              ok: false,
+              error: payload.error ?? response.status,
+            });
+          }
+          return;
+        }
+
+        setPostPageKeywordRefreshStatus(
+          payload.skipped
+            ? "이미 분석된 포스팅은 건너뜁니다. 14일이 지난 포스팅은 다시 확인됩니다."
+            : "최근 분석 완료"
+        );
+
+        if (!payload.skipped && Array.isArray(payload.validKeywords)) {
+          applyKeywordRefresh(
+            payload.validKeywords,
+            payload.validKeywordCount ?? null,
+            recentPosts
+          );
+        } else if (!payload.skipped) {
+          void loadAnalysis();
+        }
+
+        if (process.env.NODE_ENV === "development") {
+          console.log("[blog-post-page-auto-keyword-refresh]", {
+            blogId: targetId,
+            currentPage: page,
+            displayedPostCount: payload.debug?.displayedPostCount ?? sourcePosts.length,
+            candidatePostCount: payload.debug?.candidatePostCount ?? sourcePosts.length,
+            candidateKeywordCount: payload.debug?.candidateKeywordCount ?? null,
+            confirmedVolumeKeywordCount: payload.debug?.confirmedVolumeKeywordCount ?? null,
+            skippedFreshPostCount: payload.debug?.skippedFreshPostCount ?? null,
+            newPostCount: payload.debug?.newPostCount ?? null,
+            stalePostCount: payload.debug?.stalePostCount ?? null,
+            popularRecheckPostCount: payload.debug?.popularRecheckPostCount ?? null,
+            popularRecheckLimit: payload.debug?.popularRecheckLimit ?? null,
+            popularRecheckCooldownHours: payload.debug?.popularRecheckCooldownHours ?? null,
+            requestedPostCount: payload.debug?.requestedPostCount ?? null,
+            refreshedPostCount: payload.debug?.refreshedPostCount ?? null,
+            validKeywordCountBefore: beforeCount,
+            validKeywordCountAfter: payload.validKeywordCount ?? null,
+            newlyAddedValidKeywordCount:
+              payload.validKeywordCount != null ? Math.max(0, payload.validKeywordCount - beforeCount) : null,
+            searchAdAttemptedCount: payload.debug?.searchAdAttemptedCount ?? null,
+            searchAd429Stopped: payload.debug?.searchAd429Stopped ?? null,
+            sampleRequestedPostTitles:
+              payload.debug?.sampleRequestedPostTitles ?? sourcePosts.slice(0, 5).map((post) => post.title),
+            samplePopularRecheckTitles: payload.debug?.samplePopularRecheckTitles ?? [],
+            sampleSkippedPostTitles: payload.debug?.sampleSkippedPostTitles ?? [],
+          });
+        }
+      } catch (error) {
+        setPostPageKeywordRefreshStatus("포스팅 키워드 후보 확인을 잠시 후 다시 시도해주세요.");
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[blog-post-page-keyword-refresh client]", {
+            blogId: targetId,
+            page,
+            ok: false,
+            error: String(error),
+          });
+        }
+      } finally {
+        postPageKeywordRefreshInFlightRef.current = false;
+      }
+    },
+    [
+      applyKeywordRefresh,
+      blogId,
+      forceKeywordRefreshDev,
+      loadAnalysis,
+      recentPosts,
+      resolvedBlogId,
+      validKeywordCount,
+      validKeywords.length,
+    ]
+  );
+
   useEffect(() => {
     setSearchInput(blogId);
   }, [blogId]);
@@ -1010,6 +1544,19 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
     if (!isValidNaverBlogId(blogId)) return;
     void loadAnalysis();
   }, [blogId, loadAnalysis]);
+
+  const closeKeywordExposureModal = useCallback(() => {
+    setSelectedKeywordExposure(null);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedKeywordExposure) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeKeywordExposureModal();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedKeywordExposure, closeKeywordExposureModal]);
 
   const handleSearchAnother = () => {
     const raw = searchInput.trim();
@@ -1089,10 +1636,174 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
     return t != null || c != null || i != null;
   }, [patternAnalysis, topicAverageComparison]);
 
-  const recentPostsTotalPages = Math.max(1, Math.ceil(recentPosts.length / RECENT_POSTS_ROWS_PER_PAGE));
-  const recentPostsPageStart = (recentPostsPage - 1) * RECENT_POSTS_ROWS_PER_PAGE;
-  const visibleRecentPosts = recentPosts.slice(recentPostsPageStart, recentPostsPageStart + recentPostsVisibleCount);
-  const canShowMoreRecentPosts = recentPostsPageStart + recentPostsVisibleCount < recentPosts.length;
+  useEffect(() => {
+    recentPostsRef.current = recentPosts;
+  }, [recentPosts]);
+
+  useEffect(() => {
+    recentPostsHasMoreRef.current = recentPostsHasMore;
+  }, [recentPostsHasMore]);
+
+  const sortedRecentPosts = useMemo(() => {
+    const targetBlogId = String(resolvedBlogId || blogId).trim();
+    const unique = dedupeRecentPosts(recentPosts, targetBlogId);
+    return sortRecentPostsByPublishedAtDesc(unique);
+  }, [recentPosts, resolvedBlogId, blogId]);
+
+  const getSortedRecentPostsFromList = useCallback(
+    (posts: BlogAnalysisRecentPost[]) => {
+      const targetBlogId = String(resolvedBlogId || blogId).trim();
+      return sortRecentPostsByPublishedAtDesc(dedupeRecentPosts(posts, targetBlogId));
+    },
+    [blogId, resolvedBlogId]
+  );
+
+  const countDedupedRecentPosts = useCallback(
+    (posts: BlogAnalysisRecentPost[]) => {
+      const targetBlogId = String(resolvedBlogId || blogId).trim();
+      return dedupeRecentPosts(posts, targetBlogId).length;
+    },
+    [blogId, resolvedBlogId]
+  );
+
+  const persistRecentPostsLocalCache = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!recentPostsLocalCacheHydratedRef.current) return;
+    const targetId = String(resolvedBlogId || blogId).trim();
+    if (!isValidNaverBlogId(targetId)) return;
+    saveRecentPostsLocalCache({
+      blogId: targetId,
+      posts: getSortedRecentPostsFromList(recentPostsRef.current),
+      nextTitleListPage: titleListNextPageRef.current,
+      hasMore: recentPostsHasMoreRef.current,
+      totalCount: recentPostsTotalCountRef.current,
+      currentPage: recentPostsPageRef.current,
+      pageSize: recentPostsPageSizeRef.current,
+    });
+  }, [blogId, resolvedBlogId, getSortedRecentPostsFromList]);
+
+  persistRecentPostsLocalCacheRef.current = persistRecentPostsLocalCache;
+
+  useEffect(() => {
+    recentPostsPageRef.current = recentPostsPage;
+  }, [recentPostsPage]);
+
+  useEffect(() => {
+    recentPostsPageSizeRef.current = recentPostsPageSize;
+  }, [recentPostsPageSize]);
+
+  useEffect(() => {
+    if (!recentPostsLocalCacheHydratedRef.current || loading) return;
+    persistRecentPostsLocalCache();
+  }, [
+    recentPosts,
+    recentPostsPage,
+    recentPostsPageSize,
+    recentPostsHasMore,
+    loading,
+    persistRecentPostsLocalCache,
+  ]);
+
+  const ensureRecentPostsLoaded = useCallback(
+    async (requiredCount: number) => {
+      const targetId = String(resolvedBlogId || blogId).trim();
+      if (!isValidNaverBlogId(targetId)) return;
+      if (recentPostsLoadMoreBusy) return;
+
+      let currentCount = countDedupedRecentPosts(recentPostsRef.current);
+      if (currentCount >= requiredCount) return;
+
+      setRecentPostsLoadMoreBusy(true);
+      try {
+        while (currentCount < requiredCount && recentPostsHasMoreRef.current) {
+          const requestedPage = titleListNextPageRef.current;
+          const beforePostCount = recentPostsRef.current.length;
+          const response = await fetch(
+            `/api/blog-analysis/posts?blogId=${encodeURIComponent(targetId)}&page=${requestedPage}&limit=${BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE}`
+          );
+          const payload = (await response.json()) as {
+            ok?: boolean;
+            posts?: BlogAnalysisRecentPost[];
+            hasMore?: boolean;
+            totalCount?: number | null;
+            error?: string;
+          };
+
+          if (!response.ok || !payload.ok) {
+            if (process.env.NODE_ENV === "development") {
+              console.warn("[blog-analysis recent-posts load-more]", {
+                blogId: targetId,
+                requestedPage,
+                error: payload.error ?? response.status,
+              });
+            }
+            setRecentPostsHasMore(false);
+            recentPostsHasMoreRef.current = false;
+            break;
+          }
+
+          const fetched = payload.posts ?? [];
+          const merged = [...recentPostsRef.current, ...fetched];
+          recentPostsRef.current = merged;
+          setRecentPosts(merged);
+
+          const afterDedupePostCount = countDedupedRecentPosts(merged);
+          titleListNextPageRef.current = requestedPage + 1;
+
+          if (process.env.NODE_ENV === "development") {
+            console.log("[blog-analysis recent-posts load-more]", {
+              blogId: targetId,
+              requestedPage,
+              requestedLimit: BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE,
+              beforePostCount,
+              fetchedPostCount: fetched.length,
+              afterDedupePostCount,
+              hasMore: payload.hasMore ?? false,
+              sampleFetchedTitles: fetched.slice(0, 5).map((post) => post.title),
+            });
+          }
+
+          if (payload.totalCount != null && Number.isFinite(payload.totalCount)) {
+            recentPostsTotalCountRef.current = payload.totalCount;
+          }
+
+          if (fetched.length === 0 || payload.hasMore === false) {
+            setRecentPostsHasMore(false);
+            recentPostsHasMoreRef.current = false;
+          }
+
+          currentCount = afterDedupePostCount;
+          if (fetched.length < BLOG_RECENT_POSTS_TITLE_LIST_PAGE_SIZE) {
+            setRecentPostsHasMore(false);
+            recentPostsHasMoreRef.current = false;
+          }
+        }
+      } finally {
+        setRecentPostsLoadMoreBusy(false);
+        persistRecentPostsLocalCacheRef.current();
+      }
+    },
+    [blogId, resolvedBlogId, recentPostsLoadMoreBusy, countDedupedRecentPosts]
+  );
+
+  const effectiveRecentPostsPageSize = getEffectiveRecentPostsPageSize(
+    recentPostsPage,
+    recentPostsPageSize
+  );
+  const recentPostsSlice = getRecentPostsSliceRange(recentPostsPage, effectiveRecentPostsPageSize);
+  const recentPostsPageStart = recentPostsSlice.start;
+  const recentPostsPageEnd = recentPostsSlice.end;
+  const pagedRecentPosts = sortedRecentPosts.slice(recentPostsPageStart, recentPostsPageEnd);
+  const recentPostsTotalPages = getRecentPostsPaginationPageCount(
+    sortedRecentPosts.length,
+    recentPostsHasMore
+  );
+  const canShowRecentPostsPagination = recentPostsTotalPages > 1 || recentPostsHasMore;
+  const canShowMoreRecentPosts =
+    recentPostsPage === 1 &&
+    recentPostsPageSize < RECENT_POST_MAX_PAGE_SIZE &&
+    getNextRecentPostDisplaySize(recentPostsPageSize) != null &&
+    (recentPostsPageEnd < sortedRecentPosts.length || recentPostsHasMore);
   const displayValidKeywords = useMemo(
     () => validKeywords.filter((row) => isDisplayValidKeyword(row)),
     [validKeywords]
@@ -1101,7 +1812,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
   const keywordPageStart = (keywordPage - 1) * keywordPageSize;
   const visibleValidKeywords = displayValidKeywords.slice(keywordPageStart, keywordPageStart + keywordPageSize);
   const popularPosts = useMemo<PopularPostRow[]>(() => {
-    const rows = recentPosts.map((post) => {
+    const rows = sortedRecentPosts.map((post) => {
       const postWithTraffic = post as RecentPostWithTrafficFields;
       const averageDailyViews = estimateDailyViewsFromPost(post);
       return {
@@ -1128,15 +1839,41 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
         const ad = new Date(a.publishedAt ?? a.createdAt ?? 0).getTime();
         return (Number.isFinite(bd) ? bd : 0) - (Number.isFinite(ad) ? ad : 0);
       });
-  }, [recentPosts]);
+  }, [sortedRecentPosts]);
   const visiblePopularPosts = popularPosts.slice(0, popularPostsVisibleCount);
   const canShowMorePopularPosts = popularPostsVisibleCount < popularPosts.length;
 
   useEffect(() => {
     if (recentPostsPage <= recentPostsTotalPages) return;
     setRecentPostsPage(recentPostsTotalPages);
-    setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
   }, [recentPostsPage, recentPostsTotalPages]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    console.log("[blog-analysis recent-posts pagination]", {
+      rawRecentPostCount: recentPosts.length,
+      dedupedRecentPostCount: sortedRecentPosts.length,
+      currentPage: recentPostsPage,
+      pageSize: recentPostsPageSize,
+      pageStartIndex: recentPostsPageStart,
+      pageEndIndex: recentPostsPageEnd,
+      displayedPostCount: pagedRecentPosts.length,
+      sampleDisplayedPostTitles: pagedRecentPosts.slice(0, 5).map((post) => post.title),
+    });
+  }, [
+    recentPosts.length,
+    sortedRecentPosts,
+    recentPostsPage,
+    recentPostsPageSize,
+    recentPostsPageStart,
+    recentPostsPageEnd,
+    pagedRecentPosts,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== "recent" || loading || pagedRecentPosts.length === 0) return;
+    void triggerPostPageKeywordRefresh(pagedRecentPosts, recentPostsPage);
+  }, [activeTab, loading, pagedRecentPosts, recentPostsPage, triggerPostPageKeywordRefresh]);
 
   useEffect(() => {
     if (keywordPage <= keywordTotalPages) return;
@@ -1147,13 +1884,22 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
     setPopularPostsVisibleCount(POPULAR_POSTS_ROWS_PER_PAGE);
   }, [recentPosts]);
 
-  const handleRecentPostsPageChange = (page: number) => {
+  const handleRecentPostsPageChange = async (page: number) => {
+    const displaySize = getEffectiveRecentPostsPageSize(page, recentPostsPageSize);
+    const slice = getRecentPostsSliceRange(page, displaySize);
+    await ensureRecentPostsLoaded(slice.end);
+    if (page > 1) {
+      setRecentPostsPageSize(RECENT_POST_MAX_PAGE_SIZE);
+    }
     setRecentPostsPage(page);
-    setRecentPostsVisibleCount(RECENT_POSTS_ROWS_PER_PAGE);
   };
 
-  const handleShowMoreRecentPosts = () => {
-    setRecentPostsVisibleCount((count) => count + RECENT_POSTS_ROWS_PER_PAGE);
+  const handleShowMoreRecentPosts = async () => {
+    const nextPageSize = getNextRecentPostDisplaySize(recentPostsPageSize);
+    if (nextPageSize == null) return;
+    await ensureRecentPostsLoaded(nextPageSize);
+    setRecentPostsPageSize(nextPageSize);
+    setRecentPostsPage(1);
   };
 
   const handleKeywordPageSizeChange = (value: string) => {
@@ -1653,6 +2399,12 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
 
             {activeTab === "recent" ? (
                 <>
+                  <div className="border-b border-slate-100 bg-white px-3 py-2">
+                    <p className="text-[11px] text-slate-500">
+                      {postPageKeywordRefreshStatus ??
+                        "현재 페이지 포스팅만 자동 확인합니다. 이미 분석된 포스팅은 건너뛰고, 14일이 지난 포스팅은 다시 확인됩니다."}
+                    </p>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[980px] text-left">
                       <thead className="bg-slate-50/80 border-b border-slate-100">
@@ -1668,8 +2420,8 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {recentPosts.length > 0 ? (
-                          visibleRecentPosts.map((post, i) => {
+                        {sortedRecentPosts.length > 0 ? (
+                          pagedRecentPosts.map((post, i) => {
                             const publishedAt = post.publishedAt ?? post.createdAt;
                             const potentialScore = getPostPotentialScore(post, validKeywords);
                             const reactivityScore = firstFiniteNumber(post.reactivityScore);
@@ -1689,7 +2441,10 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                             ];
 
                             return (
-                              <tr key={`${post.url || post.title}-${recentPostsPageStart + i}`} className="hover:bg-slate-50/70 transition-colors">
+                              <tr
+                                key={recentPostDedupeKey(post, resolvedBlogId || blogId)}
+                                className="hover:bg-slate-50/70 transition-colors"
+                              >
                                 <td className="px-3 py-2 align-top whitespace-nowrap">
                                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${exposureStatusClass(exposureStatus)}`}>
                                     {exposureStatus}
@@ -1742,18 +2497,19 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                       </tbody>
                     </table>
                   </div>
-                {recentPosts.length > 0 ? (
+                {sortedRecentPosts.length > 0 ? (
                   <div className="border-t border-slate-100 bg-white px-3 py-3">
                     {canShowMoreRecentPosts ? (
                       <button
                         type="button"
-                        onClick={handleShowMoreRecentPosts}
-                        className="mb-2.5 flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                        onClick={() => void handleShowMoreRecentPosts()}
+                        disabled={recentPostsLoadMoreBusy}
+                        className="mb-2.5 flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
                       >
-                        더보기
+                        {recentPostsLoadMoreBusy ? "포스팅 불러오는 중..." : "더보기"}
                       </button>
                     ) : null}
-                    {recentPostsTotalPages > 1 ? (
+                    {canShowRecentPostsPagination ? (
                       <div className="flex flex-wrap items-center justify-center gap-1">
                         {Array.from({ length: recentPostsTotalPages }, (_, index) => {
                           const page = index + 1;
@@ -1762,8 +2518,9 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                             <button
                               key={page}
                               type="button"
-                              onClick={() => handleRecentPostsPageChange(page)}
-                              className={`h-7 min-w-7 rounded-lg px-2 text-[11px] font-bold transition-colors ${
+                              onClick={() => void handleRecentPostsPageChange(page)}
+                              disabled={recentPostsLoadMoreBusy}
+                              className={`h-7 min-w-7 rounded-lg px-2 text-[11px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-45 ${
                                 isActive
                                   ? "bg-[#111827] text-white"
                                   : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
@@ -1939,7 +2696,15 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                       {visibleValidKeywords.length > 0 ? (
                         visibleValidKeywords.map((row, i) => (
                           <tr key={`${row.keyword}-${keywordPageStart + i}`} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="px-2.5 py-2 text-[11px] font-semibold text-[#111827] whitespace-nowrap">{row.keyword}</td>
+                            <td className="px-2.5 py-2 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedKeywordExposure(row)}
+                                className="text-left text-[11px] font-semibold text-[#2563EB] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 rounded"
+                              >
+                                {row.keyword}
+                              </button>
+                            </td>
                             <td className="px-2.5 py-2 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
                               {getKeywordExposureLabel(row)}
                             </td>
@@ -2000,6 +2765,10 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
           </div>
         </div>
       </section>
+
+      {selectedKeywordExposure ? (
+        <KeywordExposureModal row={selectedKeywordExposure} onClose={closeKeywordExposureModal} />
+      ) : null}
     </main>
   );
 }

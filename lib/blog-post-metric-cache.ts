@@ -37,6 +37,7 @@ type BlogPostMetricSnapshotLike = {
   exposureStatus?: string | null;
   foundOnSearch?: boolean | null;
   analyzedAt?: Date | null;
+  keywordAnalyzedAt?: Date | null;
   updatedAt?: Date | null;
 };
 
@@ -165,6 +166,7 @@ export function mergeBlogPostMetricSnapshot(
     postLevel: row.postLevel ?? post.postLevel ?? null,
     exposureStatus: row.exposureStatus ?? post.exposureStatus ?? null,
     foundOnSearch: row.foundOnSearch ?? post.foundOnSearch ?? null,
+    keywordAnalyzedAt: isoFromDate(row.keywordAnalyzedAt) ?? post.keywordAnalyzedAt ?? null,
   };
 }
 

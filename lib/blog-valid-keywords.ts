@@ -46,6 +46,53 @@ const MAX_INTEGRATED_SEARCH_CHECK_LIMIT = 220;
 const MAX_KEYWORD_LENGTH_FOR_PRIMARY_CHECK = 22;
 const FULL_TITLE_AS_KEYWORD_MAX_CHARS = 14;
 const RELATED_PER_SEED_MAX = 10;
+const SERVICE_SUFFIX_KEYWORDS = [
+  "검사기",
+  "계산기",
+  "앱",
+  "어플",
+  "ai",
+  "AI",
+  "툴",
+  "도구",
+  "폼",
+  "메일",
+  "클라우드",
+  "드라이브",
+  "스토어",
+  "번역",
+  "맞춤법",
+  "띄어쓰기",
+  "정품키",
+  "사용법",
+  "사용방법",
+  "공유",
+  "설정",
+  "삭제",
+  "복구",
+  "취소",
+  "해지",
+];
+const BRAND_HINT_KEYWORDS = [
+  "네이버",
+  "구글",
+  "google",
+  "노션",
+  "notion",
+  "윈도우",
+  "windows",
+  "아이폰",
+  "갤럭시",
+  "카카오",
+  "마이크로소프트",
+  "microsoft",
+  "엑셀",
+  "excel",
+  "chatgpt",
+  "gpt",
+  "ai",
+  "AI",
+];
 
 function integratedSearchCheckLimitFromEnv(): number {
   if (process.env.NODE_ENV === "production") return DEFAULT_INTEGRATED_SEARCH_CHECK_LIMIT;
@@ -357,6 +404,8 @@ export type BlogValidKeywordDebug = {
   volumeLookupPlanTotalEntries?: number;
   volumeLookupPlanConfirmedVolumeEntries?: number;
   volumeLookupPlanRemainingUnknownEntries?: number;
+  confirmedVolumeKeywordCount?: number;
+  remainingVolumeUnknownKeywordCount?: number;
   nextVolumeLookupSampleKeywords?: string[];
   strictIncrementalVolumeLookup?: boolean;
 
@@ -411,6 +460,8 @@ export type BuildExposureValidKeywordsOptions = {
    * 미처리 스테일 키워드는 다음 실행에서 우선순위대로 이어짐.
    */
   staleExposureRecheckLimit?: number;
+  /** keyword-refresh 전용: 통합검색 확인 상한. 기본값은 env/default 사용. */
+  integratedSearchCheckLimit?: number;
 };
 
 type Candidate = {
@@ -686,6 +737,107 @@ function addTitlePhraseCandidates(
   }
 }
 
+function addSearchIntentTitleVariants(
+  out: Candidate[],
+  seen: Set<string>,
+  tokens: string[],
+  sourcePostUrl: string | null,
+  sourcePostTitle: string | null,
+  sourceCounts: Record<CandidateSource, number>,
+  limit: number,
+  stats: CandidateBuildStats
+): void {
+  const normalizedTokens = tokens.map((token) => normalizeKeywordDisplay(token)).filter(Boolean);
+  if (normalizedTokens.length < 2) return;
+
+  const compactTitle = normalizedTokens.join("");
+  const suffixIndexes = normalizedTokens
+    .map((token, index) => ({ token, index }))
+    .filter(({ token }) => SERVICE_SUFFIX_KEYWORDS.some((suffix) => normalizeKeywordKey(token).includes(normalizeKeywordKey(suffix))));
+
+  for (const { index: suffixIndex } of suffixIndexes) {
+    const suffixToken = normalizedTokens[suffixIndex];
+    const prev1 = normalizedTokens[suffixIndex - 1];
+    const prev2 = normalizedTokens[suffixIndex - 2];
+    const prev3 = normalizedTokens[suffixIndex - 3];
+    const prefixCandidates = [
+      prev1 ? [prev1, suffixToken] : null,
+      prev2 && prev1 ? [prev2, prev1, suffixToken] : null,
+      prev3 && prev2 && prev1 ? [prev3, prev2, prev1, suffixToken] : null,
+    ].filter((value): value is string[] => Boolean(value));
+
+    for (const parts of prefixCandidates) {
+      const spaced = parts.join(" ");
+      const compact = parts.join("");
+      const baseScore = 86 + parts.length * 8;
+      addCandidate(
+        out,
+        seen,
+        { keyword: spaced, source: "title", sourcePostUrl, sourcePostTitle, score: baseScore },
+        sourceCounts,
+        limit,
+        stats
+      );
+      if (compact !== spaced && compact.length <= MAX_KEYWORD_LENGTH_FOR_PRIMARY_CHECK) {
+        addCandidate(
+          out,
+          seen,
+          { keyword: compact, source: "title", sourcePostUrl, sourcePostTitle, score: baseScore - 3 },
+          sourceCounts,
+          limit,
+          stats
+        );
+      }
+      if (out.length >= limit) return;
+    }
+
+    for (const brand of BRAND_HINT_KEYWORDS) {
+      const brandIndex = normalizedTokens.findIndex((token) => normalizeKeywordKey(token) === normalizeKeywordKey(brand));
+      if (brandIndex < 0 || brandIndex >= suffixIndex) continue;
+      const between = normalizedTokens.slice(brandIndex, suffixIndex + 1).filter((token) => !STOPWORDS.has(normalizeKeywordKey(token)));
+      if (between.length < 2 || between.length > 4) continue;
+      const spaced = between.join(" ");
+      const compact = between.join("");
+      addCandidate(
+        out,
+        seen,
+        { keyword: spaced, source: "title", sourcePostUrl, sourcePostTitle, score: 118 },
+        sourceCounts,
+        limit,
+        stats
+      );
+      addCandidate(
+        out,
+        seen,
+        { keyword: compact, source: "title", sourcePostUrl, sourcePostTitle, score: 114 },
+        sourceCounts,
+        limit,
+        stats
+      );
+      if (out.length >= limit) return;
+    }
+  }
+
+  for (const suffix of SERVICE_SUFFIX_KEYWORDS) {
+    const normalizedSuffix = normalizeKeywordKey(suffix);
+    const suffixPos = normalizeKeywordKey(compactTitle).indexOf(normalizedSuffix);
+    if (suffixPos <= 0) continue;
+    const suffixEnd = suffixPos + normalizedSuffix.length;
+    const left = compactTitle.slice(Math.max(0, suffixPos - 12), suffixEnd);
+    if (left.length >= 4 && left.length <= 18) {
+      addCandidate(
+        out,
+        seen,
+        { keyword: left, source: "title", sourcePostUrl, sourcePostTitle, score: 92 },
+        sourceCounts,
+        limit,
+        stats
+      );
+    }
+    if (out.length >= limit) return;
+  }
+}
+
 function buildKeywordCandidates({
   posts,
   existingKeywords,
@@ -777,6 +929,16 @@ function buildKeywordCandidates({
     }
 
     addTitlePhraseCandidates(
+      candidates,
+      seen,
+      tokens,
+      sourcePostUrl,
+      sourcePostTitle,
+      sourceCounts,
+      limit,
+      stats
+    );
+    addSearchIntentTitleVariants(
       candidates,
       seen,
       tokens,
@@ -936,6 +1098,7 @@ export async function buildExposureValidKeywords({
   keywordRefreshTitleListDiagnostics = null,
   strictIncrementalVolumeLookup = false,
   staleExposureRecheckLimit,
+  integratedSearchCheckLimit: integratedSearchCheckLimitOption,
 }: BuildExposureValidKeywordsOptions): Promise<{
   validKeywords: BlogValidKeyword[];
   /** DB 유지용: 노출 또는 검색량이 있는 행 전체(valid/rank_only/volume_only) */
@@ -1461,7 +1624,7 @@ export async function buildExposureValidKeywords({
   const rankCheckMs = Date.now() - tRank0;
 
   const integratedSearchCheckLimit = Math.min(
-    Math.max(1, integratedSearchCheckLimitFromEnv()),
+    Math.max(1, integratedSearchCheckLimitOption ?? integratedSearchCheckLimitFromEnv()),
     MAX_INTEGRATED_SEARCH_CHECK_LIMIT
   );
   const integratedEligibleEntries = [...validByKeyword.entries()]
@@ -1888,6 +2051,8 @@ export async function buildExposureValidKeywords({
     volumeLookupPlanTotalEntries,
     volumeLookupPlanConfirmedVolumeEntries,
     volumeLookupPlanRemainingUnknownEntries,
+    confirmedVolumeKeywordCount: volumeLookupPlanConfirmedVolumeEntries,
+    remainingVolumeUnknownKeywordCount: volumeLookupPlanRemainingUnknownEntries,
     nextVolumeLookupSampleKeywords,
     strictIncrementalVolumeLookup,
     ...(staleExposureRecheckLimitEffective != null && staleExposureRecheckLimitEffective > 0
@@ -1995,6 +2160,8 @@ export async function buildExposureValidKeywords({
       volumeCachePrefetchQueryKeysSample,
       volumeCachePrefetchReturnedKeysSample,
       volumeCacheMissSample,
+      confirmedVolumeKeywordCount: volumeLookupPlanConfirmedVolumeEntries,
+      remainingVolumeUnknownKeywordCount: volumeLookupPlanRemainingUnknownEntries,
       ...(keywordRefreshTitleListDiagnostics
         ? {
             titleListAsyncRequestCount: keywordRefreshTitleListDiagnostics.titleListAsyncRequestCount,
