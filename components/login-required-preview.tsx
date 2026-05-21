@@ -2,6 +2,7 @@
 
 import { signIn } from "next-auth/react";
 import React, { useCallback, useState } from "react";
+import { PostlabsSlideHoverButton } from "@/components/postlabs-slide-hover-button";
 
 export function LoginRequiredModal({
   open,
@@ -22,20 +23,22 @@ export function LoginRequiredModal({
           지금 화면은 서비스 미리보기입니다. 등록, 분석 실행, 업데이트, 삭제, 자동추적 같은 기능은 로그인 후 사용할 수 있어요.
         </p>
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
+          <PostlabsSlideHoverButton
             type="button"
+            variant="outline-soft"
             onClick={onClose}
-            className="h-11 rounded-[14px] border border-[#e5e7eb] bg-white px-4 text-[13px] font-bold text-[#4b5563] transition hover:bg-[#f8fafc]"
+            className="h-11 w-full rounded-full border border-[#d1d5db] bg-white px-5 text-[13px] font-bold text-[#4b5563] shadow-[0_8px_18px_rgba(15,23,42,0.04)] hover:-translate-y-0.5 hover:border-[#bfdbfe] hover:text-[#111827] hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] active:translate-y-px sm:w-auto"
           >
             닫기
-          </button>
-          <button
+          </PostlabsSlideHoverButton>
+          <PostlabsSlideHoverButton
             type="button"
+            variant="primary"
             onClick={() => void signIn("kakao", { callbackUrl: window.location.pathname + window.location.search })}
-            className="h-11 rounded-[14px] bg-[#111827] px-5 text-[13px] font-black text-white shadow-[0_12px_28px_rgba(15,23,42,0.18)] transition hover:bg-[#2563EB]"
+            className="h-11 w-full rounded-full border border-white/10 bg-[#111827] px-6 text-[13px] font-black text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] hover:-translate-y-0.5 hover:border-white/25 hover:shadow-[0_18px_38px_rgba(37,99,235,0.24)] active:translate-y-px sm:w-auto"
           >
             로그인하고 시작하기
-          </button>
+          </PostlabsSlideHoverButton>
         </div>
       </div>
     </div>
