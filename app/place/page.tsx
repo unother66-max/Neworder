@@ -23,6 +23,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PostlabsSlideHoverButton } from "@/components/postlabs-slide-hover-button";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 import { debugFetchBrowserAllSearchJson } from "@/lib/browser-allsearch-debug";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 import {
@@ -118,6 +123,45 @@ type PlaceItem = {
 
 const PAGE_SIZE = 15;
 const MAX_KEYWORDS_PER_STORE = 10;
+
+const SAMPLE_PLACE_STORES: Store[] = [
+  {
+    dbId: "sample-place-1",
+    name: "포스트랩스 성수 베이커리",
+    category: "카페, 베이커리",
+    address: "서울 성동구 성수이로 12",
+    placeId: "sample-place-1",
+    image: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=800&auto=format&fit=crop",
+    mobilePlaceLink: "https://m.place.naver.com/",
+    pcPlaceLink: "https://map.naver.com/",
+    latestUpdatedAtText: "05/21 (목) 10:30",
+    placeMonthlyVolume: 18400,
+    placeMobileVolume: 15100,
+    placePcVolume: 3300,
+    isPinned: true,
+    keywords: [
+      { keyword: "성수 베이커리", monthly: "18,400", mobile: "15,100", pc: "3,300", rank: "3", previousRank: "5", rankChange: -2, isTracking: true },
+      { keyword: "성수 카페", monthly: "42,100", mobile: "36,000", pc: "6,100", rank: "8", previousRank: "9", rankChange: -1, isTracking: true },
+    ],
+  },
+  {
+    dbId: "sample-place-2",
+    name: "포스트랩스 강남 클리닉",
+    category: "병원, 의원",
+    address: "서울 강남구 테헤란로 24",
+    placeId: "sample-place-2",
+    image: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=800&auto=format&fit=crop",
+    mobilePlaceLink: "https://m.place.naver.com/",
+    pcPlaceLink: "https://map.naver.com/",
+    latestUpdatedAtText: "05/21 (목) 09:45",
+    placeMonthlyVolume: 9600,
+    placeMobileVolume: 8100,
+    placePcVolume: 1500,
+    keywords: [
+      { keyword: "강남 피부관리", monthly: "9,600", mobile: "8,100", pc: "1,500", rank: "12", previousRank: "14", rankChange: -2, isTracking: false },
+    ],
+  },
+];
 
 /** `handleCheckRanks` 병렬 워커: check-place-rank·저장 후 랜덤 딜레이(ms), 양 끝 포함 */
 const PLACE_RANK_CHECK_POST_DELAY_MS_MIN = 800;
@@ -680,6 +724,9 @@ export default function PlacePage() {
   const [modalSearchHovered, setModalSearchHovered] = useState(false);
   const [modalSearchMousePos, setModalSearchMousePos] = useState({ x: 0, y: 0 });
   const [registerHover, setRegisterHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const isPreview = mounted && status === "unauthenticated";
+  const { guardAction, loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -728,12 +775,10 @@ export default function PlacePage() {
   }, [mounted, session]);
 
   useEffect(() => {
-    if (status === "loading") return;
-
-    if (!session) {
-      router.replace("/login");
-    }
-  }, [session, status, router]);
+    if (!mounted || status !== "unauthenticated") return;
+    setStores(SAMPLE_PLACE_STORES);
+    setPlaceLoading(false);
+  }, [mounted, status]);
 
   const fetchPlaces = async () => {
     try {
@@ -848,18 +893,8 @@ useEffect(() => {
     );
   }
 
-  if (!session) {
-    return (
-      <>
-        <TopNav active="place" />
-        <main className="min-h-screen bg-[#f8fafc] flex items-center justify-center pt-24">
-          <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
-        </main>
-      </>
-    );
-  }
-
   const openRegisterModal = () => {
+    if (guardAction()) return;
     setIsRegisterModalOpen(true);
     setPlaceQuery("");
     setPlaceResults([]);
@@ -1621,7 +1656,11 @@ useEffect(() => {
     <>
       <TopNav active="place" />
 
-      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+      <main
+        className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
           <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -2623,6 +2662,7 @@ useEffect(() => {
           </div>
         )}
       </main>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
     </>
   );
 }

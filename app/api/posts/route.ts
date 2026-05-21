@@ -1,4 +1,6 @@
 import { getRecentLinksFromPage } from "@/lib/scraper";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/auth";
 
 function sortPostsByDate(
   posts: { title: string; link: string; date: string }[]
@@ -12,6 +14,11 @@ function sortPostsByDate(
 
 export async function POST(request: Request) {
   try {
+    const session = (await getServerSession(authOptions as any)) as any;
+    if (!session?.user?.id) {
+      return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    }
+
     const body = await request.json();
     const blogUrl = body.blogUrl as string;
 

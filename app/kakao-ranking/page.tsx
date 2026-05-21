@@ -6,6 +6,11 @@ import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
 import { Pin, Trash2 } from "lucide-react";
 import Tooltip from "@/components/Tooltip";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 
 type KakaoRankRow = {
   date: string;
@@ -72,6 +77,39 @@ const RANK_GROUPS = [
   },
 ] as const;
 
+const SAMPLE_KAKAO_STORES: KakaoStore[] = [
+  {
+    id: "sample-kakao-1",
+    kakaoId: "sample-kakao-1",
+    name: "포스트랩스 서초 스튜디오",
+    category: "서비스, 마케팅",
+    address: "서울 서초구 강남대로 1",
+    kakaoUrl: "https://place.map.kakao.com/",
+    imageUrl: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?q=80&w=800&auto=format&fit=crop",
+    isPinned: true,
+    isAutoTracking: true,
+    latestUpdatedAt: "2026-05-21T10:30:00+09:00",
+    rankRows: [
+      { date: "05/21", keyword: "서초 마케팅", searchAll: "4", searchCat: "2", directionAll: "12", directionCat: "5", favoriteAll: "8", favoriteCat: "3", shareAll: "6", shareCat: "2" },
+    ],
+  },
+  {
+    id: "sample-kakao-2",
+    kakaoId: "sample-kakao-2",
+    name: "포스트랩스 홍대 카페",
+    category: "카페",
+    address: "서울 마포구 와우산로 23",
+    kakaoUrl: "https://place.map.kakao.com/",
+    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    isPinned: false,
+    isAutoTracking: false,
+    latestUpdatedAt: "2026-05-21T09:40:00+09:00",
+    rankRows: [
+      { date: "05/21", keyword: "홍대 카페", searchAll: "9", searchCat: "4", directionAll: "18", directionCat: "7", favoriteAll: "11", favoriteCat: "5", shareAll: "13", shareCat: "6" },
+    ],
+  },
+];
+
 export default function KakaoRankingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -101,13 +139,17 @@ export default function KakaoRankingPage() {
   const [modalSearchHovered, setModalSearchHovered] = useState(false);
   const [modalSearchMousePos, setModalSearchMousePos] = useState({ x: 0, y: 0 });
   const [registerHover, setRegisterHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
+  const isPreview = mounted && status === "unauthenticated";
+  const { loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
 
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    if (status === "loading") return;
-    if (!session) router.replace("/login");
-  }, [session, status, router]);
+    if (!mounted || status !== "unauthenticated") return;
+    setStores(SAMPLE_KAKAO_STORES);
+    setStoreLoading(false);
+  }, [mounted, status]);
 
   useEffect(() => {
     if (!mounted || !session) return;
@@ -268,7 +310,11 @@ export default function KakaoRankingPage() {
   return (
     <>
       <TopNav active="kakao-ranking" />
-      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+      <main
+        className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
           
           <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -501,6 +547,7 @@ export default function KakaoRankingPage() {
           </div>
         )}
       </main>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
     </>
   );
 }

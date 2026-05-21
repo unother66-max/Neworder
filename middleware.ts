@@ -11,8 +11,6 @@ function isBlogAnalysisPath(path: string): boolean {
 
 function isSmartstoreAdminOnlyPath(path: string): boolean {
   return (
-    path === "/smartstore/store-analyze" ||
-    path.startsWith("/smartstore/store-analyze/") ||
     path === "/smartstore/review-track" ||
     path.startsWith("/smartstore/review-track/")
   );
@@ -27,12 +25,7 @@ function isSmartstoreAdminOnlyApiPath(path: string): boolean {
 }
 
 function isSmartstoreAuthRequiredPath(path: string): boolean {
-  return (
-    path === "/smartstore/product-ranking-analyze" ||
-    path.startsWith("/smartstore/product-ranking-analyze/") ||
-    path === "/smartstore/keyword-analyze" ||
-    path.startsWith("/smartstore/keyword-analyze/")
-  );
+  return false;
 }
 
 function isSmartstoreAuthRequiredApiPath(path: string): boolean {
@@ -46,10 +39,6 @@ const SMARTSTORE_ADMIN_ONLY_API_ERROR = "관리자만 사용할 수 있는 기�
 const LOGIN_REQUIRED_API_ERROR = "로그인이 필요한 기능입니다.";
 
 function isLegacyAuthPath(path: string): boolean {
-  if (path.startsWith("/top-blog")) return true;
-  if (path.startsWith("/place-analysis")) return true;
-  if (path.startsWith("/place-review")) return true;
-  if (path === "/place" || path.startsWith("/place/")) return true;
   if (path === "/community" || path.startsWith("/community/")) return true;
   return false;
 }

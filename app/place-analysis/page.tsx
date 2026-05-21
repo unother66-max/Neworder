@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import TopNav from "@/components/top-nav";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 import {
   buildLocationFallbackSearchKeyword,
   countBusinessesItemsInBatch,
@@ -39,6 +45,35 @@ type RankPlaceItem = {
     save?: string | number;
   };
 };
+
+const SAMPLE_PLACE_ANALYSIS_RELATED: RelatedKeywordItem[] = [
+  { keyword: "성수 카페", total: 42100, mobile: 36000, pc: 6100 },
+  { keyword: "성수 베이커리", total: 18400, mobile: 15100, pc: 3300 },
+  { keyword: "서울숲 카페", total: 28600, mobile: 24400, pc: 4200 },
+];
+
+const SAMPLE_PLACE_ANALYSIS_LIST: RankPlaceItem[] = [
+  {
+    rank: 1,
+    placeId: "sample-place-analysis-1",
+    name: "포스트랩스 카페 성수",
+    category: "카페",
+    address: "서울 성동구 성수이로 7",
+    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    keywords: ["성수 카페", "서울숲 카페"],
+    review: { total: 1284, visitor: 932, blog: 352, save: "2,410" },
+  },
+  {
+    rank: 2,
+    placeId: "sample-place-analysis-2",
+    name: "포스트랩스 브런치랩",
+    category: "브런치",
+    address: "서울 성동구 연무장길 18",
+    imageUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800&auto=format&fit=crop",
+    keywords: ["성수 브런치", "성수 맛집"],
+    review: { total: 932, visitor: 701, blog: 231, save: "1,870" },
+  },
+];
 
 function formatCount(value?: string | number | null) {
   if (
@@ -143,6 +178,7 @@ async function tryFetchBusinessesBatchInBrowser(
 }
 
 export default function PlaceAnalysisPage() {
+  const { status } = useSession();
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [searchedKeyword, setSearchedKeyword] = useState("");
@@ -166,8 +202,20 @@ export default function PlaceAnalysisPage() {
   // --- 디자인 통일용 호버 상태값 ---
   const [isAnalyzeHovered, setIsAnalyzeHovered] = useState(false);
   const [analyzeMousePos, setAnalyzeMousePos] = useState({ x: 0, y: 0 });
+  const isPreview = status === "unauthenticated";
+  const { guardAction, loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
+
+  useEffect(() => {
+    if (!isPreview) return;
+    setSearchedKeyword("성수 카페");
+    setRelatedKeywords(SAMPLE_PLACE_ANALYSIS_RELATED);
+    setList(SAMPLE_PLACE_ANALYSIS_LIST);
+    setLoading(false);
+  }, [isPreview]);
 
   const handleAnalyze = async () => {
+    if (guardAction()) return;
     const trimmedRaw = keyword.trim();
 
     if (!trimmedRaw) {
@@ -443,7 +491,11 @@ export default function PlaceAnalysisPage() {
     <>
       <TopNav active="place-analysis" />
 
-      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111827] md:pt-24">
+      <main
+        className="min-h-screen bg-[#f8fafc] pt-20 text-[#111827] md:pt-24"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
           <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="flex flex-col gap-2.5 md:gap-4">
@@ -789,6 +841,7 @@ export default function PlaceAnalysisPage() {
           </div>
         </section>
       </main>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
     </>
   );
 }

@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 
 type RelatedKeywordItem = {
   keyword: string;
@@ -44,9 +48,35 @@ function formatRating(value?: number | null) {
   return Number(value).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+const SAMPLE_KAKAO_ANALYSIS_RELATED: RelatedKeywordItem[] = [
+  { keyword: "성수 카페", total: 42100, mobile: 36000, pc: 6100 },
+  { keyword: "성수 디저트", total: 15300, mobile: 13200, pc: 2100 },
+  { keyword: "서울숲 카페", total: 28600, mobile: 24400, pc: 4200 },
+];
+
+const SAMPLE_KAKAO_ANALYSIS_LIST: RankPlaceItem[] = [
+  {
+    rank: 1,
+    placeId: "sample-kakao-analysis-1",
+    name: "포스트랩스 카페 성수",
+    category: "카페",
+    address: "서울 성동구 성수이로 7",
+    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    review: { total: 1284, rating: 4.7 },
+  },
+  {
+    rank: 2,
+    placeId: "sample-kakao-analysis-2",
+    name: "포스트랩스 브런치랩",
+    category: "브런치",
+    address: "서울 성동구 연무장길 18",
+    imageUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800&auto=format&fit=crop",
+    review: { total: 932, rating: 4.6 },
+  },
+];
+
 export default function KakaoAnalysisPage() {
   const { data: session, status } = useSession();
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
   const [keyword, setKeyword] = useState("");
@@ -66,15 +96,21 @@ export default function KakaoAnalysisPage() {
 
   const [rankRegHover, setRankRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
   const [kwRegHover, setKwRegHover] = useState<{ id: string | null; x: number; y: number }>({ id: null, x: 0, y: 0 });
+  const isPreview = mounted && status === "unauthenticated";
+  const { guardAction, loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (status === "loading") return;
-    if (!session) router.replace("/login");
-  }, [session, status, router]);
+    if (!mounted || status !== "unauthenticated") return;
+    setSearchedKeyword("성수 카페");
+    setRelatedKeywords(SAMPLE_KAKAO_ANALYSIS_RELATED);
+    setList(SAMPLE_KAKAO_ANALYSIS_LIST);
+    setLoading(false);
+  }, [mounted, status]);
 
   const loadSavedPlaces = async () => {
     try {
@@ -119,6 +155,7 @@ export default function KakaoAnalysisPage() {
   }, [mounted, session]);
 
   const handleAnalyze = async () => {
+    if (guardAction()) return;
     const trimmed = keyword.trim();
     if (!trimmed) {
       alert("키워드를 입력해주세요.");
@@ -225,22 +262,15 @@ export default function KakaoAnalysisPage() {
     );
   }
 
-  if (!session) {
-    return (
-      <>
-        <TopNav active="kakao-analysis" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
-          <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
-        </main>
-      </>
-    );
-  }
-
   return (
     <>
       <TopNav active="kakao-analysis" />
 
-      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+      <main
+        className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
           <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="flex flex-col gap-2.5 md:gap-4">
@@ -530,6 +560,7 @@ export default function KakaoAnalysisPage() {
           </div>
         </section>
       </main>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
     </>
   );
 }

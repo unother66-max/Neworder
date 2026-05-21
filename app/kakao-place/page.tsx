@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
 import { Pin, Trash2 } from "lucide-react";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 
 const MAX_KEYWORDS = 10;
 
@@ -45,6 +50,40 @@ type KakaoSearchItem = {
   y: string;
   image?: string;
 };
+
+const SAMPLE_KAKAO_PLACE_STORES: KakaoPlaceStore[] = [
+  {
+    id: "sample-kakao-place-1",
+    kakaoId: "sample-kakao-place-1",
+    name: "포스트랩스 성수 카페",
+    category: "카페",
+    address: "서울 성동구 성수이로 7",
+    kakaoUrl: "https://place.map.kakao.com/",
+    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    isPinned: true,
+    isAutoTracking: true,
+    latestUpdatedAt: "05/21 10:30",
+    keywords: [
+      { id: "sample-kakao-place-kw-1", keyword: "성수 카페", mobileVolume: 36000, pcVolume: 6100, totalVolume: 42100, isTracking: true, latestRank: 3, latestRankDate: "05/21" },
+      { id: "sample-kakao-place-kw-2", keyword: "서울숲 카페", mobileVolume: 24400, pcVolume: 4200, totalVolume: 28600, isTracking: true, latestRank: 8, latestRankDate: "05/21" },
+    ],
+  },
+  {
+    id: "sample-kakao-place-2",
+    kakaoId: "sample-kakao-place-2",
+    name: "포스트랩스 강남 클리닉",
+    category: "병원, 의원",
+    address: "서울 강남구 테헤란로 24",
+    kakaoUrl: "https://place.map.kakao.com/",
+    imageUrl: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=800&auto=format&fit=crop",
+    isPinned: false,
+    isAutoTracking: false,
+    latestUpdatedAt: "05/21 09:45",
+    keywords: [
+      { id: "sample-kakao-place-kw-3", keyword: "강남 피부관리", mobileVolume: 8100, pcVolume: 1500, totalVolume: 9600, isTracking: false, latestRank: 12, latestRankDate: "05/21" },
+    ],
+  },
+];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -90,6 +129,9 @@ export default function KakaoPlacePage() {
   const [modalRegHover, setModalRegHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
   const [kwSaveHovered, setKwSaveHovered] = useState(false);
   const [kwSaveMousePos, setKwSaveMousePos] = useState({ x: 0, y: 0 });
+  const isPreview = mounted && status === "unauthenticated";
+  const { loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
 
   // 마우스 이동 핸들러들
   const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -151,9 +193,10 @@ export default function KakaoPlacePage() {
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
-    if (status === "loading") return;
-    if (!session) router.replace("/login");
-  }, [session, status, router]);
+    if (!mounted || status !== "unauthenticated") return;
+    setStores(SAMPLE_KAKAO_PLACE_STORES);
+    setStoreLoading(false);
+  }, [mounted, status]);
 
   const fetchStores = useCallback(async () => {
     setStoreLoading(true);
@@ -413,23 +456,16 @@ export default function KakaoPlacePage() {
     );
   }
 
-  if (!session) {
-    return (
-      <>
-        <TopNav active="kakao-place" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] pt-24">
-          <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
-        </main>
-      </>
-    );
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
       <TopNav active="kakao-place" />
-      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+      <main
+        className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
 
           {/* Page header */}
@@ -826,6 +862,7 @@ export default function KakaoPlacePage() {
           </div>
         </section>
       </main>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
 
       {/* Register Modal */}
       {registerOpen && (

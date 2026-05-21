@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import PageHeader from "@/components/page-header";
 import TopNav from "@/components/top-nav";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 
 type Post = {
   title: string;
@@ -18,6 +24,33 @@ type Post = {
         total?: number;
       };
 };
+
+const SAMPLE_TOP_BLOG_POSTS: Post[] = [
+  {
+    title: "성수 카페 체험단 후기 작성 예시",
+    date: "2026.05.21",
+    link: "https://blog.naver.com/postlabs/sample-1",
+    rank: "4위",
+    keyword: "성수 카페",
+    searchVolume: { total: 42100, mobile: 36000, pc: 6100 },
+  },
+  {
+    title: "강남 피부관리 방문 후기",
+    date: "2026.05.20",
+    link: "https://blog.naver.com/postlabs/sample-2",
+    rank: "12위",
+    keyword: "강남 피부관리",
+    searchVolume: { total: 9600, mobile: 8100, pc: 1500 },
+  },
+  {
+    title: "홍대 브런치 맛집 리뷰",
+    date: "2026.05.19",
+    link: "https://blog.naver.com/postlabs/sample-3",
+    rank: "300위 밖에",
+    keyword: "홍대 브런치",
+    searchVolume: { total: 18400, mobile: 15100, pc: 3300 },
+  },
+];
 
 function getRankTextColor(rank: string) {
   if (
@@ -44,6 +77,7 @@ function getRankTextColor(rank: string) {
 }
 
 export default function Home() {
+  const { status } = useSession();
   const [blogUrl, setBlogUrl] = useState("");
   const [visitor, setVisitor] = useState<number | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -54,6 +88,18 @@ export default function Home() {
   const [isAnalyzeHovered, setIsAnalyzeHovered] = useState(false);
   const [analyzeMousePos, setAnalyzeMousePos] = useState({ x: 0, y: 0 });
   const [searchHover, setSearchHover] = useState<{ index: number | null; x: number; y: number; }>({ index: null, x: 0, y: 0 });
+  const isPreview = status === "unauthenticated";
+  const { guardAction, loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
+
+  useEffect(() => {
+    if (!isPreview) return;
+    setBlogUrl("https://blog.naver.com/postlabs");
+    setVisitor(12840);
+    setPosts(SAMPLE_TOP_BLOG_POSTS);
+    setLoading(false);
+    setErrorMessage("");
+  }, [isPreview]);
 
   const handleAnalyzeMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -66,6 +112,7 @@ export default function Home() {
   };
 
   const fetchPosts = async () => {
+    if (guardAction()) return;
     if (!blogUrl.trim()) {
       setErrorMessage("블로그 주소를 입력해주세요.");
       setPosts([]);
@@ -129,6 +176,7 @@ export default function Home() {
   };
 
   const checkSinglePostRank = async (index: number) => {
+    if (guardAction()) return;
     const targetPost = posts[index];
 
     if (!targetPost.keyword.trim()) {
@@ -202,7 +250,11 @@ export default function Home() {
     <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111827] md:pt-24">
       <TopNav active="blog" />
 
-      <section className="mx-auto max-w-[1180px] px-3 py-2 md:px-5 md:py-8">
+      <section
+        className="mx-auto max-w-[1180px] px-3 py-2 md:px-5 md:py-8"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <div className="[&_h1]:text-[20px] [&_p]:hidden md:[&_h1]:text-[28px] md:[&_p]:mt-3 md:[&_p]:block md:[&_p]:text-[14px] md:[&_p]:leading-7">
           <PageHeader
             title="상위 블로그 찾기"
@@ -552,6 +604,7 @@ export default function Home() {
           )}
         </div>
       </section>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
     </main>
   );
 }

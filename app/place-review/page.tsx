@@ -13,6 +13,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 
 const TopNav = dynamic(() => import("@/components/top-nav"), {
   ssr: false,
@@ -230,6 +236,47 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
   };
 }
 
+const SAMPLE_REVIEW_STORES: StoreItem[] = [
+  {
+    id: "sample-review-1",
+    name: "포스트랩스 성수 베이커리",
+    displayName: "포스트랩스 성수 베이커리",
+    category: "카페, 베이커리",
+    address: "서울 성동구 성수이로 12",
+    imageUrl: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=800&auto=format&fit=crop",
+    searchVolume: 18400,
+    mobileVolume: 15100,
+    pcVolume: 3300,
+    mobileUrl: "https://m.place.naver.com/",
+    pcUrl: "https://map.naver.com/",
+    isAutoTracking: true,
+    isPinned: true,
+    updatedAt: "2026. 05. 21. 오전 10:30",
+    history: [
+      { id: "sample-rh-1", dateLabel: "05/21 (목)\n10:30", totalReviewCount: 1842, totalReviewDiff: 12, visitorReviewCount: 1490, visitorReviewDiff: 9, blogReviewCount: 352, blogReviewDiff: 3, saveCount: "2,410", saveCountDiff: 18, keywords: ["성수 카페", "성수 베이커리"] },
+      { id: "sample-rh-2", dateLabel: "05/20 (수)\n10:30", totalReviewCount: 1830, visitorReviewCount: 1481, blogReviewCount: 349, saveCount: "2,392", keywords: ["성수 카페", "성수 베이커리"] },
+    ],
+  },
+  {
+    id: "sample-review-2",
+    name: "포스트랩스 강남 클리닉",
+    displayName: "포스트랩스 강남 클리닉",
+    category: "병원, 의원",
+    address: "서울 강남구 테헤란로 24",
+    imageUrl: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=800&auto=format&fit=crop",
+    searchVolume: 9600,
+    mobileVolume: 8100,
+    pcVolume: 1500,
+    mobileUrl: "https://m.place.naver.com/",
+    pcUrl: "https://map.naver.com/",
+    isAutoTracking: false,
+    updatedAt: "2026. 05. 21. 오전 09:45",
+    history: [
+      { id: "sample-rh-3", dateLabel: "05/21 (목)\n09:45", totalReviewCount: 734, totalReviewDiff: 5, visitorReviewCount: 621, visitorReviewDiff: 4, blogReviewCount: 113, blogReviewDiff: 1, saveCount: "908", saveCountDiff: 6, keywords: ["강남 피부관리"] },
+    ],
+  },
+];
+
 function DiffText({ value }: { value?: number | null }) {
   if (value === null || value === undefined || value === 0) {
     return (
@@ -251,6 +298,7 @@ function DiffText({ value }: { value?: number | null }) {
 }
 
 export default function PlaceReviewPage() {
+  const { status } = useSession();
   const router = useRouter();
   const [stores, setStores] = useState<StoreItem[]>([]);
   const [search, setSearch] = useState("");
@@ -278,6 +326,9 @@ export default function PlaceReviewPage() {
   const [modalSearchHovered, setModalSearchHovered] = useState(false);
   const [modalSearchMousePos, setModalSearchMousePos] = useState({ x: 0, y: 0 });
   const [registerHover, setRegisterHover] = useState<{ id: string | null; x: number; y: number; }>({ id: null, x: 0, y: 0 });
+  const isPreview = status === "unauthenticated";
+  const { loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -329,8 +380,14 @@ export default function PlaceReviewPage() {
   }
 
   useEffect(() => {
+    if (status === "loading") return;
+    if (status === "unauthenticated") {
+      setStores(SAMPLE_REVIEW_STORES);
+      setLoading(false);
+      return;
+    }
     fetchPlaces();
-  }, []);
+  }, [status]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -582,7 +639,11 @@ export default function PlaceReviewPage() {
     <>
       <TopNav active="place-review" />
 
-      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+      <main
+        className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
           <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1124,6 +1185,7 @@ export default function PlaceReviewPage() {
           </div>
         </section>
       </main>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
 
       {openRegister && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4 backdrop-blur-[3px]">

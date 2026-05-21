@@ -2,6 +2,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/auth";
 import { extractBlogId } from "@/lib/scraper";
 
 function parseVisitorXml(xml: string) {
@@ -17,6 +19,11 @@ function parseVisitorXml(xml: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = (await getServerSession(authOptions as any)) as any;
+    if (!session?.user?.id) {
+      return NextResponse.json({ ok: false, error: "로그인이 필요합니다." }, { status: 401 });
+    }
+
     const body = await req.json();
     const blogUrl = String(body.blogUrl || "").trim();
 

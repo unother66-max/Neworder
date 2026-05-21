@@ -1,9 +1,13 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { SmartstoreProductRegisterModal } from "@/components/smartstore-product-register-modal";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 import { useSession } from "next-auth/react";
 import { GripVertical, Pin, Trash2 } from "lucide-react";
 import {
@@ -62,6 +66,38 @@ type KeywordRecommendation = {
   monthlyVolume: number;
 };
 
+const SAMPLE_SMARTSTORE_PRODUCTS: SmartstoreProductRow[] = [
+  {
+    id: "sample-smartstore-1",
+    name: "데일리 무광 헤어핀 3종",
+    category: "패션잡화 > 헤어액세서리",
+    productUrl: "https://smartstore.naver.com/postlabs/products/1000000001",
+    naverProductId: "1000000001",
+    imageUrl: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800&auto=format&fit=crop",
+    isPinned: true,
+    isAutoTracking: true,
+    latestUpdatedAt: "05/21 10:30",
+    keywords: [
+      { id: "sample-sm-kw-1", keyword: "머리핀", mobileVolume: 615400, pcVolume: 78900, totalVolume: 694300, isTracking: true, latestRank: 4, latestRankLabel: "4위", latestRankAt: "05/21 10:30" },
+      { id: "sample-sm-kw-2", keyword: "헤어악세사리", mobileVolume: 142000, pcVolume: 18100, totalVolume: 160100, isTracking: true, latestRank: 11, latestRankLabel: "11위", latestRankAt: "05/21 10:30" },
+    ],
+  },
+  {
+    id: "sample-smartstore-2",
+    name: "프리미엄 주방 수납 트레이",
+    category: "생활/건강 > 주방수납",
+    productUrl: "https://smartstore.naver.com/postlabs/products/1000000002",
+    naverProductId: "1000000002",
+    imageUrl: "https://images.unsplash.com/photo-1556911220-bff31c812dba?q=80&w=800&auto=format&fit=crop",
+    isPinned: false,
+    isAutoTracking: false,
+    latestUpdatedAt: "05/21 09:20",
+    keywords: [
+      { id: "sample-sm-kw-3", keyword: "주방 수납", mobileVolume: 78000, pcVolume: 9300, totalVolume: 87300, isTracking: false, latestRank: 18, latestRankLabel: "18위", latestRankAt: "05/21 09:20" },
+    ],
+  },
+];
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtVolume(v: number | null | undefined): string {
@@ -115,7 +151,6 @@ function ProductCardThumb({
 
 export default function SmartstoreRankPage() {
   const { data: session, status } = useSession();
-  const router = useRouter();
 
   const PendingKeywordSortableItem = ({
     kw,
@@ -288,15 +323,19 @@ export default function SmartstoreRankPage() {
   const [recommendations, setRecommendations] = useState<KeywordRecommendation[]>([]);
   const [isRecLoading, setIsRecLoading] = useState(false);
   const [activeDragKeyword, setActiveDragKeyword] = useState<string | null>(null);
+  const isPreview = mounted && status === "unauthenticated";
+  const { loginRequiredOpen, previewCapture, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (status === "loading") return;
-    if (!session) router.replace("/login");
-  }, [session, status, router]);
+    if (!mounted || status !== "unauthenticated") return;
+    setProducts(SAMPLE_SMARTSTORE_PRODUCTS);
+    setListLoading(false);
+  }, [mounted, status]);
 
   const fetchProducts = useCallback(
     async (opts?: { silent?: boolean }): Promise<SmartstoreProductRow[]> => {
@@ -741,21 +780,14 @@ export default function SmartstoreRankPage() {
     );
   }
 
-  if (!session) {
-    return (
-      <>
-        <TopNav activeSmartstoreSub="rank-naver-price" />
-        <main className="flex min-h-screen items-center justify-center bg-[#f3f5f9] pt-24">
-          <div className="text-[15px] text-[#6b7280]">로그인 페이지로 이동 중...</div>
-        </main>
-      </>
-    );
-  }
-
   return (
     <>
       <TopNav activeSmartstoreSub="rank-naver-price" />
-      <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
+      <main
+        className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24"
+        onClickCapture={previewCapture}
+      >
+        {isPreview ? <PublicPreviewBanner /> : null}
         <section className="mx-auto max-w-[1240px] px-3 py-3 md:px-6 md:py-5 lg:px-8">
           <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-3 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="flex flex-col gap-3 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1432,6 +1464,7 @@ export default function SmartstoreRankPage() {
           </div>
         </section>
       </main>
+      <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
 
       <SmartstoreProductRegisterModal
         open={registerOpen}
