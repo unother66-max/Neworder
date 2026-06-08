@@ -52,6 +52,23 @@ const SAMPLE_TOP_BLOG_POSTS: Post[] = [
   },
 ];
 
+async function readJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const data = (await response.json()) as unknown;
+    return data && typeof data === "object" && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function getApiErrorMessage(data: Record<string, unknown>, fallback: string) {
+  return typeof data.error === "string" && data.error.trim()
+    ? data.error
+    : fallback;
+}
+
 function getRankTextColor(rank: string) {
   if (
     rank === "300위 밖에" ||
@@ -60,7 +77,10 @@ function getRankTextColor(rank: string) {
     rank === "0개" ||
     rank === "키워드 없음" ||
     rank === "링크 없음" ||
-    rank === "확인 중..."
+    rank === "확인 중..." ||
+    rank === "일시적 조회 실패" ||
+    rank === "일시적 조회 제한" ||
+    rank === "잠시 후 다시 시도"
   ) {
     return "text-[#9ca3af]";
   }
@@ -83,6 +103,7 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [checkingKeys, setCheckingKeys] = useState<Set<string>>(() => new Set());
 
   // 디자인 통일용 상태값 (호버 및 마우스 위치)
   const [isAnalyzeHovered, setIsAnalyzeHovered] = useState(false);
@@ -94,11 +115,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!isPreview) return;
-    setBlogUrl("https://blog.naver.com/postlabs");
-    setVisitor(12840);
-    setPosts(SAMPLE_TOP_BLOG_POSTS);
-    setLoading(false);
-    setErrorMessage("");
+    queueMicrotask(() => {
+      setBlogUrl("https://blog.naver.com/postlabs");
+      setVisitor(12840);
+      setPosts(SAMPLE_TOP_BLOG_POSTS);
+      setLoading(false);
+      setErrorMessage("");
+    });
   }, [isPreview]);
 
   const handleAnalyzeMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -140,23 +163,40 @@ export default function Home() {
         }),
       ]);
 
-      const postData = await postRes.json();
-      const visitorData = await visitorRes.json();
+      const postData = await readJsonResponse(postRes);
+      const visitorData = await readJsonResponse(visitorRes);
 
       if (!postRes.ok) {
-        setErrorMessage(postData.error || "최근글 불러오기 실패");
+        setErrorMessage(
+          getApiErrorMessage(
+            postData,
+            "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요."
+          )
+        );
         setPosts([]);
         return;
       }
 
-      setPosts(postData.posts || []);
+      const nextPosts = Array.isArray(postData.posts) ? (postData.posts as Post[]) : [];
+      setPosts(nextPosts);
+
+      if (!nextPosts.length) {
+        setErrorMessage(
+          getApiErrorMessage(
+            postData,
+            "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요."
+          )
+        );
+      }
 
       if (visitorRes.ok) {
-        setVisitor(visitorData.visitor ?? null);
+        setVisitor(typeof visitorData.visitor === "number" ? visitorData.visitor : null);
       }
     } catch (error) {
       console.error(error);
-      setErrorMessage("데이터 불러오기 실패");
+      setErrorMessage(
+        "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요."
+      );
     } finally {
       setLoading(false);
     }
@@ -175,9 +215,12 @@ export default function Home() {
     );
   };
 
+  const getCheckingKey = (post: Post) => `${post.link}::${post.keyword.trim()}`;
+
   const checkSinglePostRank = async (index: number) => {
     if (guardAction()) return;
     const targetPost = posts[index];
+    if (!targetPost) return;
 
     if (!targetPost.keyword.trim()) {
       setPosts((prev) =>
@@ -192,6 +235,16 @@ export default function Home() {
       );
       return;
     }
+
+    const checkingKey = getCheckingKey(targetPost);
+    if (checkingKeys.has(checkingKey)) return;
+
+    setCheckingKeys((prev) => {
+      const next = new Set(prev);
+      next.add(checkingKey);
+      return next;
+    });
+    setErrorMessage("");
 
     setPosts((prev) =>
       prev.map((post, i) =>
@@ -213,18 +266,41 @@ export default function Home() {
         body: JSON.stringify({
           keyword: targetPost.keyword,
           postLink: targetPost.link,
+          postTitle: targetPost.title,
         }),
       });
 
-      const data = await response.json();
+      const data = await readJsonResponse(response);
+
+      if (!response.ok || data.ok === false) {
+        setErrorMessage(
+          getApiErrorMessage(
+            data,
+            "순위와 검색량을 확인하지 못했습니다. 잠시 후 다시 시도해주세요."
+          )
+        );
+      }
 
       setPosts((prev) =>
         prev.map((post, i) =>
           i === index
             ? {
                 ...post,
-                rank: data.rank || "오류",
-                searchVolume: data.searchVolume || "-",
+                rank:
+                  typeof data.rankText === "string"
+                    ? data.rankText
+                    : typeof data.rank === "number"
+                      ? `${data.rank}위`
+                      : typeof data.rank === "string"
+                        ? data.rank
+                        : data.ok === false
+                          ? "일시적 조회 실패"
+                          : "오류",
+                searchVolume:
+                  typeof data.searchVolume === "string" ||
+                  (data.searchVolume != null && typeof data.searchVolume === "object")
+                    ? (data.searchVolume as Post["searchVolume"])
+                    : "-",
               }
             : post
         )
@@ -243,6 +319,12 @@ export default function Home() {
             : post
         )
       );
+    } finally {
+      setCheckingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(checkingKey);
+        return next;
+      });
     }
   };
 
@@ -439,9 +521,12 @@ export default function Home() {
                       onMouseEnter={() => setSearchHover({ index, x: searchHover.x, y: searchHover.y })}
                       onMouseLeave={() => setSearchHover((prev) => prev.index === index ? { ...prev, index: null } : prev)}
                       onMouseMove={(e) => handleSearchMouseMove(e, index)}
-                      className="relative inline-flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out"
+                      disabled={checkingKeys.has(getCheckingKey(post))}
+                      className="relative inline-flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <span className="relative z-30 pointer-events-none">검색</span>
+                      <span className="relative z-30 pointer-events-none">
+                        {checkingKeys.has(getCheckingKey(post)) ? "검색중" : "검색"}
+                      </span>
                       <div
                         className="pointer-events-none absolute inset-0 z-10 h-full w-full"
                         style={{
@@ -550,9 +635,12 @@ export default function Home() {
                             onMouseEnter={() => setSearchHover({ index, x: searchHover.x, y: searchHover.y })}
                             onMouseLeave={() => setSearchHover((prev) => prev.index === index ? { ...prev, index: null } : prev)}
                             onMouseMove={(e) => handleSearchMouseMove(e, index)}
-                            className="relative inline-flex h-9 shrink-0 min-w-[60px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[42px] md:min-w-[70px] md:rounded-[12px] md:px-4 md:text-[14px]"
+                            disabled={checkingKeys.has(getCheckingKey(post))}
+                            className="relative inline-flex h-9 shrink-0 min-w-[60px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:min-w-[70px] md:rounded-[12px] md:px-4 md:text-[14px]"
                           >
-                            <span className="relative z-30 pointer-events-none">검색</span>
+                            <span className="relative z-30 pointer-events-none">
+                              {checkingKeys.has(getCheckingKey(post)) ? "검색중" : "검색"}
+                            </span>
                             <div
                               className="pointer-events-none absolute inset-0 z-10 h-full w-full"
                               style={{

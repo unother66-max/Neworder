@@ -1,0 +1,643 @@
+diff --git a/app/api/posts/route.ts b/app/api/posts/route.ts
+index 0025c6b..b347afc 100644
+--- a/app/api/posts/route.ts
++++ b/app/api/posts/route.ts
+@@ -1,7 +1,17 @@
+-import { getRecentLinksFromPage } from "@/lib/scraper";
++import {
++  extractBlogId,
++  fetchBlogPostTitleListPage,
++  getRecentLinksFromPage,
++} from "@/lib/scraper";
+ import { getServerSession } from "next-auth/next";
+ import { authOptions } from "@/auth";
+ 
++type SessionWithUserId = {
++  user?: {
++    id?: string | null;
++  } | null;
++} | null;
++
+ function sortPostsByDate(
+   posts: { title: string; link: string; date: string }[]
+ ) {
+@@ -12,77 +22,117 @@ function sortPostsByDate(
+   });
+ }
+ 
++function formatDateLabel(date: string | null | undefined) {
++  if (!date) return "";
++  const parsed = new Date(date);
++  if (isNaN(parsed.getTime())) return "";
++
++  const year = parsed.getFullYear();
++  const month = String(parsed.getMonth() + 1).padStart(2, "0");
++  const day = String(parsed.getDate()).padStart(2, "0");
++  return `${year}-${month}-${day}`;
++}
++
++function toTopBlogPosts(posts: { title: string; link: string; date: string }[]) {
++  return posts.map((item) => ({
++    title: item.title,
++    date: item.date,
++    link: item.link,
++    rank: "-",
++    keyword: "",
++    searchVolume: "-",
++  }));
++}
++
+ export async function POST(request: Request) {
+   try {
+-    const session = (await getServerSession(authOptions as any)) as any;
++    console.log("[top-blog] request received");
++
++    const session = (await getServerSession(authOptions)) as SessionWithUserId;
+     if (!session?.user?.id) {
+-      return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
++      return Response.json(
++        { ok: false, posts: [], error: "로그인이 필요합니다." },
++        { status: 401 }
++      );
+     }
+ 
+     const body = await request.json();
+     const blogUrl = body.blogUrl as string;
+ 
+     if (!blogUrl?.trim()) {
+-      return Response.json({
+-        posts: [
+-          {
+-            title: "블로그 주소가 비어 있어요",
+-            date: "",
+-            link: "#",
+-            rank: "오류",
+-            keyword: "",
+-            searchVolume: "-",
+-          },
+-        ],
+-      });
++      return Response.json(
++        { ok: false, posts: [], error: "블로그 주소를 입력해주세요." },
++        { status: 400 }
++      );
+     }
+ 
+-    const scrapedLinks = await getRecentLinksFromPage(blogUrl);
++    const blogId = extractBlogId(blogUrl);
++    console.log("[top-blog] normalized blog url/blogId", { blogId });
+ 
+-    if (!scrapedLinks.length) {
+-      return Response.json({
+-        posts: [
+-          {
+-            title: "RSS에서 최근글을 찾지 못했어요",
+-            date: "",
+-            link: blogUrl,
+-            rank: "0개",
+-            keyword: "",
+-            searchVolume: "-",
+-          },
+-        ],
+-      });
++    if (!blogId) {
++      return Response.json(
++        {
++          ok: false,
++          posts: [],
++          error: "네이버 블로그 URL을 확인해주세요.",
++        },
++        { status: 400 }
++      );
+     }
+ 
+-    const dateSorted = sortPostsByDate(scrapedLinks);
++    let scrapedLinks: { title: string; link: string; date: string }[] = [];
++    let rssError: string | null = null;
+ 
+-    const posts = dateSorted.map((item) => ({
+-      title: item.title,
+-      date: item.date,
+-      link: item.link,
+-      rank: "-",
+-      keyword: "",
+-      searchVolume: "-",
+-    }));
++    try {
++      scrapedLinks = await getRecentLinksFromPage(blogUrl);
++    } catch (error) {
++      rssError = error instanceof Error ? error.message : "rss_fetch_failed";
++      console.log("[top-blog] error reason", { source: "rss", reason: rssError });
++    }
+ 
+-    return Response.json({ posts });
+-  } catch (error) {
+-    console.error("route error:", error);
++    if (!scrapedLinks.length) {
++      const titleListPage = await fetchBlogPostTitleListPage(blogId, 1, 20);
++      scrapedLinks = titleListPage.posts.map((post) => ({
++        title: post.title,
++        link: post.url,
++        date: formatDateLabel(post.createdAt ?? post.publishedAt),
++      }));
++    }
+ 
+-    return Response.json({
+-      posts: [
++    if (!scrapedLinks.length) {
++      console.log("[top-blog] recent posts count", { blogId, count: 0 });
++      return Response.json(
+         {
+-          title:
+-            error instanceof Error
+-              ? `오류: ${error.message}`
+-              : "페이지를 읽는 중 오류가 났어요",
+-          date: "",
+-          link: "#",
+-          rank: "오류",
+-          keyword: "",
+-          searchVolume: "-",
++          ok: false,
++          posts: [],
++          error:
++            "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요.",
+         },
+-      ],
++        { status: 404 }
++      );
++    }
++
++    const dateSorted = sortPostsByDate(scrapedLinks);
++    const posts = toTopBlogPosts(dateSorted);
++
++    console.log("[top-blog] recent posts count", {
++      blogId,
++      count: posts.length,
++      rssFallbackUsed: Boolean(rssError),
+     });
++
++    return Response.json({ ok: true, posts, blogId });
++  } catch (error) {
++    console.error("[top-blog] error reason", error);
++
++    return Response.json(
++      {
++        ok: false,
++        posts: [],
++        error:
++          "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요.",
++      },
++      { status: 500 }
++    );
+   }
+ }
+diff --git a/app/api/smartstore-keyword-check-rank/route.ts b/app/api/smartstore-keyword-check-rank/route.ts
+index a52de3f..31ab73c 100644
+--- a/app/api/smartstore-keyword-check-rank/route.ts
++++ b/app/api/smartstore-keyword-check-rank/route.ts
+@@ -4,7 +4,6 @@ import { authOptions } from "@/auth";
+ import { prisma } from "@/lib/prisma";
+ import {
+   findProductRankViaNaverShopOpenApi,
+-  isNaverOpenApiConfiguredForShopping,
+ } from "@/lib/naver-openapi-shopping-rank";
+ import {
+   findProductRankViaNaverShoppingNextData,
+@@ -18,8 +17,8 @@ export const dynamic = "force-dynamic";
+ export async function POST(req: Request) {
+   let kwForFailure: { keyword: string; product: { id: string } } | null = null;
+   try {
+-    const session = (await getServerSession(authOptions as any)) as any;
+-    const userId = session?.user?.id;
++    const session = await getServerSession(authOptions);
++    const userId = (session?.user as { id?: string } | undefined)?.id;
+     if (!userId) return NextResponse.json({ error: "로그인 필요" }, { status: 401 });
+ 
+     const body = await req.json();
+@@ -36,10 +35,10 @@ export async function POST(req: Request) {
+     kwForFailure = { keyword: kw.keyword, product: { id: kw.product.id } };
+ 
+     let result;
+-    let rankSource: "PLUS_STORE_ORGANIC_NS_PORTAL" | "search/all";
++    let rankSource: "PLUS_STORE_NS_PORTAL_SEARCH_AD" | "search/all";
+ 
+     if (kw.product.space === "PLUS_STORE") {
+-      rankSource = "PLUS_STORE_ORGANIC_NS_PORTAL";
++      rankSource = "PLUS_STORE_NS_PORTAL_SEARCH_AD";
+       try {
+         result = await findProductRankViaNaverShoppingNextData({
+           keyword: kw.keyword,
+@@ -147,14 +146,14 @@ export async function POST(req: Request) {
+       }
+ 
+       console.error("[smartstore-keyword-check-rank:plus-store-failed]", {
+-        rankSource: "PLUS_STORE_ORGANIC_NS_PORTAL",
+-        parserSource: "ns-portal.shopping.naver.com/api/v2/shopping-paged-slot",
++        rankSource: "PLUS_STORE_NS_PORTAL_SEARCH_AD",
++        parserSource: "ns-portal.shopping.naver.com/api/v2/shopping-paged-slot + ad.search.naver.com/search.naver",
+         requestUrl: e.requestUrl,
+         responseStatus: e.status,
+         responsePreview: e.responsePreview,
+       });
+       return NextResponse.json(
+-        { error: "플러스스토어 순위 조회 실패 (광고 제외 기준 API 실패)" },
++        { error: "플러스스토어 순위 조회 실패 (NS 포털/검색광고 API 실패)" },
+         { status: 502 }
+       );
+     }
+@@ -167,4 +166,4 @@ export async function POST(req: Request) {
+     }
+     return NextResponse.json({ error: "조회 실패" }, { status: 502 });
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/app/smartstore/plus-store-ranking-track/page.tsx b/app/smartstore/plus-store-ranking-track/page.tsx
+index a7c3e19..4005d21 100644
+--- a/app/smartstore/plus-store-ranking-track/page.tsx
++++ b/app/smartstore/plus-store-ranking-track/page.tsx
+@@ -770,7 +770,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
+                     <span className="text-[11px] font-black text-[#b91c1c]">+</span>
+                     <img
+                       src={PLUS_STORE_SVG_SRC}
+-                      alt="플러스토어"
++                      alt="플러스스토어"
+                       width={79}
+                       height={16}
+                       className="h-4 w-auto"
+@@ -778,8 +778,8 @@ export default function SmartstorePlusStoreRankingTrackPage() {
+                   </span>
+                 </div>
+                 <p className="mt-1 text-[12px] leading-5 text-[#6b7280] md:text-[13px]">
+-                  플러스토어 상품의 노출 순위를 추적하기 위한 페이지입니다. 순위는 광고 제외 organic 기준으로
+-                  수집됩니다.
++                  플러스스토어 상품의 노출 순위를 추적하기 위한 페이지입니다. 순위는 실제 검색 화면처럼 광고 포함
++                  기준으로 수집됩니다.
+                 </p>
+               </div>
+ 
+@@ -858,10 +858,12 @@ export default function SmartstorePlusStoreRankingTrackPage() {
+                     등록된 상품
+                   </h2>
+                   <span className="rounded-full border border-[#e5e7eb] bg-[#fafafa] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
+-                    플러스토어
++                    플러스스토어
+                   </span>
+                 </div>
+-                <p className="mt-2 text-[12px] text-[#6b7280]">현재는 레이아웃만 먼저 적용되어 있어요. (기능 연동 예정)</p>
++                <p className="mt-2 text-[12px] text-[#6b7280]">
++                  플러스스토어 검색 결과에서 사용자가 보는 화면 순번 기준의 상품 노출 순위를 보여줍니다.
++                </p>
+               </div>
+               <div className="text-[11px] text-[#9ca3af]">* 상품 등록은 기존 스마트스토어 저장 API를 사용합니다.</div>
+             </div>
+@@ -876,7 +878,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
+               <div className="rounded-[22px] border border-dashed border-[#d1d5db] bg-white px-6 py-14 text-center shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+                 <p className="text-[18px] font-bold text-[#111827]">아직 등록된 상품이 없어요</p>
+                 <p className="mt-2 text-[14px] text-[#9ca3af]">
+-                  상단의 상품 등록 버튼으로 플러스토어 상품 URL을 추가해보세요.
++                  상단의 상품 등록 버튼으로 플러스스토어 상품 URL을 추가해보세요.
+                 </p>
+               </div>
+             ) : (
+@@ -1233,7 +1235,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
+                   <div className="border-t border-[#f3f4f6] px-3 pb-3 md:px-6 md:pb-4">
+                     <div className="mb-2 mt-3">
+                     <p className="text-[11px] font-semibold text-[#6b7280]">
+-                      플러스스토어 순위 (광고 제외 기준)
++                      플러스스토어 순위 (광고 포함 화면 기준)
+                     </p>
+                     </div>
+                     <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb]">
+@@ -1262,7 +1264,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
+                           {p.keywords.length === 0 ? (
+                             <tr>
+                               <td colSpan={5} className="px-2 py-7 text-center text-[12px] text-[#9ca3af] md:px-4 md:py-6">
+-                                키워드를 등록한 뒤 상단 「업데이트」로 순위를 갱신하면 광고 제외 organic 기준 순위가
++                                키워드를 등록한 뒤 상단 「업데이트」로 순위를 갱신하면 플러스스토어 검색 화면 기준 순위가
+                                 표시돼요.
+                                 <br />
+                                 <span className="font-semibold">[키워드 관리]</span>에서 키워드를 추가하세요.
+diff --git a/app/top-blog/page.tsx b/app/top-blog/page.tsx
+index 44c8418..814ab57 100644
+--- a/app/top-blog/page.tsx
++++ b/app/top-blog/page.tsx
+@@ -52,6 +52,14 @@ const SAMPLE_TOP_BLOG_POSTS: Post[] = [
+   },
+ ];
+ 
++async function readJsonResponse(response: Response) {
++  try {
++    return await response.json();
++  } catch {
++    return {};
++  }
++}
++
+ function getRankTextColor(rank: string) {
+   if (
+     rank === "300위 밖에" ||
+@@ -140,23 +148,36 @@ export default function Home() {
+         }),
+       ]);
+ 
+-      const postData = await postRes.json();
+-      const visitorData = await visitorRes.json();
++      const postData = await readJsonResponse(postRes);
++      const visitorData = await readJsonResponse(visitorRes);
+ 
+       if (!postRes.ok) {
+-        setErrorMessage(postData.error || "최근글 불러오기 실패");
++        setErrorMessage(
++          postData.error ||
++            "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요."
++        );
+         setPosts([]);
+         return;
+       }
+ 
+-      setPosts(postData.posts || []);
++      const nextPosts = Array.isArray(postData.posts) ? postData.posts : [];
++      setPosts(nextPosts);
++
++      if (!nextPosts.length) {
++        setErrorMessage(
++          postData.error ||
++            "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요."
++        );
++      }
+ 
+       if (visitorRes.ok) {
+         setVisitor(visitorData.visitor ?? null);
+       }
+     } catch (error) {
+       console.error(error);
+-      setErrorMessage("데이터 불러오기 실패");
++      setErrorMessage(
++        "블로그 최신 글을 불러오지 못했습니다. URL을 확인하거나 잠시 후 다시 시도해주세요."
++      );
+     } finally {
+       setLoading(false);
+     }
+@@ -216,7 +237,11 @@ export default function Home() {
+         }),
+       });
+ 
+-      const data = await response.json();
++      const data = await readJsonResponse(response);
++
++      if (!response.ok) {
++        setErrorMessage(data.error || "순위와 검색량을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.");
++      }
+ 
+       setPosts((prev) =>
+         prev.map((post, i) =>
+diff --git a/components/site-footer.tsx b/components/site-footer.tsx
+index b7740fc..d56dfde 100644
+--- a/components/site-footer.tsx
++++ b/components/site-footer.tsx
+@@ -1,9 +1,9 @@
+ import Link from "next/link";
+-import { Noto_Sans_KR } from "next/font/google";
++import localFont from "next/font/local";
+ 
+-const notoSansKr = Noto_Sans_KR({
+-  subsets: ["latin"],
+-  weight: ["700", "900"],
++const notoSansKr = localFont({
++  src: "../public/fonts/NotoSansKR-Regular.woff",
++  display: "swap",
+ });
+ 
+ const legalPillClass =
+diff --git a/components/top-nav.tsx b/components/top-nav.tsx
+index 78efc19..c02339a 100644
+--- a/components/top-nav.tsx
++++ b/components/top-nav.tsx
+@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
+ import Image from "next/image";
+ import Link from "next/link";
+ import { usePathname, useRouter } from "next/navigation";
+-import { Noto_Sans_KR } from "next/font/google";
++import localFont from "next/font/local";
+ import { useSession, signOut } from "next-auth/react";
+ import {
+   fetchUserQuotaCached,
+@@ -44,9 +44,9 @@ const getActiveMobileSectionKey = (path: string): MobileMenuSectionKey | null =>
+   return null;
+ };
+ 
+-const notoSansKr = Noto_Sans_KR({
+-  subsets: ["latin"],
+-  weight: ["700", "900"],
++const notoSansKr = localFont({
++  src: "../public/fonts/NotoSansKR-Regular.woff",
++  display: "swap",
+ });
+ 
+ const MobileServiceIcon = ({
+diff --git a/lib/naver-shopping-nextdata-rank.ts b/lib/naver-shopping-nextdata-rank.ts
+index 720cdfc..6d8e375 100644
+--- a/lib/naver-shopping-nextdata-rank.ts
++++ b/lib/naver-shopping-nextdata-rank.ts
+@@ -4,6 +4,7 @@ type NsPortalProductUrl = {
+ };
+ 
+ type NsPortalSlotData = {
++  cardType?: string;
+   rank?: number;
+   productName?: string;
+   channelProductId?: string | number;
+@@ -50,7 +51,7 @@ export class NaverShoppingNextDataHttpError extends Error {
+ }
+ 
+ type RankResult = {
+-  source: "PLUS_STORE_ORGANIC_NS_PORTAL";
++  source: "PLUS_STORE_NS_PORTAL_SEARCH_AD";
+   rank: number | null;
+   pageNum: number | null;
+   position: number | null;
+@@ -63,6 +64,9 @@ type RankResult = {
+   totalProductCount: number;
+   matchedProductNo: string | null;
+   matchedName: string | null;
++  nsPortalRank: number | null;
++  leadingSearchAdCount: number;
++  searchAdRequestUrl: string | null;
+ };
+ 
+ type ParsedRow = {
+@@ -72,6 +76,13 @@ type ParsedRow = {
+   productName: string | null;
+ };
+ 
++type LeadingSearchAdResult = {
++  count: number;
++  requestUrl: string;
++  responseStatus: number;
++  responsePreview: string;
++};
++
+ type RequestVariant = {
+   page: number;
+   cursor: string | null;
+@@ -79,6 +90,7 @@ type RequestVariant = {
+ };
+ 
+ const NS_PORTAL_URL = "https://ns-portal.shopping.naver.com/api/v2/shopping-paged-slot";
++const NAVER_SEARCH_AD_URL = "https://ad.search.naver.com/search.naver";
+ const PARSER_SOURCE = "ns-portal.shopping.naver.com/api/v2/shopping-paged-slot";
+ 
+ export async function findProductRankViaNaverShoppingNextData({
+@@ -240,14 +252,16 @@ export async function findProductRankViaNaverShoppingNextData({
+       });
+ 
+       if (matchedRank && matchedRank <= maxRankScan) {
+-        const pageNum = Math.floor((matchedRank - 1) / size) + 1;
+-        const position = ((matchedRank - 1) % size) + 1;
++        const leadingSearchAds = await fetchLeadingSearchAdCount(kw, headers);
++        const displayRank = matchedRank + leadingSearchAds.count;
++        const pageNum = Math.floor((displayRank - 1) / size) + 1;
++        const position = ((displayRank - 1) % size) + 1;
+         return {
+-          source: "PLUS_STORE_ORGANIC_NS_PORTAL",
+-          rank: matchedRank,
++          source: "PLUS_STORE_NS_PORTAL_SEARCH_AD",
++          rank: displayRank,
+           pageNum,
+           position,
+-          rankLabel: `${matchedRank}위`,
++          rankLabel: `${displayRank}위`,
+           notFound: false,
+           requestUrl,
+           responseStatus: res.status,
+@@ -256,6 +270,9 @@ export async function findProductRankViaNaverShoppingNextData({
+           totalProductCount: dedupedRows.length,
+           matchedProductNo: matchedRow?.productIdForLog ?? null,
+           matchedName: matchedRow?.productName ?? null,
++          nsPortalRank: matchedRank,
++          leadingSearchAdCount: leadingSearchAds.count,
++          searchAdRequestUrl: leadingSearchAds.requestUrl,
+         };
+       }
+     }
+@@ -274,7 +291,7 @@ export async function findProductRankViaNaverShoppingNextData({
+   }
+ 
+   return {
+-    source: "PLUS_STORE_ORGANIC_NS_PORTAL",
++    source: "PLUS_STORE_NS_PORTAL_SEARCH_AD",
+     rank: null,
+     pageNum: null,
+     position: null,
+@@ -287,9 +304,95 @@ export async function findProductRankViaNaverShoppingNextData({
+     totalProductCount: dedupedRows.length,
+     matchedProductNo: null,
+     matchedName: null,
++    nsPortalRank: null,
++    leadingSearchAdCount: 0,
++    searchAdRequestUrl: null,
++  };
++}
++
++async function fetchLeadingSearchAdCount(
++  keyword: string,
++  baseHeaders: Record<string, string>
++): Promise<LeadingSearchAdResult> {
++  const url = new URL(NAVER_SEARCH_AD_URL);
++  url.searchParams.set("where", "ad");
++  url.searchParams.set("query", keyword);
++
++  const requestUrl = url.toString();
++  const res = await fetch(requestUrl, {
++    headers: {
++      ...baseHeaders,
++      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
++      Referer: `https://search.shopping.naver.com/ns/search?query=${encodeURIComponent(keyword)}`,
++    },
++    cache: "no-store",
++  });
++  const rawText = await res.text();
++  const responsePreview = rawText.slice(0, 220);
++
++  if (!res.ok) {
++    throw new NaverShoppingNextDataHttpError(
++      `Naver Search Ad Error: ${res.status}`,
++      res.status,
++      requestUrl,
++      responsePreview
++    );
++  }
++
++  return {
++    count: countLeadingExternalSearchAds(rawText),
++    requestUrl,
++    responseStatus: res.status,
++    responsePreview,
+   };
+ }
+ 
++function countLeadingExternalSearchAds(html: string): number {
++  const starts = [...html.matchAll(/<li\s+data-index="(\d+)"/g)].map((m) => m.index ?? -1);
++  const validStarts = starts.filter((pos) => pos >= 0);
++  if (validStarts.length === 0) return 0;
++
++  let count = 0;
++  for (let i = 0; i < validStarts.length; i++) {
++    const start = validStarts[i];
++    const nextStart = validStarts[i + 1] ?? html.indexOf("</ol>", start);
++    const end = nextStart > start ? nextStart : html.length;
++    const segment = html.slice(start, end);
++    const displayedUrl = extractDisplayedAdUrl(segment);
++    if (displayedUrl && isNaverStoreAdUrl(displayedUrl)) break;
++    count += 1;
++  }
++  return count;
++}
++
++function extractDisplayedAdUrl(segment: string): string | null {
++  const match = segment.match(/class="url"[^>]*>([\s\S]*?)<\/a>/);
++  if (!match?.[1]) return null;
++  const value = decodeHtmlText(match[1]).trim().toLowerCase();
++  return value || null;
++}
++
++function isNaverStoreAdUrl(value: string): boolean {
++  return (
++    value.startsWith("smartstore.naver.com/") ||
++    value.startsWith("brand.naver.com/") ||
++    value.startsWith("shopping.naver.com/") ||
++    value.startsWith("storefarm.naver.com/")
++  );
++}
++
++function decodeHtmlText(input: string): string {
++  return input
++    .replace(/<[^>]+>/g, " ")
++    .replace(/&amp;/g, "&")
++    .replace(/&lt;/g, "<")
++    .replace(/&gt;/g, ">")
++    .replace(/&quot;/g, '"')
++    .replace(/&#39;/g, "'")
++    .replace(/&#x3D;/gi, "=")
++    .replace(/\s+/g, " ");
++}
++
+ function extractRowsFromNsPortal(payload: NsPortalResponse): ParsedRow[] {
+   const slots = (payload.data ?? []).flatMap((page) => page.slots ?? []);
+   const rows: ParsedRow[] = [];
+@@ -321,7 +424,6 @@ function collectCandidateIds(data: NsPortalSlotData): Set<string> {
+     data.channelProductId,
+     data.originalMallProductId,
+     data.productId,
+-    data.nvMid,
+   ];
+   for (const candidate of directCandidates) {
+     const v = String(candidate ?? "").trim();
+@@ -463,4 +565,4 @@ function resolveRowRank(row: ParsedRow, rows: ParsedRow[]): number | null {
+   const index = rows.indexOf(row);
+   if (index < 0) return null;
+   return index + 1;
+-}
+\ No newline at end of file
++}
