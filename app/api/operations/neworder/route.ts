@@ -9,9 +9,9 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function error(message: string, status = 400) {
+function error(message: string, status = 400, reason?: string) {
   return NextResponse.json(
-    { ok: false, error: message, message },
+    { ok: false, error: message, message, ...(reason ? { reason } : {}) },
     { status }
   );
 }
@@ -46,11 +46,28 @@ export async function GET() {
     const access = await getNewOrderAccess();
     if (!access) return error(OPERATOR_REQUIRED_ERROR, 403);
 
-    const snapshot = await getNewOrderSnapshot(access.userId);
+    const snapshot = await getNewOrderSnapshot();
     return NextResponse.json({ ok: true, ...snapshot });
   } catch (cause) {
-    console.error("[operations/neworder] GET", cause);
-    return error("운영관리 데이터를 불러오는 중 오류가 발생했습니다.", 500);
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    const code =
+      typeof cause === "object" &&
+      cause !== null &&
+      "code" in cause &&
+      typeof cause.code === "string"
+        ? cause.code
+        : null;
+    const reason =
+      code === "P2028" ||
+      /transaction not found|closed transaction|transaction.*closed/i.test(detail)
+        ? "TRANSACTION_CLOSED"
+        : "DATA_LOAD_FAILED";
+    console.warn("[operations/neworder] GET", { reason, detail });
+    return error(
+      "운영관리 데이터를 불러오는 중 오류가 발생했습니다.",
+      500,
+      reason
+    );
   }
 }
 

@@ -40,6 +40,19 @@ npm run neworder:seed-operators
 seed는 이메일에 해당하는 기존 `User`를 찾아 `NewOrderOperator`를
 upsert한다. 이메일만으로 로그인 권한을 우회하지 않는다.
 
+## Legacy data backfill
+
+운영 데이터 조회 API는 읽기 전용이며 백필을 자동 실행하지 않는다.
+기존 가격 후보나 기본 거래처를 명시적으로 보정해야 할 때만 아래 명령을
+한 번 실행한다.
+
+```bash
+npm run neworder:backfill
+```
+
+이 명령은 Vercel 요청 처리 중 실행하지 않는다. 외부 fetch나 interactive
+transaction을 사용하지 않고 일반 Prisma 작업을 순차적으로 완료한다.
+
 ## 이후 운영자 관리
 
 PostLabs 최고관리자는 다음 내부 화면에서 운영자를 등록하고 상태를
