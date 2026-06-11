@@ -23,7 +23,7 @@ export type PriceCandidateLike = {
   packageUnit?: string | null;
 };
 
-const COUNT_UNITS = "개|병|팩|박스|봉|캔|입|롤|통|세트";
+const COUNT_UNITS = "개|병|팩|박스|봉|캔|입|롤|통|세트|P|p";
 
 function positiveNumber(value: unknown, fallback: number): number {
   const number = Number(value);
@@ -41,7 +41,7 @@ export function parseProductSpec(title: string): ParsedProductSpec {
   let measureEnd = -1;
 
   const physical = normalized.match(
-    /(\d+(?:\.\d+)?)\s*(ml|mL|ML|l|L|g|G|kg|KG|Kg)\b/
+    /(\d+(?:\.\d+)?)\s*(ml|mL|ML|l|L|g|G|kg|KG|Kg)/
   );
   if (physical) {
     const raw = Number(physical[1]);
@@ -143,6 +143,12 @@ export type RecommendationMetric =
   | "pricePer100"
   | "pricePerMeasure";
 
+export type PriceSort =
+  | "totalPrice"
+  | "unitPrice"
+  | "pricePer100"
+  | "savings";
+
 export function getRecommendationMetric(
   itemName: string,
   category: string
@@ -162,10 +168,46 @@ export function metricValue(
   metric: RecommendationMetric
 ): number {
   if (metric === "pricePer100") {
-    return metrics.pricePer100 ?? metrics.unitPrice;
+    return metrics.pricePer100 && metrics.pricePer100 > 0
+      ? metrics.pricePer100
+      : Number.POSITIVE_INFINITY;
   }
   if (metric === "pricePerMeasure") {
-    return metrics.pricePerMeasure ?? metrics.unitPrice;
+    return metrics.pricePerMeasure && metrics.pricePerMeasure > 0
+      ? metrics.pricePerMeasure
+      : Number.POSITIVE_INFINITY;
   }
   return metrics[metric];
+}
+
+export function priceSortValue(
+  metrics: PriceMetrics,
+  sort: PriceSort,
+  recentUnitPrice: number | null
+): number | null {
+  if (sort === "pricePer100") {
+    return metrics.pricePer100 && metrics.pricePer100 > 0
+      ? metrics.pricePer100
+      : null;
+  }
+  if (sort === "savings") {
+    return recentUnitPrice && recentUnitPrice > 0 && metrics.unitPrice > 0
+      ? recentUnitPrice - metrics.unitPrice
+      : null;
+  }
+  const value = metrics[sort];
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function comparePriceMetrics(
+  a: PriceMetrics,
+  b: PriceMetrics,
+  sort: PriceSort,
+  recentUnitPrice: number | null
+): number {
+  const aValue = priceSortValue(a, sort, recentUnitPrice);
+  const bValue = priceSortValue(b, sort, recentUnitPrice);
+  if (aValue == null) return bValue == null ? 0 : 1;
+  if (bValue == null) return -1;
+  return sort === "savings" ? bValue - aValue : aValue - bValue;
 }

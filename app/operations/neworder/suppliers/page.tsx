@@ -1,6 +1,5 @@
-import { NewOrderWorkspace } from "../workspace";
+import { redirect } from "next/navigation";
 
 export default function NewOrderSuppliersPage() {
-  return <NewOrderWorkspace view="suppliers" />;
+  redirect("/operations/neworder/items");
 }
-

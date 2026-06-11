@@ -39,11 +39,16 @@ function validUrl(value: unknown): string | null {
 }
 
 export async function GET() {
-  const access = await getNewOrderAccess();
-  if (!access) return error(OPERATOR_REQUIRED_ERROR, 403);
+  try {
+    const access = await getNewOrderAccess();
+    if (!access) return error(OPERATOR_REQUIRED_ERROR, 403);
 
-  const snapshot = await getNewOrderSnapshot(access.userId);
-  return NextResponse.json({ ok: true, ...snapshot });
+    const snapshot = await getNewOrderSnapshot(access.userId);
+    return NextResponse.json({ ok: true, ...snapshot });
+  } catch (cause) {
+    console.error("[operations/neworder] GET", cause);
+    return error("운영관리 데이터를 불러오는 중 오류가 발생했습니다.", 500);
+  }
 }
 
 export async function POST(request: Request) {
@@ -59,6 +64,7 @@ export async function POST(request: Request) {
 
   const action = text(body.action, 80);
   const actor = access.userId;
+  let result: Record<string, unknown> = {};
 
   try {
     if (action === "saveItem") {
@@ -88,6 +94,18 @@ export async function POST(request: Request) {
           body.coupangSearchKeywords,
           /[,;\r\n]+/
         ).slice(0, 10),
+        requiredKeywords: normalizeStringArray(
+          body.requiredKeywords,
+          /[,;\r\n]+/
+        ).slice(0, 20),
+        optionalKeywords: normalizeStringArray(
+          body.optionalKeywords,
+          /[,;\r\n]+/
+        ).slice(0, 20),
+        preferredKeywords: normalizeStringArray(
+          body.preferredKeywords,
+          /[,;\r\n]+/
+        ).slice(0, 20),
         excludedKeywords: normalizeStringArray(
           body.excludedKeywords ?? body.excludeKeywords,
           /[,;\r\n]+/
@@ -95,13 +113,16 @@ export async function POST(request: Request) {
         defaultSupplierId,
         updatedBy: actor,
       };
+      let savedItemId = id;
       if (id) {
         await prisma.newOrderItem.update({ where: { id }, data });
       } else {
-        await prisma.newOrderItem.create({
+        const created = await prisma.newOrderItem.create({
           data: { ...data, createdBy: actor },
         });
+        savedItemId = created.id;
       }
+      result = { itemId: savedItemId };
     } else if (action === "deactivateItem") {
       const id = text(body.id, 100);
       if (!id) return error("품목 ID가 없습니다.");
@@ -261,9 +282,13 @@ export async function POST(request: Request) {
         },
       });
     } else if (action === "savePriceCandidate") {
-      const itemId = text(body.itemId, 100);
+      let itemId = text(body.itemId, 100);
+      const createItemFromSearch = body.createItemFromSearch === true;
+      const searchQuery = text(body.searchQuery, 200);
       const title = text(body.title, 300);
       const productUrl = validUrl(body.productUrl);
+      const imageUrl = validUrl(body.image ?? body.imageUrl);
+      const mallName = text(body.mallName, 120) || "기타";
       const itemPrice = integer(body.itemPrice, 0);
       const shippingFee = integer(body.shippingFee, 0);
       const quantityPerPack = integer(body.quantityPerPack, 1);
@@ -274,10 +299,20 @@ export async function POST(request: Request) {
       const volumeUnit = text(body.volumeUnit, 20) || undefined;
       const packageUnit = text(body.packageUnit, 20) || undefined;
       const source =
-        body.source === "NAVER" || body.source === "COUPANG"
+        body.source === "NAVER" ||
+        body.source === "COUPANG" ||
+        body.source === "ORDERHERO" ||
+        body.source === "ETC"
           ? body.source
           : "MANUAL";
-      if (!itemId || !title || !productUrl || itemPrice === null || shippingFee === null || quantityPerPack === null) {
+      if (
+        (!itemId && (!createItemFromSearch || !searchQuery)) ||
+        !title ||
+        !productUrl ||
+        itemPrice === null ||
+        shippingFee === null ||
+        quantityPerPack === null
+      ) {
         return error("가격 후보 정보를 확인해 주세요.");
       }
       const metrics = calculatePriceMetrics({
@@ -292,26 +327,91 @@ export async function POST(request: Request) {
         volumeUnit,
         packageUnit,
       });
-      await prisma.newOrderPriceCandidate.create({
-        data: {
-          itemId,
-          source,
-          title,
-          productUrl,
-          itemPrice,
-          shippingFee,
-          totalPrice: metrics.totalPrice,
-          quantityPerPack: metrics.unitCount,
-          unitPrice: metrics.unitPrice,
-          volumePerUnit: metrics.volumePerUnit,
-          volumeUnit: metrics.volumeUnit,
-          packageUnit: metrics.packageUnit,
-          pricePer100: metrics.pricePer100,
-          pricePerMeasure: metrics.pricePerMeasure,
-          createdBy: actor,
-          updatedBy: actor,
-        },
+      const savedBy = access.name || access.email || "운영자";
+      await prisma.$transaction(async (tx) => {
+        if (!itemId) {
+          const existing = await tx.newOrderItem.findFirst({
+            where: { name: searchQuery, category: "기타" },
+            select: { id: true },
+          });
+          if (existing) {
+            itemId = existing.id;
+          } else {
+            const createdItem = await tx.newOrderItem.create({
+              data: {
+                name: searchQuery,
+                category: "기타",
+                minimumStock: 0,
+                orderUnit: "개",
+                orderUnitQuantity: 1,
+                naverSearchKeyword: searchQuery,
+                naverSearchKeywords: [searchQuery],
+                coupangSearchKeyword: searchQuery,
+                coupangSearchKeywords: [searchQuery],
+                requiredKeywords: [],
+                optionalKeywords: [],
+                preferredKeywords: [],
+                excludedKeywords: [],
+                createdBy: actor,
+                updatedBy: actor,
+              },
+              select: { id: true },
+            });
+            itemId = createdItem.id;
+          }
+        }
+        await tx.newOrderPriceCandidate.updateMany({
+          where: { itemId, isCurrentBest: true },
+          data: { isCurrentBest: false, updatedBy: actor },
+        });
+        await tx.newOrderPriceCandidate.create({
+          data: {
+            itemId,
+            source,
+            mallName,
+            title,
+            productUrl,
+            imageUrl,
+            itemPrice,
+            shippingFee,
+            totalPrice: metrics.totalPrice,
+            quantityPerPack: metrics.unitCount,
+            unitPrice: metrics.unitPrice,
+            volumePerUnit: metrics.volumePerUnit,
+            volumeUnit: metrics.volumeUnit,
+            packageUnit: metrics.packageUnit,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            savedBy,
+            isCurrentBest: true,
+            createdBy: actor,
+            updatedBy: actor,
+          },
+        });
+        await tx.newOrderPriceHistory.create({
+          data: {
+            itemId,
+            source,
+            mallName,
+            productName: title,
+            productUrl,
+            imageUrl,
+            itemPrice,
+            shippingFee,
+            totalPrice: metrics.totalPrice,
+            quantity: metrics.unitCount,
+            unitAmount: metrics.volumePerUnit,
+            unitType: metrics.volumeUnit,
+            packageUnit: metrics.packageUnit,
+            unitPrice: metrics.unitPrice,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            note: text(body.note, 1000) || null,
+            createdBy: savedBy,
+          },
+        });
       });
+      result = { itemId };
     } else {
       return error("지원하지 않는 작업입니다.");
     }
@@ -320,5 +420,5 @@ export async function POST(request: Request) {
     return error("저장 중 오류가 발생했습니다.", 500);
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...result });
 }

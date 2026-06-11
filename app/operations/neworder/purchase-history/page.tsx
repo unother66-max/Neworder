@@ -1,5 +1,5 @@
-import { NewOrderWorkspace } from "../workspace";
+import { redirect } from "next/navigation";
 
 export default function NewOrderPurchaseHistoryPage() {
-  return <NewOrderWorkspace view="purchase-history" />;
+  redirect("/operations/neworder/orders");
 }

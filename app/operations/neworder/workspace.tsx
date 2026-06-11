@@ -18,16 +18,18 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   calculatePriceMetrics,
+  comparePriceMetrics,
   formatComposition,
   getRecommendationMetric,
-  metricValue,
+  priceSortValue,
   type PriceMetrics,
-  type RecommendationMetric,
+  type PriceSort,
 } from "@/lib/neworder/price-analysis";
 import {
   normalizeStringArray,
   parseLines,
 } from "@/lib/neworder/item-keywords";
+import { matchProductKeywords } from "@/lib/neworder/product-matching";
 
 type View =
   | "dashboard"
@@ -59,6 +61,9 @@ type Item = {
   naverSearchKeywords: string[];
   coupangSearchKeyword: string | null;
   coupangSearchKeywords: string[];
+  requiredKeywords: string[];
+  optionalKeywords: string[];
+  preferredKeywords: string[];
   excludedKeywords: string[];
   defaultSupplierId: string | null;
   defaultSupplier: { id: string; name: string } | null;
@@ -95,6 +100,7 @@ type Purchase = {
   totalPrice: number;
   unitPrice: number;
   memo: string | null;
+  createdByName: string;
   item: { id: string; name: string; category: string };
   supplier: { id: string; name: string } | null;
 };
@@ -109,9 +115,13 @@ type InventoryCheck = {
 
 type PriceCandidate = {
   id: string;
-  source: "NAVER" | "COUPANG" | "MANUAL";
+  itemId: string;
+  source: "NAVER" | "COUPANG" | "ORDERHERO" | "MANUAL" | "ETC";
+  mallName: string;
   title: string;
   productUrl: string;
+  imageUrl: string | null;
+  shippingFee: number;
   totalPrice: number;
   unitPrice: number;
   quantityPerPack: number;
@@ -120,8 +130,35 @@ type PriceCandidate = {
   packageUnit: string | null;
   pricePer100: number | null;
   pricePerMeasure: number | null;
+  savedBy: string;
+  isCurrentBest: boolean;
   checkedAt: string;
   item: { id: string; name: string };
+};
+
+type SavedPurchaseCandidate = Omit<PriceCandidate, "item"> & {
+  item: { id: string; name: string; category: string };
+};
+
+type PriceHistory = {
+  id: string;
+  itemId: string;
+  source: PriceCandidate["source"];
+  mallName: string;
+  productName: string;
+  productUrl: string;
+  totalPrice: number;
+  shippingFee: number;
+  quantity: number;
+  unitAmount: number | null;
+  unitType: string | null;
+  packageUnit: string | null;
+  unitPrice: number;
+  pricePer100: number | null;
+  pricePerMeasure: number | null;
+  note: string | null;
+  createdBy: string;
+  createdAt: string;
 };
 
 type Snapshot = {
@@ -131,6 +168,8 @@ type Snapshot = {
   purchases: Purchase[];
   checks: InventoryCheck[];
   priceCandidates: PriceCandidate[];
+  purchaseList: SavedPurchaseCandidate[];
+  priceHistories: PriceHistory[];
 };
 
 function normalizeItem(item: Item): Item {
@@ -138,12 +177,18 @@ function normalizeItem(item: Item): Item {
     excludeKeywords?: unknown;
     naverSearchKeywords?: unknown;
     coupangSearchKeywords?: unknown;
+    requiredKeywords?: unknown;
+    optionalKeywords?: unknown;
+    preferredKeywords?: unknown;
     excludedKeywords?: unknown;
   };
   return {
     ...item,
     naverSearchKeywords: normalizeStringArray(raw.naverSearchKeywords),
     coupangSearchKeywords: normalizeStringArray(raw.coupangSearchKeywords),
+    requiredKeywords: normalizeStringArray(raw.requiredKeywords),
+    optionalKeywords: normalizeStringArray(raw.optionalKeywords),
+    preferredKeywords: normalizeStringArray(raw.preferredKeywords),
     excludedKeywords: normalizeStringArray(
       raw.excludedKeywords ?? raw.excludeKeywords,
       /[,;\r\n]+/
@@ -157,11 +202,49 @@ function normalizeSnapshot(snapshot: Snapshot): Snapshot {
     items: Array.isArray(snapshot.items)
       ? snapshot.items.map(normalizeItem)
       : [],
+    purchaseList: Array.isArray(snapshot.purchaseList)
+      ? snapshot.purchaseList
+      : [],
+    priceHistories: Array.isArray(snapshot.priceHistories)
+      ? snapshot.priceHistories
+      : [],
   };
 }
 
+async function readJsonResponse(
+  response: Response
+): Promise<Record<string, unknown>> {
+  const responseText = await response.text();
+  if (!responseText.trim()) {
+    throw new Error(
+      response.ok
+        ? "서버 응답이 비어 있습니다."
+        : `서버 요청에 실패했습니다. (${response.status})`
+    );
+  }
+
+  try {
+    return JSON.parse(responseText) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      response.ok
+        ? "서버 응답 형식을 읽을 수 없습니다."
+        : `서버 요청에 실패했습니다. (${response.status})`
+    );
+  }
+}
+
+function responseError(
+  payload: Record<string, unknown>,
+  fallback: string
+): string {
+  return typeof payload.error === "string" && payload.error.trim()
+    ? payload.error
+    : fallback;
+}
+
 type SearchCandidate = {
-  source: "NAVER" | "COUPANG" | "MANUAL";
+  source: "NAVER" | "COUPANG" | "ORDERHERO" | "MANUAL" | "ETC";
   title: string;
   productUrl: string;
   image: string | null;
@@ -173,13 +256,18 @@ type SearchCandidate = {
   volumePerUnit: number | null;
   volumeUnit: string | null;
   packageUnit: string;
+  isManual?: boolean;
+  isDirectSearch?: boolean;
+  passesRequired?: boolean;
+  optionalMatchCount?: number;
+  preferredMatchCount?: number;
 };
 
-type PriceSort =
-  | "totalPrice"
-  | "unitPrice"
-  | "pricePer100"
-  | "savings";
+function defaultPriceSort(itemName: string, category: string): PriceSort {
+  return getRecommendationMetric(itemName, category) === "pricePer100"
+    ? "pricePer100"
+    : "unitPrice";
+}
 
 const STORE_LABEL = { HANNAM: "한남점", YEONNAM: "연남점" } as const;
 const STATUS_LABEL = {
@@ -256,8 +344,10 @@ export function NewOrderWorkspace({ view }: { view: View }) {
       const response = await fetch("/api/operations/neworder", {
         cache: "no-store",
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "조회에 실패했습니다.");
+      const payload = await readJsonResponse(response);
+      if (!response.ok) {
+        throw new Error(responseError(payload, "조회에 실패했습니다."));
+      }
       setData(normalizeSnapshot(payload as Snapshot));
     } catch (cause) {
       setMessage(
@@ -284,8 +374,10 @@ export function NewOrderWorkspace({ view }: { view: View }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "저장에 실패했습니다.");
+        const result = await readJsonResponse(response);
+        if (!response.ok) {
+          throw new Error(responseError(result, "저장에 실패했습니다."));
+        }
         setMessage(successMessage);
         await load();
         return true;
@@ -335,7 +427,7 @@ export function NewOrderWorkspace({ view }: { view: View }) {
         <InventoryCheckView data={data} saving={saving} mutate={mutate} />
       )}
       {view === "orders" && (
-        <OrdersView data={data} saving={saving} mutate={mutate} />
+        <PurchaseListView data={data} />
       )}
       {view === "items" && (
         <ItemsView data={data} saving={saving} mutate={mutate} />
@@ -619,6 +711,271 @@ function InventoryCheckView({
   );
 }
 
+function sourceLabel(source: PriceCandidate["source"]) {
+  return {
+    NAVER: "네이버",
+    COUPANG: "쿠팡",
+    ORDERHERO: "오더히어로",
+    MANUAL: "직접 추가",
+    ETC: "기타",
+  }[source];
+}
+
+function formatSavedComposition(candidate: {
+  quantity: number;
+  unitAmount: number | null;
+  unitType: string | null;
+  packageUnit: string | null;
+}) {
+  if (candidate.unitAmount && candidate.unitType) {
+    return `${candidate.unitAmount}${candidate.unitType} × ${candidate.quantity}${candidate.packageUnit || "개"}`;
+  }
+  return `${candidate.quantity}${candidate.packageUnit || "개"}`;
+}
+
+function PurchaseListView({ data }: { data: Snapshot }) {
+  const [category, setCategory] = useState("ALL");
+  const [historyItemId, setHistoryItemId] = useState<string | null>(null);
+  const categories = [
+    ...new Set(data.purchaseList.map((candidate) => candidate.item.category)),
+  ];
+  const filtered = data.purchaseList.filter(
+    (candidate) =>
+      category === "ALL" || candidate.item.category === category
+  );
+  const selectedCandidate = data.purchaseList.find(
+    (candidate) => candidate.itemId === historyItemId
+  );
+  const historyRows = historyItemId
+    ? [
+        ...data.priceHistories
+          .filter((history) => history.itemId === historyItemId)
+          .map((history) => ({
+            id: `saved-${history.id}`,
+            date: history.createdAt,
+            type: "저장" as const,
+            source: history.mallName || sourceLabel(history.source),
+            totalPrice: history.totalPrice,
+            composition: formatSavedComposition(history),
+            pricePer100: history.pricePer100,
+            unitType: history.unitType,
+            person: history.createdBy,
+            url: history.productUrl as string | null,
+          })),
+        ...data.purchases
+          .filter((purchase) => purchase.item.id === historyItemId)
+          .map((purchase) => ({
+            id: `purchase-${purchase.id}`,
+            date: purchase.purchasedAt,
+            type: "구매" as const,
+            source: purchase.supplier?.name || "구매처 미지정",
+            totalPrice: purchase.totalPrice,
+            composition: `${purchase.quantity}개`,
+            pricePer100: null,
+            unitType: null,
+            person: purchase.createdByName,
+            url: null,
+          })),
+      ].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )
+    : [];
+
+  return (
+    <>
+      <PageTitle
+        title="구매목록"
+        description="가격비교에서 저장한 품목별 최신 구매 후보를 함께 확인하고 구매 링크를 엽니다."
+      />
+      <Panel>
+        <select
+          className={`${inputClass} max-w-xs`}
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+        >
+          <option value="ALL">전체 카테고리</option>
+          {categories.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+      </Panel>
+      <Panel className="mt-4 overflow-hidden p-0 lg:p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1500px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-slate-500">
+              <tr>
+                <th className="px-4 py-3">품목명</th>
+                <th className="px-4 py-3">카테고리</th>
+                <th className="px-4 py-3">추천 구매처</th>
+                <th className="px-4 py-3">상품명</th>
+                <th className="px-4 py-3">구성</th>
+                <th className="px-4 py-3">배송비 포함 총액</th>
+                <th className="px-4 py-3">개당 가격</th>
+                <th className="px-4 py-3">100ml/g당</th>
+                <th className="px-4 py-3">마지막 업데이트</th>
+                <th className="px-4 py-3">업데이트한 사람</th>
+                <th className="px-4 py-3">작업</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((candidate) => (
+                <tr key={candidate.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-bold">{candidate.item.name}</td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {candidate.item.category}
+                  </td>
+                  <td className="px-4 py-3 font-semibold">
+                    {candidate.mallName || sourceLabel(candidate.source)}
+                    {candidate.source === "MANUAL" && (
+                      <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                        직접 추가
+                      </span>
+                    )}
+                  </td>
+                  <td className="max-w-sm px-4 py-3">
+                    <p className="line-clamp-2 font-semibold">
+                      {candidate.title}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatSavedComposition({
+                      quantity: candidate.quantityPerPack,
+                      unitAmount: candidate.volumePerUnit,
+                      unitType: candidate.volumeUnit,
+                      packageUnit: candidate.packageUnit,
+                    })}
+                  </td>
+                  <td className="px-4 py-3 font-bold">
+                    {money(candidate.totalPrice)}
+                    {candidate.shippingFee > 0 && (
+                      <span className="block text-xs font-normal text-slate-500">
+                        배송비 {money(candidate.shippingFee)} 포함
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">{money(candidate.unitPrice)}</td>
+                  <td className="px-4 py-3">
+                    {candidate.pricePer100 != null &&
+                    (candidate.volumeUnit === "ml" ||
+                      candidate.volumeUnit === "g")
+                      ? `${money(candidate.pricePer100)}/100${candidate.volumeUnit}`
+                      : "-"}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500">
+                    {dateTime(candidate.checkedAt)}
+                  </td>
+                  <td className="px-4 py-3">{candidate.savedBy}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className={secondaryButtonClass}
+                        onClick={() => setHistoryItemId(candidate.itemId)}
+                      >
+                        가격변동
+                      </button>
+                      <a
+                        href={candidate.productUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={buttonClass}
+                      >
+                        구매 링크 <ArrowUpRight className="size-4" />
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {filtered.length === 0 && (
+          <p className="p-6 text-sm text-slate-500">
+            저장된 구매 후보가 없습니다. 가격비교에서 후보를 구매목록에 저장해
+            주세요.
+          </p>
+        )}
+      </Panel>
+      {historyItemId && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-slate-950/40"
+          onClick={() => setHistoryItemId(null)}
+        >
+          <aside
+            className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl lg:p-7"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold text-emerald-700">가격변동</p>
+                <h2 className="mt-1 text-xl font-black">
+                  {selectedCandidate?.item.name || "품목"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="grid size-9 place-items-center rounded-full bg-slate-100 text-xl"
+                onClick={() => setHistoryItemId(null)}
+                aria-label="가격변동 닫기"
+              >
+                ×
+              </button>
+            </div>
+            <div className="mt-6 space-y-3">
+              {historyRows.map((row) => (
+                <div
+                  key={row.id}
+                  className="rounded-2xl border border-slate-200 p-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <strong>
+                      {new Date(row.date).toLocaleDateString("ko-KR")} ·{" "}
+                      {row.source}
+                    </strong>
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-bold ${
+                        row.type === "구매"
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-emerald-50 text-emerald-700"
+                      }`}
+                    >
+                      {row.type}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {money(row.totalPrice)} · {row.composition}
+                    {row.pricePer100 != null && row.unitType
+                      ? ` · 100${row.unitType}당 ${money(row.pricePer100)}`
+                      : ""}
+                  </p>
+                  {row.person && (
+                    <p className="mt-1 text-xs text-slate-500">{row.person}</p>
+                  )}
+                  {row.url && (
+                    <a
+                      href={row.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-emerald-700"
+                    >
+                      저장 링크 열기 <ArrowUpRight className="size-4" />
+                    </a>
+                  )}
+                </div>
+              ))}
+              {historyRows.length === 0 && (
+                <p className="text-sm text-slate-500">아직 기록이 없습니다.</p>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Legacy inventory-based ordering UI is intentionally kept unreachable during migration.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function OrdersView({
   data,
   saving,
@@ -862,6 +1219,18 @@ function ItemsView({
       form.get("excludedKeywords"),
       /[,;\r\n]+/
     );
+    const requiredKeywords = normalizeStringArray(
+      form.get("requiredKeywords"),
+      /[,;\r\n]+/
+    );
+    const optionalKeywords = normalizeStringArray(
+      form.get("optionalKeywords"),
+      /[,;\r\n]+/
+    );
+    const preferredKeywords = normalizeStringArray(
+      form.get("preferredKeywords"),
+      /[,;\r\n]+/
+    );
     const ok = await mutate(
       {
         action: "saveItem",
@@ -875,6 +1244,9 @@ function ItemsView({
         naverSearchKeywords,
         coupangSearchKeyword: form.get("coupangSearchKeyword"),
         coupangSearchKeywords,
+        requiredKeywords,
+        optionalKeywords,
+        preferredKeywords,
         excludedKeywords,
         defaultSupplierId: form.get("defaultSupplierId"),
       },
@@ -948,36 +1320,54 @@ function ItemsView({
             placeholder="단위당 수량"
             required
           />
-          <input
-            className={inputClass}
-            name="naverSearchKeyword"
-            defaultValue={editing?.naverSearchKeyword || ""}
-            placeholder="네이버 기본 검색어"
-          />
           <textarea
             className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#2f6f5e] focus:ring-2 focus:ring-[#2f6f5e]/15"
             name="naverSearchKeywords"
             defaultValue={(editing?.naverSearchKeywords ?? []).join("\n")}
-            placeholder={"네이버 보조 검색어 (줄바꿈 구분)\n예: 올리타리아 트러플 오일 250ml"}
-          />
-          <input
-            className={inputClass}
-            name="coupangSearchKeyword"
-            defaultValue={editing?.coupangSearchKeyword || ""}
-            placeholder="쿠팡 기본 검색어"
+            placeholder={"네이버 정확 검색어 (줄바꿈 구분)\n예: 올리타리아 트러플 오일 250ml"}
           />
           <textarea
             className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#2f6f5e] focus:ring-2 focus:ring-[#2f6f5e]/15"
             name="coupangSearchKeywords"
             defaultValue={(editing?.coupangSearchKeywords ?? []).join("\n")}
-            placeholder="쿠팡 보조 검색어 (줄바꿈 구분)"
+            placeholder="쿠팡 정확 검색어 (줄바꿈 구분)"
           />
-          <input
-            className={inputClass}
-            name="excludedKeywords"
-            defaultValue={(editing?.excludedKeywords ?? []).join(", ")}
-            placeholder="제외 키워드 (쉼표 구분)"
-          />
+          <label className="text-sm font-semibold">
+            필수 포함 키워드
+            <input
+              className={`${inputClass} mt-1`}
+              name="requiredKeywords"
+              defaultValue={(editing?.requiredKeywords ?? []).join(", ")}
+              placeholder="예: 올리타리아"
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            선택 포함 키워드
+            <input
+              className={`${inputClass} mt-1`}
+              name="optionalKeywords"
+              defaultValue={(editing?.optionalKeywords ?? []).join(", ")}
+              placeholder="예: 트러플, 송로버섯"
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            우선 키워드 / 권장 키워드
+            <input
+              className={`${inputClass} mt-1`}
+              name="preferredKeywords"
+              defaultValue={(editing?.preferredKeywords ?? []).join(", ")}
+              placeholder="예: 250ml"
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            제외 키워드
+            <input
+              className={`${inputClass} mt-1`}
+              name="excludedKeywords"
+              defaultValue={(editing?.excludedKeywords ?? []).join(", ")}
+              placeholder="쉼표로 구분"
+            />
+          </label>
           <select
             className={inputClass}
             name="defaultSupplierId"
@@ -1364,7 +1754,10 @@ function PriceCompareView({
   ) => Promise<boolean>;
 }) {
   const activeItems = data.items.filter((item) => item.isActive);
-  const [itemId, setItemId] = useState(activeItems[0]?.id || "");
+  const initialItem = activeItems[0];
+  const [itemId, setItemId] = useState(initialItem?.id || "");
+  const [directQuery, setDirectQuery] = useState("");
+  const [searchedDirectQuery, setSearchedDirectQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
   const [coupangUrl, setCoupangUrl] = useState("");
@@ -1374,13 +1767,20 @@ function PriceCompareView({
     message: string;
     reason: string | null;
   } | null>(null);
-  const [sort, setSort] = useState<PriceSort>("unitPrice");
-  const selectedItem = data.items.find((item) => item.id === itemId);
-  const recentUnitPrice = selectedItem?.purchases[0]?.unitPrice ?? null;
-  const recommendationMetric = getRecommendationMetric(
-    selectedItem?.name || "",
-    selectedItem?.category || ""
+  const [sort, setSort] = useState<PriceSort>(
+    defaultPriceSort(initialItem?.name || "", initialItem?.category || "")
   );
+  const [pendingSave, setPendingSave] = useState<{
+    candidate: SearchCandidate;
+    metrics: PriceMetrics;
+  } | null>(null);
+  const [connectionItemId, setConnectionItemId] = useState(
+    initialItem?.id || ""
+  );
+  const selectedItem = data.items.find((item) => item.id === itemId);
+  const recentUnitPrice = searchedDirectQuery
+    ? null
+    : selectedItem?.purchases[0]?.unitPrice ?? null;
   const analyzedCandidates = useMemo(
     () =>
       candidates.map((candidate, originalIndex) => ({
@@ -1390,43 +1790,53 @@ function PriceCompareView({
       })),
     [candidates]
   );
-  const recommended = useMemo(() => {
-    return [...analyzedCandidates].sort((a, b) => {
-      const metricDiff =
-        metricValue(a.metrics, recommendationMetric) -
-        metricValue(b.metrics, recommendationMetric);
-      return metricDiff || a.metrics.totalPrice - b.metrics.totalPrice;
-    })[0];
-  }, [analyzedCandidates, recommendationMetric]);
   const sortedCandidates = useMemo(() => {
     return [...analyzedCandidates].sort((a, b) => {
-      if (sort === "savings") {
-        const aSavings =
-          recentUnitPrice == null ? 0 : recentUnitPrice - a.metrics.unitPrice;
-        const bSavings =
-          recentUnitPrice == null ? 0 : recentUnitPrice - b.metrics.unitPrice;
-        return bSavings - aSavings;
-      }
-      const aValue =
-        sort === "pricePer100"
-          ? a.metrics.pricePer100 ?? Number.POSITIVE_INFINITY
-          : a.metrics[sort];
-      const bValue =
-        sort === "pricePer100"
-          ? b.metrics.pricePer100 ?? Number.POSITIVE_INFINITY
-          : b.metrics[sort];
-      return aValue - bValue;
+      const requiredDiff =
+        Number(b.candidate.passesRequired !== false) -
+        Number(a.candidate.passesRequired !== false);
+      if (requiredDiff) return requiredDiff;
+      const priceDiff = comparePriceMetrics(
+        a.metrics,
+        b.metrics,
+        sort,
+        recentUnitPrice
+      );
+      if (priceDiff) return priceDiff;
+      const keywordDiff =
+        (b.candidate.optionalMatchCount ?? 0) -
+          (a.candidate.optionalMatchCount ?? 0) ||
+        (b.candidate.preferredMatchCount ?? 0) -
+          (a.candidate.preferredMatchCount ?? 0);
+      if (keywordDiff) return keywordDiff;
+      return (
+        a.metrics.totalPrice - b.metrics.totalPrice ||
+        a.originalIndex - b.originalIndex
+      );
     });
   }, [analyzedCandidates, recentUnitPrice, sort]);
+  const recommended = useMemo(
+    () =>
+      sortedCandidates.find(
+        (entry) =>
+          entry.candidate.passesRequired !== false &&
+          priceSortValue(entry.metrics, sort, recentUnitPrice) != null
+      ),
+    [recentUnitPrice, sort, sortedCandidates]
+  );
 
   async function search() {
-    if (!itemId) return;
+    const query = directQuery.trim();
+    if (!query && !itemId) return;
     setSearching(true);
     setNotice(null);
     setSearchError(null);
     try {
+      const params = new URLSearchParams();
+      if (itemId) params.set("itemId", itemId);
+      if (query) params.set("query", query);
       const response = await fetch(
-        `/api/operations/neworder/price-search?itemId=${encodeURIComponent(itemId)}`,
+        `/api/operations/neworder/price-search?${params.toString()}`,
         { cache: "no-store" }
       );
       const responseText = await response.text();
@@ -1437,6 +1847,7 @@ function PriceCompareView({
         reason?: string | null;
         searchedKeywords?: string[];
         coupangSearchUrl?: string | null;
+        directSearch?: boolean;
         warning?: string | null;
       } = {};
 
@@ -1480,6 +1891,9 @@ function PriceCompareView({
         }
         setCoupangUrl(payload.coupangSearchUrl ?? "");
         setSearchedKeywords(payload.searchedKeywords ?? []);
+        setSearchedDirectQuery(
+          payload.directSearch ? payload.searchedKeywords?.[0] ?? query : ""
+        );
         setSearchError({
           message: payload.message || "가격 후보 조회에 실패했습니다.",
           reason: payload.reason || null,
@@ -1493,6 +1907,12 @@ function PriceCompareView({
       setCandidates(nextCandidates);
       setCoupangUrl(payload.coupangSearchUrl ?? "");
       setSearchedKeywords(payload.searchedKeywords ?? []);
+      setSearchedDirectQuery(
+        payload.directSearch ? payload.searchedKeywords?.[0] ?? query : ""
+      );
+      if (payload.directSearch) {
+        setSort(defaultPriceSort(query, "기타"));
+      }
       setNotice(
         nextCandidates.length === 0
           ? "조회된 후보가 없습니다. 검색어를 추가하거나 직접 후보를 추가해 주세요."
@@ -1521,10 +1941,53 @@ function PriceCompareView({
     );
   }
 
+  async function saveCandidate(
+    candidate: SearchCandidate,
+    metrics: PriceMetrics,
+    targetItemId: string,
+    createItemFromSearch = false
+  ) {
+    const ok = await mutate(
+      {
+        action: "savePriceCandidate",
+        itemId: targetItemId,
+        createItemFromSearch,
+        searchQuery: searchedDirectQuery || directQuery.trim(),
+        ...candidate,
+        quantityPerPack: metrics.unitCount,
+        volumePerUnit: metrics.volumePerUnit,
+        volumeUnit: metrics.volumeUnit,
+        packageUnit: metrics.packageUnit,
+      },
+      "구매목록에 업데이트되었습니다"
+    );
+    if (ok) setPendingSave(null);
+    return ok;
+  }
+
+  function requestCandidateSave(
+    candidate: SearchCandidate,
+    metrics: PriceMetrics
+  ) {
+    if (candidate.isDirectSearch || !itemId) {
+      setConnectionItemId(itemId || activeItems[0]?.id || "");
+      setPendingSave({ candidate, metrics });
+      return;
+    }
+    void saveCandidate(candidate, metrics, itemId);
+  }
+
   async function saveCoupangCandidate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const source = "MANUAL";
+    const sourceValue = String(form.get("source") || "MANUAL");
+    const source: SearchCandidate["source"] =
+      sourceValue === "NAVER" ||
+      sourceValue === "COUPANG" ||
+      sourceValue === "ORDERHERO" ||
+      sourceValue === "ETC"
+        ? sourceValue
+        : "MANUAL";
     const title = String(form.get("title") || "").trim();
     const itemPrice = Number(form.get("itemPrice")) || 0;
     const shippingFee = Number(form.get("shippingFee")) || 0;
@@ -1538,7 +2001,8 @@ function PriceCompareView({
       title,
       productUrl: String(form.get("productUrl") || "").trim(),
       image: null,
-      mallName: "직접 추가",
+      mallName:
+        String(form.get("mallName") || "").trim() || sourceLabel(source),
       itemPrice,
       shippingFee,
       quantityPerPack: form.get("quantityPerPack")
@@ -1551,28 +2015,52 @@ function PriceCompareView({
         String(form.get("volumeUnit") || "") || titleMetrics.volumeUnit,
       packageUnit:
         String(form.get("packageUnit") || "") || titleMetrics.packageUnit,
+      isManual: true,
+      isDirectSearch: Boolean(directQuery.trim()),
+      passesRequired: true,
     };
     const parsed = calculatePriceMetrics(candidate);
+    const keywordMatch = matchProductKeywords(
+      title,
+      candidate.isDirectSearch
+        ? {
+            requiredKeywords: [],
+            optionalKeywords: [],
+            preferredKeywords: [],
+            excludedKeywords: [],
+          }
+        : {
+            requiredKeywords: selectedItem?.requiredKeywords ?? [],
+            optionalKeywords: selectedItem?.optionalKeywords ?? [],
+            preferredKeywords: selectedItem?.preferredKeywords ?? [],
+            excludedKeywords: selectedItem?.excludedKeywords ?? [],
+          }
+    );
     candidate.quantityPerPack = parsed.unitCount;
     candidate.volumePerUnit = parsed.volumePerUnit;
     candidate.volumeUnit = parsed.volumeUnit;
     candidate.packageUnit = parsed.packageUnit;
-    const ok = await mutate(
-      {
-        action: "savePriceCandidate",
-        itemId,
-        ...candidate,
-      },
-      "직접 추가 후보를 저장했습니다."
-    );
-    if (ok) {
-      setCandidates((rows) => [
-        ...rows.filter((row) => row.productUrl !== candidate.productUrl),
-        candidate,
-      ]);
+    candidate.passesRequired =
+      keywordMatch.passesRequired && keywordMatch.passesExcluded;
+    candidate.optionalMatchCount = keywordMatch.optionalMatchCount;
+    candidate.preferredMatchCount = keywordMatch.preferredMatchCount;
+    setCandidates((rows) => [
+      ...rows.filter((row) => row.productUrl !== candidate.productUrl),
+      candidate,
+    ]);
+    if (candidate.isDirectSearch || !itemId) {
+      requestCandidateSave(candidate, parsed);
+      event.currentTarget.reset();
+      return;
+    }
+    if (await saveCandidate(candidate, parsed, itemId)) {
       event.currentTarget.reset();
     }
   }
+
+  const directCoupangUrl = directQuery.trim()
+    ? `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery.trim())}`
+    : coupangUrl;
 
   return (
     <>
@@ -1581,24 +2069,42 @@ function PriceCompareView({
         description="상품명의 구성과 용량을 분석해 배송비 포함 개당·100ml·100g·매당 가격을 비교합니다."
       />
       <Panel>
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto_auto]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_220px_auto_auto]">
           <select
             className={inputClass}
             value={itemId}
             onChange={(event) => {
-              setItemId(event.target.value);
+              const nextItemId = event.target.value;
+              const nextItem = activeItems.find(
+                (item) => item.id === nextItemId
+              );
+              setItemId(nextItemId);
+              setSort(
+                defaultPriceSort(
+                  nextItem?.name || "",
+                  nextItem?.category || ""
+                )
+              );
               setCandidates([]);
               setSearchedKeywords([]);
+              setSearchedDirectQuery("");
               setSearchError(null);
               setNotice(null);
             }}
           >
+            <option value="">등록 품목 선택 안 함</option>
             {activeItems.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name} · {item.category}
               </option>
             ))}
           </select>
+          <input
+            className={inputClass}
+            value={directQuery}
+            onChange={(event) => setDirectQuery(event.target.value)}
+            placeholder="직접 검색어 입력 예: 올리타리아 트러플 오일 250ml"
+          />
           <select
             className={inputClass}
             value={sort}
@@ -1606,13 +2112,13 @@ function PriceCompareView({
           >
             <option value="totalPrice">총액 낮은순</option>
             <option value="unitPrice">개당 가격 낮은순</option>
-            <option value="pricePer100">100ml당 가격 낮은순</option>
+            <option value="pricePer100">100ml/g당 가격 낮은순</option>
             <option value="savings">최근 구매가 대비 절감액 높은순</option>
           </select>
           <button
             className={buttonClass}
             onClick={() => void search()}
-            disabled={searching || !itemId}
+            disabled={searching || (!itemId && !directQuery.trim())}
           >
             {searching ? (
               <Loader2 className="size-4 animate-spin" />
@@ -1621,9 +2127,9 @@ function PriceCompareView({
             )}
             가격 후보 조회
           </button>
-          {coupangUrl && (
+          {directCoupangUrl && (
             <a
-              href={coupangUrl}
+              href={directCoupangUrl}
               target="_blank"
               rel="noreferrer"
               className={secondaryButtonClass}
@@ -1633,6 +2139,11 @@ function PriceCompareView({
           )}
         </div>
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          {searchedDirectQuery && (
+            <span className="rounded-full bg-violet-50 px-3 py-1.5 font-bold text-violet-700">
+              직접 검색
+            </span>
+          )}
           <span className="rounded-full bg-slate-100 px-3 py-1.5">
             최근 구매 단가:{" "}
             <strong>
@@ -1673,7 +2184,7 @@ function PriceCompareView({
         {notice && <p className="mt-3 text-sm text-amber-700">{notice}</p>}
         <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-bold">
-            네이버·쿠팡에서 찾은 후보 직접 추가
+            직접 찾은 링크 추가
           </summary>
           <form
             onSubmit={saveCoupangCandidate}
@@ -1689,15 +2200,27 @@ function PriceCompareView({
               className={inputClass}
               name="productUrl"
               type="url"
-              placeholder="쿠팡 상품 링크"
+              placeholder="상품 링크"
               required
+            />
+            <select className={inputClass} name="source" defaultValue="COUPANG">
+              <option value="COUPANG">쿠팡</option>
+              <option value="NAVER">네이버</option>
+              <option value="ORDERHERO">오더히어로</option>
+              <option value="MANUAL">직접 추가</option>
+              <option value="ETC">기타</option>
+            </select>
+            <input
+              className={inputClass}
+              name="mallName"
+              placeholder="구매처명 (선택)"
             />
             <input
               className={inputClass}
               name="itemPrice"
               type="number"
               min="0"
-              placeholder="상품가"
+              placeholder="상품 총액 (배송비 제외)"
               required
             />
             <input
@@ -1740,8 +2263,8 @@ function PriceCompareView({
                 )
               )}
             </select>
-            <button className={buttonClass} disabled={saving || !itemId}>
-              후보 저장
+            <button className={buttonClass} disabled={saving}>
+              구매목록에 저장
             </button>
           </form>
         </details>
@@ -1754,12 +2277,15 @@ function PriceCompareView({
               ? null
               : ((metrics.unitPrice - recentUnitPrice) / recentUnitPrice) * 100;
           const isRecommended =
-            recommended?.candidate.productUrl === candidate.productUrl;
+            recommended?.originalIndex === originalIndex;
           const recommendationReason = isRecommended
             ? buildRecommendationReason(
                 metrics,
-                recommendationMetric,
-                recentUnitPrice
+                sort,
+                recentUnitPrice,
+                candidate.isDirectSearch
+                  ? []
+                  : selectedItem?.requiredKeywords ?? []
               )
             : null;
           return (
@@ -1797,9 +2323,14 @@ function PriceCompareView({
                         묶음상품
                       </span>
                     )}
-                    {candidate.source === "MANUAL" && (
+                    {candidate.isManual && (
                       <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700">
                         직접 추가
+                      </span>
+                    )}
+                    {candidate.isDirectSearch && (
+                      <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700">
+                        직접 검색
                       </span>
                     )}
                     {candidate.matchedKeyword && (
@@ -1919,22 +2450,9 @@ function PriceCompareView({
                 <button
                   className={secondaryButtonClass}
                   disabled={saving}
-                  onClick={() =>
-                    void mutate(
-                      {
-                        action: "savePriceCandidate",
-                        itemId,
-                        ...candidate,
-                        quantityPerPack: metrics.unitCount,
-                        volumePerUnit: metrics.volumePerUnit,
-                        volumeUnit: metrics.volumeUnit,
-                        packageUnit: metrics.packageUnit,
-                      },
-                      "가격 후보를 저장했습니다."
-                    )
-                  }
+                  onClick={() => requestCandidateSave(candidate, metrics)}
                 >
-                  후보 저장
+                  구매목록에 저장
                 </button>
                 <a
                   href={candidate.productUrl}
@@ -1951,12 +2469,100 @@ function PriceCompareView({
       </div>
       {candidates.length === 0 && !searching && (
         <Panel className="mt-4 text-center text-sm text-slate-500">
-          품목을 선택하고 가격 후보 조회를 실행해 주세요.
+          품목을 선택하거나 직접 검색어를 입력한 뒤 가격 후보 조회를 실행해
+          주세요.
         </Panel>
+      )}
+      {pendingSave && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"
+          onClick={() => setPendingSave(null)}
+        >
+          <section
+            className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl lg:p-7"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold text-violet-700">품목 연결</p>
+                <h2 className="mt-1 text-xl font-black">
+                  구매목록에 저장할 품목을 선택해 주세요
+                </h2>
+                <p className="mt-2 line-clamp-2 text-sm text-slate-500">
+                  {pendingSave.candidate.title}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xl"
+                onClick={() => setPendingSave(null)}
+                aria-label="품목 연결 닫기"
+              >
+                ×
+              </button>
+            </div>
+            <div className="mt-6 rounded-2xl border border-slate-200 p-4">
+              <p className="text-sm font-bold">기존 품목에 저장</p>
+              <select
+                className={`${inputClass} mt-3`}
+                value={connectionItemId}
+                onChange={(event) => setConnectionItemId(event.target.value)}
+              >
+                <option value="">품목 선택</option>
+                {activeItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.category}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className={`${buttonClass} mt-3 w-full`}
+                disabled={saving || !connectionItemId}
+                onClick={() =>
+                  void saveCandidate(
+                    pendingSave.candidate,
+                    pendingSave.metrics,
+                    connectionItemId
+                  )
+                }
+              >
+                선택한 품목에 저장
+              </button>
+            </div>
+            <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+              <p className="text-sm font-bold text-violet-900">
+                새 품목으로 등록 후 저장
+              </p>
+              <p className="mt-1 text-xs leading-5 text-violet-700">
+                품목명과 네이버·쿠팡 검색어는 “
+                {searchedDirectQuery || directQuery.trim()}”, 카테고리는 기타로
+                등록됩니다.
+              </p>
+              <button
+                type="button"
+                className={`${secondaryButtonClass} mt-3 w-full border-violet-200 text-violet-800`}
+                disabled={
+                  saving || !(searchedDirectQuery || directQuery.trim())
+                }
+                onClick={() =>
+                  void saveCandidate(
+                    pendingSave.candidate,
+                    pendingSave.metrics,
+                    "",
+                    true
+                  )
+                }
+              >
+                새 품목 등록 후 저장
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {data.priceCandidates.length > 0 && (
         <Panel className="mt-6">
-          <h2 className="font-bold">최근 저장한 가격 후보</h2>
+          <h2 className="font-bold">최근 구매목록 저장 기록</h2>
           <div className="mt-4 grid gap-2">
             {data.priceCandidates.slice(0, 10).map((candidate) => (
               <a
@@ -2042,23 +2648,26 @@ function PriceCalculationSummary({
 
 function buildRecommendationReason(
   metrics: PriceMetrics,
-  recommendationMetric: RecommendationMetric,
-  recentUnitPrice: number | null
+  sort: PriceSort,
+  recentUnitPrice: number | null,
+  requiredKeywords: string[]
 ): string {
-  const metricLabel =
-    recommendationMetric === "pricePer100" && metrics.volumeUnit
-      ? `100${metrics.volumeUnit}당 가격`
-        : recommendationMetric === "pricePerMeasure"
-        ? metrics.pricePerMeasure != null
-          ? "매당 가격"
-          : `${metrics.packageUnit}당 가격`
-        : `${metrics.packageUnit}당 가격`;
-  const saving =
-    recentUnitPrice && recentUnitPrice > 0
-      ? ((recentUnitPrice - metrics.unitPrice) / recentUnitPrice) * 100
-      : null;
-  if (saving != null && saving > 0) {
-    return `${metricLabel}이 가장 낮고, 최근 구매가보다 ${saving.toFixed(0)}% 저렴합니다.`;
-  }
-  return `${metricLabel}이 가장 낮고 배송비 포함 총액까지 반영한 추천입니다.`;
+  const reason =
+    sort === "pricePer100" && metrics.volumeUnit
+      ? `100${metrics.volumeUnit}당 가격이 가장 낮아 추천합니다.`
+      : sort === "unitPrice"
+        ? `${metrics.packageUnit}당 가격이 가장 낮아 추천합니다.`
+        : sort === "totalPrice"
+          ? "배송비 포함 총액이 가장 낮아 추천합니다."
+          : recentUnitPrice && recentUnitPrice > 0
+            ? "최근 구매가 대비 절감액이 가장 커 추천합니다."
+            : "최근 구매가 대비 절감액을 계산할 수 없습니다.";
+  const keywordReason = requiredKeywordReason(requiredKeywords);
+  return keywordReason ? `${reason} ${keywordReason}` : reason;
+}
+
+function requiredKeywordReason(requiredKeywords: string[]): string {
+  return requiredKeywords.length > 0
+    ? `${requiredKeywords.join(", ")} 필수 키워드를 통과했습니다.`
+    : "";
 }

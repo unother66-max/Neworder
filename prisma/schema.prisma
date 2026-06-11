@@ -40,7 +40,9 @@ enum NewOrderStatus {
 enum NewOrderPriceSource {
   NAVER
   COUPANG
+  ORDERHERO
   MANUAL
+  ETC
 }
 
 // --- 🚨 사용자 모델 (인증 및 관계 설정) ---
@@ -804,6 +806,9 @@ model NewOrderItem {
   naverSearchKeywords   String[] @default([])
   coupangSearchKeyword  String?
   coupangSearchKeywords String[] @default([])
+  requiredKeywords      String[] @default([])
+  optionalKeywords      String[] @default([])
+  preferredKeywords     String[] @default([])
   excludedKeywords      String[] @default([])
   defaultSupplierId     String?
   isActive              Boolean  @default(true)
@@ -816,6 +821,7 @@ model NewOrderItem {
   inventoryEntries NewOrderInventoryEntry[]
   orders           NewOrderOrder[]
   priceCandidates  NewOrderPriceCandidate[]
+  priceHistories   NewOrderPriceHistory[]
   purchases        NewOrderPurchase[]
 
   @@unique([name, category])
@@ -884,8 +890,10 @@ model NewOrderPriceCandidate {
   id              String              @id @default(cuid())
   itemId          String
   source          NewOrderPriceSource
+  mallName        String              @default("")
   title           String
   productUrl      String              @db.Text
+  imageUrl        String?             @db.Text
   itemPrice       Int
   shippingFee     Int                 @default(0)
   totalPrice      Int
@@ -896,6 +904,8 @@ model NewOrderPriceCandidate {
   packageUnit     String?
   pricePer100     Float?
   pricePerMeasure Float?
+  savedBy         String              @default("system")
+  isCurrentBest   Boolean             @default(false)
   checkedAt       DateTime            @default(now())
   createdBy       String
   updatedBy       String
@@ -905,6 +915,35 @@ model NewOrderPriceCandidate {
   item NewOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([itemId, checkedAt])
+  @@index([itemId, isCurrentBest])
+  @@index([source])
+}
+
+model NewOrderPriceHistory {
+  id              String              @id @default(cuid())
+  itemId          String
+  source          NewOrderPriceSource
+  mallName        String              @default("")
+  productName     String
+  productUrl      String              @db.Text
+  imageUrl        String?             @db.Text
+  itemPrice       Int
+  shippingFee     Int                 @default(0)
+  totalPrice      Int
+  quantity        Int                 @default(1)
+  unitAmount      Float?
+  unitType        String?
+  packageUnit     String?
+  unitPrice       Float
+  pricePer100     Float?
+  pricePerMeasure Float?
+  note            String?             @db.Text
+  createdBy       String              @default("system")
+  createdAt       DateTime            @default(now())
+
+  item NewOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt])
   @@index([source])
 }
 

@@ -4,10 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Boxes,
-  Building2,
-  ClipboardCheck,
-  History,
-  LayoutDashboard,
   Menu,
   PackageSearch,
   ShoppingCart,
@@ -16,33 +12,17 @@ import {
 import { useState } from "react";
 
 const NAV_ITEMS = [
-  { href: "/operations/neworder", label: "운영 현황", icon: LayoutDashboard },
-  {
-    href: "/operations/neworder/check",
-    label: "재고 체크",
-    icon: ClipboardCheck,
-  },
-  {
-    href: "/operations/neworder/orders",
-    label: "발주 목록",
-    icon: ShoppingCart,
-  },
   {
     href: "/operations/neworder/price-compare",
     label: "가격비교",
     icon: PackageSearch,
   },
+  {
+    href: "/operations/neworder/orders",
+    label: "구매목록",
+    icon: ShoppingCart,
+  },
   { href: "/operations/neworder/items", label: "품목 관리", icon: Boxes },
-  {
-    href: "/operations/neworder/suppliers",
-    label: "거래처 관리",
-    icon: Building2,
-  },
-  {
-    href: "/operations/neworder/purchase-history",
-    label: "구매내역",
-    icon: History,
-  },
 ] as const;
 
 const ROLE_LABEL = {
@@ -76,7 +56,10 @@ export function NewOrderShell({
             >
               {open ? <X className="size-5" /> : <Menu className="size-5" />}
             </button>
-            <Link href="/operations/neworder" className="flex items-center gap-3">
+            <Link
+              href="/operations/neworder/price-compare"
+              className="flex items-center gap-3"
+            >
               <span className="grid size-9 place-items-center rounded-xl bg-[#173f35] text-sm font-black text-white">
                 NO
               </span>
@@ -103,10 +86,7 @@ export function NewOrderShell({
         >
           <nav className="grid gap-1">
             {NAV_ITEMS.map((item) => {
-              const active =
-                item.href === "/operations/neworder"
-                  ? pathname === item.href
-                  : pathname.startsWith(item.href);
+              const active = pathname.startsWith(item.href);
               const Icon = item.icon;
               return (
                 <Link
@@ -136,4 +116,3 @@ export function NewOrderShell({
     </div>
   );
 }
-

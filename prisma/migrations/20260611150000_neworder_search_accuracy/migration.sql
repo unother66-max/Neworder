@@ -1,0 +1,4 @@
+ALTER TABLE "NewOrderItem"
+ADD COLUMN "requiredKeywords" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN "optionalKeywords" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN "preferredKeywords" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

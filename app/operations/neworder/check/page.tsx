@@ -1,6 +1,5 @@
-import { NewOrderWorkspace } from "../workspace";
+import { redirect } from "next/navigation";
 
 export default function NewOrderCheckPage() {
-  return <NewOrderWorkspace view="check" />;
+  redirect("/operations/neworder/price-compare");
 }
-

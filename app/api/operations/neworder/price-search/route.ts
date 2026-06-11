@@ -4,8 +4,14 @@ import { getNewOrderAccess } from "@/lib/neworder/auth";
 import { normalizeStringArray } from "@/lib/neworder/item-keywords";
 import {
   calculatePriceMetrics,
+  getRecommendationMetric,
+  metricValue,
   type PriceMetrics,
 } from "@/lib/neworder/price-analysis";
+import {
+  compareKeywordMatches,
+  matchProductKeywords,
+} from "@/lib/neworder/product-matching";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -23,6 +29,7 @@ type NaverShopItem = {
 type ResponseContext = {
   searchedKeywords?: string[];
   coupangSearchUrl?: string;
+  directSearch?: boolean;
 };
 
 function success(
@@ -53,6 +60,7 @@ function failure(
       reason,
       searchedKeywords: context.searchedKeywords ?? [],
       coupangSearchUrl: context.coupangSearchUrl ?? null,
+      directSearch: context.directSearch ?? false,
     },
     { status }
   );
@@ -149,23 +157,36 @@ export async function GET(request: Request) {
       );
     }
 
-    const itemId = new URL(request.url).searchParams.get("itemId")?.trim();
-    if (!itemId) {
-      return failure(400, "품목을 선택해 주세요.", "itemId가 필요합니다.");
+    const searchParams = new URL(request.url).searchParams;
+    const itemId = searchParams.get("itemId")?.trim() ?? "";
+    const directQuery = searchParams.get("query")?.trim().slice(0, 200) ?? "";
+    const directSearch = Boolean(directQuery);
+    if (!itemId && !directSearch) {
+      return failure(
+        400,
+        "품목을 선택하거나 직접 검색어를 입력해 주세요.",
+        "itemId 또는 query가 필요합니다."
+      );
     }
 
-    const item = await prisma.newOrderItem.findUnique({
-      where: { id: itemId },
-      select: {
-        name: true,
-        naverSearchKeyword: true,
-        naverSearchKeywords: true,
-        coupangSearchKeyword: true,
-        coupangSearchKeywords: true,
-        excludedKeywords: true,
-      },
-    });
-    if (!item) {
+    const item = itemId
+      ? await prisma.newOrderItem.findUnique({
+          where: { id: itemId },
+          select: {
+            name: true,
+            category: true,
+            naverSearchKeyword: true,
+            naverSearchKeywords: true,
+            coupangSearchKeyword: true,
+            coupangSearchKeywords: true,
+            requiredKeywords: true,
+            optionalKeywords: true,
+            preferredKeywords: true,
+            excludedKeywords: true,
+          },
+        })
+      : null;
+    if (itemId && !item) {
       return failure(
         404,
         "품목을 찾을 수 없습니다.",
@@ -174,31 +195,44 @@ export async function GET(request: Request) {
     }
 
     const naverSearchKeywords = normalizeStringArray(
-      item.naverSearchKeywords
+      item?.naverSearchKeywords
     );
     const coupangSearchKeywords = normalizeStringArray(
-      item.coupangSearchKeywords
+      item?.coupangSearchKeywords
     );
-    const excludedKeywords = normalizeStringArray(item.excludedKeywords);
-    const naverKeywords = [
-      item.naverSearchKeyword?.trim(),
-      ...naverSearchKeywords,
-      item.name.trim(),
-    ].filter(
-      (keyword, index, all): keyword is string =>
-        Boolean(keyword) &&
-        all.findIndex(
-          (candidate) => candidate?.toLowerCase() === keyword?.toLowerCase()
-        ) === index
-    );
-    const coupangKeyword =
-      item.coupangSearchKeyword?.trim() ||
-      coupangSearchKeywords[0] ||
-      item.name;
+    const requiredKeywords = directSearch
+      ? []
+      : normalizeStringArray(item?.requiredKeywords);
+    const optionalKeywords = directSearch
+      ? []
+      : normalizeStringArray(item?.optionalKeywords);
+    const preferredKeywords = directSearch
+      ? []
+      : normalizeStringArray(item?.preferredKeywords);
+    const excludedKeywords = directSearch
+      ? []
+      : normalizeStringArray(item?.excludedKeywords);
+    const naverKeywords = directSearch
+      ? [directQuery]
+      : naverSearchKeywords;
+    const coupangKeyword = directSearch
+      ? directQuery
+      : coupangSearchKeywords[0] || "";
     const context = {
       searchedKeywords: naverKeywords,
-      coupangSearchUrl: `https://www.coupang.com/np/search?q=${encodeURIComponent(coupangKeyword)}`,
+      coupangSearchUrl: coupangKeyword
+        ? `https://www.coupang.com/np/search?q=${encodeURIComponent(coupangKeyword)}`
+        : "",
+      directSearch,
     };
+    if (naverKeywords.length === 0) {
+      return failure(
+        400,
+        "네이버 정확 검색어를 등록해 주세요.",
+        "품목 관리의 네이버 정확 검색어 목록이 비어 있습니다.",
+        context
+      );
+    }
     const clientId = process.env.NAVER_CLIENT_ID?.trim();
     const clientSecret = process.env.NAVER_CLIENT_SECRET?.trim();
 
@@ -265,37 +299,65 @@ export async function GET(request: Request) {
       );
     }
 
+    const recommendationMetric = getRecommendationMetric(
+      directSearch ? directQuery : item?.name ?? "",
+      directSearch ? "기타" : item?.category ?? ""
+    );
+    const rules = {
+      requiredKeywords,
+      optionalKeywords,
+      preferredKeywords,
+      excludedKeywords,
+    };
     const candidates = [...merged.values()]
-      .filter((candidate) => {
-        const title = stripHtml(candidate.title ?? "").toLowerCase();
-        return !excludedKeywords.some((word) =>
-          title.includes(word.toLowerCase())
-        );
-      })
       .map((candidate) => {
-        const title = stripHtml(candidate.title ?? item.name);
+        const title = stripHtml(
+          candidate.title ?? (directSearch ? directQuery : item?.name ?? "")
+        );
         const itemPrice = Number(candidate.lprice) || 0;
         const metrics = safePriceMetrics(title, itemPrice, 0);
+        const keywordMatch = matchProductKeywords(title, rules);
         return {
-          source: "NAVER",
-          title,
-          productUrl: candidate.link ?? "",
-          productId: candidate.productId ?? null,
-          image: candidate.image ?? null,
-          mallName: candidate.mallName ?? "네이버 쇼핑",
-          matchedKeyword: candidate.matchedKeyword,
-          itemPrice,
-          shippingFee: 0,
-          quantityPerPack: metrics.unitCount,
-          volumePerUnit: metrics.volumePerUnit,
-          volumeUnit: metrics.volumeUnit,
-          packageUnit: metrics.packageUnit,
-          unitPrice: metrics.unitPrice,
-          pricePer100: metrics.pricePer100,
-          pricePerMeasure: metrics.pricePerMeasure,
+          metrics,
+          keywordMatch,
+          candidate: {
+            source: "NAVER",
+            title,
+            productUrl: candidate.link ?? "",
+            productId: candidate.productId ?? null,
+            image: candidate.image ?? null,
+            mallName: candidate.mallName ?? "네이버 쇼핑",
+            matchedKeyword: candidate.matchedKeyword,
+            itemPrice,
+            shippingFee: 0,
+            quantityPerPack: metrics.unitCount,
+            volumePerUnit: metrics.volumePerUnit,
+            volumeUnit: metrics.volumeUnit,
+            packageUnit: metrics.packageUnit,
+            unitPrice: metrics.unitPrice,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            passesRequired: keywordMatch.passesRequired,
+            optionalMatchCount: keywordMatch.optionalMatchCount,
+            preferredMatchCount: keywordMatch.preferredMatchCount,
+            recommendationMetric,
+            isDirectSearch: directSearch,
+          },
         };
       })
-      .sort((a, b) => a.unitPrice - b.unitPrice);
+      .filter(
+        (candidate) =>
+          candidate.keywordMatch.passesRequired &&
+          candidate.keywordMatch.passesExcluded
+      )
+      .sort(
+        (a, b) =>
+          compareKeywordMatches(a.keywordMatch, b.keywordMatch) ||
+          metricValue(a.metrics, recommendationMetric) -
+            metricValue(b.metrics, recommendationMetric) ||
+          a.metrics.totalPrice - b.metrics.totalPrice
+      )
+      .map((result) => result.candidate);
 
     return success(
       candidates,

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   calculatePriceMetrics,
+  comparePriceMetrics,
   formatComposition,
   getRecommendationMetric,
   parseProductSpec,
+  priceSortValue,
 } from "@/lib/neworder/price-analysis";
 
 describe("parseProductSpec", () => {
@@ -12,6 +14,7 @@ describe("parseProductSpec", () => {
     ["올리브유 250ml, 5개", 250, "ml", 5, "개"],
     ["올리브유 250ml x 3개", 250, "ml", 3, "개"],
     ["올리브유 250ml 6병", 250, "ml", 6, "병"],
+    ["올리브유 250MLX3P", 250, "ml", 3, "P"],
     ["오일 1L, 2개", 1000, "ml", 2, "개"],
     ["소스 500g, 10개", 500, "g", 10, "개"],
     ["냅킨 100매, 3팩", 100, "매", 3, "팩"],
@@ -71,6 +74,51 @@ describe("getRecommendationMetric", () => {
   it("종이류는 매당 기준을 사용한다", () => {
     expect(getRecommendationMetric("칵테일 냅킨", "소모품")).toBe(
       "pricePerMeasure"
+    );
+  });
+});
+
+describe("price comparison", () => {
+  const single = calculatePriceMetrics({
+    title: "올리타리아 트러플 오일 250ml, 1개",
+    itemPrice: 13900,
+    shippingFee: 0,
+  });
+  const bundle = calculatePriceMetrics({
+    title: "올리타리아 트러플 오일 250ml, 6개",
+    itemPrice: 66980,
+    shippingFee: 0,
+  });
+
+  it("100ml당 가격은 배송비 포함 총액과 전체 용량으로 비교한다", () => {
+    expect(single.pricePer100).toBe(5560);
+    expect(bundle.pricePer100).toBeCloseTo(4465.33, 2);
+    expect(comparePriceMetrics(bundle, single, "pricePer100", null)).toBeLessThan(
+      0
+    );
+  });
+
+  it("총액 정렬에서는 단품을 먼저 추천한다", () => {
+    expect(comparePriceMetrics(single, bundle, "totalPrice", null)).toBeLessThan(
+      0
+    );
+  });
+
+  it("유효하지 않은 100ml당 가격은 추천 비교에서 제외한다", () => {
+    const unknownVolume = calculatePriceMetrics({
+      title: "트러플 오일",
+      itemPrice: 1000,
+      shippingFee: 0,
+    });
+    expect(priceSortValue(unknownVolume, "pricePer100", null)).toBeNull();
+    expect(
+      comparePriceMetrics(unknownVolume, bundle, "pricePer100", null)
+    ).toBeGreaterThan(0);
+  });
+
+  it("최근 구매가 대비 절감액이 큰 후보를 먼저 추천한다", () => {
+    expect(comparePriceMetrics(bundle, single, "savings", 15000)).toBeLessThan(
+      0
     );
   });
 });
