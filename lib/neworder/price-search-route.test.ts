@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getNewOrderAccess: vi.fn(),
   findUnique: vi.fn(),
+  findShippingOverrides: vi.fn(),
   calculatePriceMetrics: vi.fn(),
   parseShippingCondition: vi.fn(),
 }));
@@ -15,6 +16,9 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     newOrderItem: {
       findUnique: mocks.findUnique,
+    },
+    newOrderPriceCandidate: {
+      findMany: mocks.findShippingOverrides,
     },
   },
 }));
@@ -63,6 +67,7 @@ describe("NewOrder price search route", () => {
     vi.stubEnv("NAVER_CLIENT_SECRET", "client-secret");
     mocks.getNewOrderAccess.mockResolvedValue({ operator: { id: "operator-1" } });
     mocks.findUnique.mockResolvedValue(item);
+    mocks.findShippingOverrides.mockResolvedValue([]);
     mocks.parseShippingCondition.mockReturnValue({
       shippingFee: 0,
       shippingUnitCount: 1,
@@ -348,6 +353,65 @@ describe("NewOrder price search route", () => {
       effectiveShippingFee: 2500,
       totalPriceWithShipping: 22800,
       unitPrice: 2280,
+    });
+  });
+
+  it("동일 productUrl의 저장된 배송비를 상세 파싱보다 우선 적용한다", async () => {
+    mocks.findShippingOverrides.mockResolvedValue([
+      {
+        productUrl: "https://smartstore.naver.com/example/products/saved",
+        shippingFee: 3000,
+        shippingUnitCount: 1,
+        shippingStatus: "PAID",
+        shippingNote: "사용자가 배송비를 직접 입력했습니다.",
+        shippingCondition: "배송비 3,000원",
+        shippingNeedsConfirmation: false,
+      },
+    ]);
+    mocks.calculatePriceMetrics.mockReturnValue({
+      unitCount: 1,
+      packageUnit: "개",
+      volumePerUnit: 500,
+      volumeUnit: "g",
+      productPrice: 3600,
+      shippingFee: 3000,
+      shippingUnitCount: 1,
+      effectiveShippingFee: 3000,
+      totalPrice: 6600,
+      unitPrice: 6600,
+      totalVolume: 500,
+      pricePer100: 1320,
+      pricePerMeasure: null,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              title: "올리타리아 서울연유 500g",
+              link: "https://smartstore.naver.com/example/products/saved",
+              productId: "saved",
+              lprice: "3600",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(request());
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(data.candidates[0]).toMatchObject({
+      shippingFee: 3000,
+      shippingUnitCount: 1,
+      shippingStatus: "PAID",
+      effectiveShippingFee: 3000,
+      totalPriceWithShipping: 6600,
+      pricePer100: 1320,
     });
   });
 

@@ -10,7 +10,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function error(message: string, status = 400) {
-  return NextResponse.json({ ok: false, error: message }, { status });
+  return NextResponse.json(
+    { ok: false, error: message, message },
+    { status }
+  );
 }
 
 const OPERATOR_REQUIRED_ERROR =
@@ -377,7 +380,7 @@ export async function POST(request: Request) {
           }
         }
         await tx.newOrderPriceCandidate.updateMany({
-          where: { itemId, isCurrentBest: true },
+          where: { itemId, isCurrentBest: true, deletedAt: null },
           data: { isCurrentBest: false, updatedBy: actor },
         });
         await tx.newOrderPriceCandidate.create({
@@ -446,12 +449,42 @@ export async function POST(request: Request) {
         });
       });
       result = { itemId };
+    } else if (action === "deletePriceCandidate") {
+      const candidateId = text(body.candidateId, 100);
+      if (!candidateId) {
+        return error("삭제할 구매 후보를 확인해 주세요.");
+      }
+      const deletedBy = access.email || access.name || actor;
+
+      const candidate = await prisma.newOrderPriceCandidate.findUnique({
+        where: { id: candidateId },
+        select: { id: true, deletedAt: true },
+      });
+      if (!candidate || candidate.deletedAt) {
+        return error("구매 후보를 찾을 수 없습니다.", 404);
+      }
+
+      await prisma.newOrderPriceCandidate.update({
+        where: { id: candidate.id },
+        data: {
+          isCurrentBest: false,
+          deletedAt: new Date(),
+          deletedBy,
+          updatedBy: actor,
+        },
+      });
+      result = { message: "구매목록에서 삭제했습니다." };
     } else {
       return error("지원하지 않는 작업입니다.");
     }
   } catch (cause) {
-    console.error("[operations/neworder]", action, cause);
-    return error("저장 중 오류가 발생했습니다.", 500);
+    console.warn("[operations/neworder]", action, cause);
+    return error(
+      action === "deletePriceCandidate"
+        ? "삭제에 실패했습니다. 다시 시도해 주세요."
+        : "저장 중 오류가 발생했습니다.",
+      500
+    );
   }
 
   return NextResponse.json({ ok: true, ...result });

@@ -86,6 +86,24 @@ function stripHtml(value: string): string {
   return value.replace(/<[^>]*>/g, "").replaceAll("&quot;", '"').trim();
 }
 
+function logShippingResult(
+  candidate: NaverCandidate,
+  shipping: NaverShippingEnrichment
+) {
+  if (process.env.NODE_ENV !== "development") return;
+  console.warn("[neworder/price-search] 배송비 확인", {
+    productName: stripHtml(candidate.title ?? ""),
+    productUrl: candidate.link ?? "",
+    resolvedUrl: shipping.resolvedUrl,
+    fetchStatus: shipping.fetchStatus,
+    parseMethod: shipping.source,
+    parsedShippingFee: shipping.shippingFee,
+    parsedShippingUnitCount: shipping.shippingUnitCount,
+    shippingStatus: shipping.shippingStatus,
+    shippingNote: shipping.shippingNote,
+  });
+}
+
 function dedupeKey(item: NaverShopItem): string {
   const productId = String(item.productId ?? "").trim();
   if (productId) return `product:${productId}`;
@@ -105,10 +123,17 @@ function dedupeKey(item: NaverShopItem): string {
   }
 }
 
-function fallbackMetrics(itemPrice: number, shippingFee: number): PriceMetrics {
+function fallbackMetrics(
+  itemPrice: number,
+  shippingFee: number,
+  shippingStatus: ShippingStatus
+): PriceMetrics {
+  const effectiveShippingFee =
+    shippingStatus === "PAID"
+      ? Math.max(0, Number(shippingFee) || 0)
+      : 0;
   const totalPrice =
-    Math.max(0, Number(itemPrice) || 0) +
-    Math.max(0, Number(shippingFee) || 0);
+    Math.max(0, Number(itemPrice) || 0) + effectiveShippingFee;
   return {
     unitCount: 1,
     packageUnit: "개",
@@ -117,7 +142,7 @@ function fallbackMetrics(itemPrice: number, shippingFee: number): PriceMetrics {
     productPrice: Math.max(0, Number(itemPrice) || 0),
     shippingFee: Math.max(0, Number(shippingFee) || 0),
     shippingUnitCount: 1,
-    effectiveShippingFee: Math.max(0, Number(shippingFee) || 0),
+    effectiveShippingFee,
     totalPrice,
     unitPrice: totalPrice,
     totalVolume: null,
@@ -148,7 +173,7 @@ function safePriceMetrics(
       title,
       cause,
     });
-    return fallbackMetrics(itemPrice, shippingFee);
+    return fallbackMetrics(itemPrice, shippingFee, shippingStatus);
   }
 }
 
@@ -337,17 +362,68 @@ export async function GET(request: Request) {
       excludedKeywords,
     };
     const mergedCandidates = [...merged.values()];
+    const productUrls = mergedCandidates
+      .map((candidate) => String(candidate.link ?? "").trim())
+      .filter(Boolean);
+    const savedShippingRows =
+      productUrls.length > 0
+        ? await prisma.newOrderPriceCandidate.findMany({
+            where: {
+              productUrl: { in: productUrls },
+              shippingStatus: { in: ["FREE", "PAID"] },
+            },
+            orderBy: { updatedAt: "desc" },
+            select: {
+              productUrl: true,
+              shippingFee: true,
+              shippingUnitCount: true,
+              shippingStatus: true,
+              shippingNote: true,
+              shippingCondition: true,
+              shippingNeedsConfirmation: true,
+            },
+          })
+        : [];
+    const savedShippingByUrl = new Map<
+      string,
+      (typeof savedShippingRows)[number]
+    >();
+    for (const saved of savedShippingRows) {
+      if (!savedShippingByUrl.has(saved.productUrl)) {
+        savedShippingByUrl.set(saved.productUrl, saved);
+      }
+    }
+    for (const candidate of mergedCandidates) {
+      const productUrl = String(candidate.link ?? "").trim();
+      const saved = savedShippingByUrl.get(productUrl);
+      if (!saved) continue;
+      candidate.shippingEnrichment = {
+        shippingFee: saved.shippingFee,
+        shippingUnitCount: saved.shippingUnitCount,
+        shippingStatus: saved.shippingStatus,
+        shippingNote:
+          saved.shippingNote || "저장된 배송비 정보를 적용했습니다.",
+        shippingCondition: saved.shippingCondition,
+        shippingNeedsConfirmation: saved.shippingNeedsConfirmation,
+        source: "SAVED",
+        fetchStatus: "not-requested",
+        resolvedUrl: productUrl,
+      };
+      logShippingResult(candidate, candidate.shippingEnrichment);
+    }
     const detailTargets = mergedCandidates
       .filter((candidate) => {
+        if (candidate.shippingEnrichment) return false;
         const title = stripHtml(candidate.title ?? "");
         const keywordMatch = matchProductKeywords(title, rules);
         return keywordMatch.passesRequired && keywordMatch.passesExcluded;
       })
-      .slice(0, 15);
+      .slice(0, 20);
     await enrichNaverShippingCandidates(
       detailTargets,
       async (candidate) => {
         candidate.shippingEnrichment = await enrichNaverShipping(candidate);
+        logShippingResult(candidate, candidate.shippingEnrichment);
       },
       3
     );
@@ -368,6 +444,15 @@ export async function GET(request: Request) {
               .join(" "),
             rawShippingFee
           );
+        if (!candidate.shippingEnrichment) {
+          logShippingResult(candidate, {
+            ...shipping,
+            source:
+              shipping.shippingStatus === "UNKNOWN" ? "UNKNOWN" : "SEARCH",
+            fetchStatus: "not-requested",
+            resolvedUrl: candidate.link ?? null,
+          });
+        }
         const metrics = safePriceMetrics(
           title,
           itemPrice,

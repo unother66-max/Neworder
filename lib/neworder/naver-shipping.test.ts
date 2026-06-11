@@ -35,7 +35,7 @@ describe("parseNaverShippingHtml", () => {
       shippingUnitCount: 10,
       shippingStatus: "PAID",
       shippingNeedsConfirmation: false,
-      source: "DETAIL_JSON",
+      source: "NEXT_DATA",
       shippingNote: expect.stringContaining("평균 3일 이내 도착 확률 86%"),
     });
     const metrics = calculatePriceMetrics({
@@ -62,7 +62,7 @@ describe("parseNaverShippingHtml", () => {
       shippingFee: 0,
       shippingUnitCount: 1,
       shippingStatus: "FREE",
-      source: "DETAIL_JSON",
+      source: "JSON_SCRIPT",
     });
   });
 
@@ -86,7 +86,7 @@ describe("parseNaverShippingHtml", () => {
       shippingFee: 2500,
       shippingUnitCount: 10,
       shippingStatus: "PAID",
-      source: "DETAIL_HTML",
+      source: "HTML_TEXT",
     });
   });
 });
@@ -106,6 +106,67 @@ describe("enrichNaverShipping", () => {
     ).resolves.toMatchObject({
       shippingStatus: "UNKNOWN",
       shippingFee: 0,
+      shippingNote: "배송비 파싱 실패: network-error",
+      fetchStatus: "network-error",
+    });
+  });
+
+  it("403 상세 응답은 실패 원인을 남긴다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("접근이 제한되었습니다.", { status: 403 })
+      )
+    );
+
+    await expect(
+      enrichNaverShipping({
+        link: "https://shopping.naver.com/window-products/1",
+      })
+    ).resolves.toMatchObject({
+      shippingStatus: "UNKNOWN",
+      shippingNote: "배송비 파싱 실패: 403",
+      fetchStatus: 403,
+    });
+  });
+
+  it("네이버 로그인 페이지 리다이렉트는 UNKNOWN 사유로 남긴다", async () => {
+    const response = new Response("<html>네이버 로그인</html>", {
+      status: 200,
+    });
+    Object.defineProperty(response, "url", {
+      value:
+        "https://nid.naver.com/nidlogin.login?url=https%3A%2F%2Fsmartstore.naver.com",
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+    await expect(
+      enrichNaverShipping({
+        link: "https://smartstore.naver.com/example/products/1",
+      })
+    ).resolves.toMatchObject({
+      shippingStatus: "UNKNOWN",
+      shippingNote: "배송비 파싱 실패: 네이버 로그인 페이지로 리다이렉트됨",
+      fetchStatus: 200,
+      resolvedUrl: expect.stringContaining("nid.naver.com"),
+    });
+  });
+
+  it("줄바꿈이 섞인 배송 문구를 HTML 전체 텍스트에서 파싱한다", () => {
+    expect(
+      parseNaverShippingHtml(`
+        <div>배송</div>
+        <p>평균 3일 이내 도착 확률 86%</p>
+        <strong>배송비
+          2,500원
+          (10개마다 부과)
+        </strong>
+      `)
+    ).toMatchObject({
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+      source: "HTML_TEXT",
     });
   });
 

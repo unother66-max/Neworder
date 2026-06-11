@@ -4,6 +4,7 @@ import {
 } from "@/lib/neworder/price-analysis";
 
 type NaverShippingCandidate = {
+  title?: string | null;
   productUrl?: string | null;
   link?: string | null;
   shippingFee?: string | number | null;
@@ -13,7 +14,15 @@ type NaverShippingCandidate = {
 };
 
 export type NaverShippingEnrichment = ParsedShippingCondition & {
-  source: "SEARCH" | "DETAIL_JSON" | "DETAIL_HTML" | "UNKNOWN";
+  source:
+    | "SEARCH"
+    | "NEXT_DATA"
+    | "JSON_SCRIPT"
+    | "HTML_TEXT"
+    | "SAVED"
+    | "UNKNOWN";
+  fetchStatus: number | "timeout" | "network-error" | "not-requested" | null;
+  resolvedUrl: string | null;
 };
 
 const DETAIL_TIMEOUT_MS = 4500;
@@ -94,7 +103,9 @@ function shippingTextFromJson(value: unknown): string | null {
     : null;
 }
 
-function parseJsonScripts(html: string): string | null {
+function parseJsonScripts(
+  html: string
+): { text: string; source: "NEXT_DATA" | "JSON_SCRIPT" } | null {
   const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)]
     .filter((match) => {
       const attributes = match[1];
@@ -111,7 +122,14 @@ function parseJsonScripts(html: string): string | null {
   for (const match of scripts) {
     try {
       const text = shippingTextFromJson(JSON.parse(match[2]));
-      if (text) return text;
+      if (text) {
+        return {
+          text,
+          source: /\bid=["']__NEXT_DATA__["']/i.test(match[1])
+            ? "NEXT_DATA"
+            : "JSON_SCRIPT",
+        };
+      }
     } catch {
       continue;
     }
@@ -132,7 +150,9 @@ function arrivalNote(text: string): string | null {
 function parseShippingText(
   text: string,
   source: NaverShippingEnrichment["source"],
-  fallbackFee = 0
+  fallbackFee = 0,
+  fetchStatus: NaverShippingEnrichment["fetchStatus"] = null,
+  resolvedUrl: string | null = null
 ): NaverShippingEnrichment {
   const parsed = parseShippingCondition(text, fallbackFee);
   const note = arrivalNote(text);
@@ -155,6 +175,8 @@ function parseShippingText(
         ? "배송비 정보를 자동으로 확인하지 못했습니다."
         : condition),
     source,
+    fetchStatus,
+    resolvedUrl,
   };
 }
 
@@ -162,24 +184,40 @@ export function parseNaverShippingHtml(
   html: string
 ): NaverShippingEnrichment {
   const limitedHtml = String(html ?? "").slice(0, MAX_DETAIL_HTML_LENGTH);
-  const jsonText = parseJsonScripts(limitedHtml);
-  if (jsonText) {
-    const parsed = parseShippingText(jsonText, "DETAIL_JSON");
+  const jsonScript = parseJsonScripts(limitedHtml);
+  if (jsonScript) {
+    const parsed = parseShippingText(jsonScript.text, jsonScript.source);
     if (parsed.shippingStatus !== "UNKNOWN") return parsed;
   }
 
   const htmlText = decodeHtmlText(
     limitedHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
   );
-  const parsed = parseShippingText(htmlText, "DETAIL_HTML");
+  const parsed = parseShippingText(htmlText, "HTML_TEXT");
   return parsed.shippingStatus === "UNKNOWN"
     ? {
         ...parsed,
         source: "UNKNOWN",
-        shippingNote:
-          parsed.shippingNote || "배송비 정보를 자동으로 확인하지 못했습니다.",
+        shippingNote: "배송비 파싱 실패: 배송비 텍스트 없음",
       }
     : parsed;
+}
+
+function failedEnrichment(
+  inline: NaverShippingEnrichment,
+  reason: string,
+  fetchStatus: NaverShippingEnrichment["fetchStatus"],
+  resolvedUrl: string | null = null
+): NaverShippingEnrichment {
+  return {
+    ...inline,
+    source: "UNKNOWN",
+    shippingStatus: "UNKNOWN",
+    shippingNeedsConfirmation: true,
+    shippingNote: `배송비 파싱 실패: ${reason}`,
+    fetchStatus,
+    resolvedUrl,
+  };
 }
 
 export async function enrichNaverShipping(
@@ -195,10 +233,18 @@ export async function enrichNaverShipping(
   const fallbackFee =
     Number(candidate.shippingFee ?? candidate.deliveryFee) || 0;
   const inline = parseShippingText(inlineText, "SEARCH", fallbackFee);
-  if (inline.shippingStatus !== "UNKNOWN") return inline;
+  if (inline.shippingStatus !== "UNKNOWN") {
+    return { ...inline, fetchStatus: "not-requested", resolvedUrl: null };
+  }
 
   const productUrl = String(candidate.productUrl ?? candidate.link ?? "").trim();
-  if (!isNaverDetailUrl(productUrl)) return inline;
+  if (!isNaverDetailUrl(productUrl)) {
+    return failedEnrichment(
+      inline,
+      "네이버 상품 상세 URL이 아님",
+      "not-requested"
+    );
+  }
 
   try {
     const response = await fetch(productUrl, {
@@ -211,10 +257,44 @@ export async function enrichNaverShipping(
       redirect: "follow",
       signal: AbortSignal.timeout(DETAIL_TIMEOUT_MS),
     });
-    if (!response.ok) return inline;
-    return parseNaverShippingHtml(await response.text());
-  } catch {
-    return inline;
+    if (!response.ok) {
+      return failedEnrichment(
+        inline,
+        String(response.status),
+        response.status,
+        response.url || productUrl
+      );
+    }
+    const resolvedUrl = response.url || productUrl;
+    try {
+      if (new URL(resolvedUrl).hostname === "nid.naver.com") {
+        return failedEnrichment(
+          inline,
+          "네이버 로그인 페이지로 리다이렉트됨",
+          response.status,
+          resolvedUrl
+        );
+      }
+    } catch {
+      // The original URL validation already succeeded; keep parsing if the
+      // runtime returns an unusual response URL.
+    }
+    const parsed = parseNaverShippingHtml(await response.text());
+    return {
+      ...parsed,
+      fetchStatus: response.status,
+      resolvedUrl,
+    };
+  } catch (cause) {
+    const isTimeout =
+      cause instanceof Error &&
+      (cause.name === "TimeoutError" || cause.name === "AbortError");
+    return failedEnrichment(
+      inline,
+      isTimeout ? "timeout" : "network-error",
+      isTimeout ? "timeout" : "network-error",
+      productUrl
+    );
   }
 }
 

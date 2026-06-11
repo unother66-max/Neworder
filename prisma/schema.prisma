@@ -921,6 +921,8 @@ model NewOrderPriceCandidate {
   pricePerMeasure           Float?
   savedBy                   String                 @default("system")
   isCurrentBest             Boolean                @default(false)
+  deletedAt                 DateTime?
+  deletedBy                 String?
   checkedAt                 DateTime               @default(now())
   createdBy                 String
   updatedBy                 String
@@ -932,6 +934,7 @@ model NewOrderPriceCandidate {
   @@index([itemId, checkedAt])
   @@index([itemId, isCurrentBest])
   @@index([source])
+  @@index([deletedAt])
 }
 
 model NewOrderPriceHistory {

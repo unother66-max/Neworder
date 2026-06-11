@@ -153,11 +153,24 @@ async function backfillLegacyPriceCandidates() {
 
     const currentItemIds = new Set(
       candidates
-        .filter((candidate) => candidate.isCurrentBest)
+        .filter(
+          (candidate) => candidate.isCurrentBest && candidate.deletedAt === null
+        )
+        .map((candidate) => candidate.itemId)
+    );
+    const deletedItemIds = new Set(
+      candidates
+        .filter((candidate) => candidate.deletedAt !== null)
         .map((candidate) => candidate.itemId)
     );
     const latestByItem = new Map<string, (typeof candidates)[number]>();
     for (const candidate of candidates) {
+      if (
+        candidate.deletedAt !== null ||
+        deletedItemIds.has(candidate.itemId)
+      ) {
+        continue;
+      }
       if (!latestByItem.has(candidate.itemId)) {
         latestByItem.set(candidate.itemId, candidate);
       }
@@ -255,7 +268,7 @@ export async function getNewOrderSnapshot(actorId: string) {
         include: { item: { select: { id: true, name: true } } },
       }),
       prisma.newOrderPriceCandidate.findMany({
-        where: { isCurrentBest: true },
+        where: { isCurrentBest: true, deletedAt: null },
         orderBy: [{ item: { category: "asc" } }, { item: { name: "asc" } }],
         include: {
           item: { select: { id: true, name: true, category: true } },

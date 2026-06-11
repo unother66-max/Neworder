@@ -106,6 +106,19 @@ describe("calculatePriceMetrics", () => {
     expect(metrics.pricePer100).toBeCloseTo(402.12, 2);
   });
 
+  it("서울연유 500g에 수동 배송비 3,000원을 즉시 반영한다", () => {
+    const metrics = calculatePriceMetrics({
+      title: "서울연유 500g",
+      itemPrice: 3600,
+      shippingFee: 3000,
+      shippingUnitCount: 1,
+      shippingStatus: "PAID",
+    });
+    expect(metrics.effectiveShippingFee).toBe(3000);
+    expect(metrics.totalPrice).toBe(6600);
+    expect(metrics.pricePer100).toBe(1320);
+  });
+
   it("배송비 미확인 후보는 배송비를 확정 가격에 반영하지 않는다", () => {
     const metrics = calculatePriceMetrics({
       title: "피자소스 2kg × 6개",
@@ -133,6 +146,11 @@ describe("calculatePriceMetrics", () => {
 describe("parseShippingCondition", () => {
   it("무료배송과 n개마다 부과 조건을 파싱한다", () => {
     expect(parseShippingCondition("무료배송")).toMatchObject({
+      shippingFee: 0,
+      shippingNeedsConfirmation: false,
+      shippingStatus: "FREE",
+    });
+    expect(parseShippingCondition("배송 무료")).toMatchObject({
       shippingFee: 0,
       shippingNeedsConfirmation: false,
       shippingStatus: "FREE",

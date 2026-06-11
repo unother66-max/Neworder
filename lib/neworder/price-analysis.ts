@@ -172,7 +172,7 @@ export function parseShippingCondition(
     .replace(/,/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (/무료\s*배송|배송비\s*무료/.test(text)) {
+  if (/무료\s*배송|배송\s*무료|배송비\s*무료/.test(text)) {
     return {
       shippingFee: 0,
       shippingUnitCount: 1,
@@ -184,10 +184,10 @@ export function parseShippingCondition(
   }
 
   const feeMatch = text.match(
-    /(?:배송비|배송료|운임)[^\d]{0,12}(\d{2,})\s*원?/
+    /(?:배송비|배송료|운임)\s*[:：]?\s*(\d{2,})\s*원?/
   );
   const unitMatch =
-    text.match(/(\d+)\s*개\s*(?:마다|당)[^)]{0,12}(?:부과|발생|배송)/) ??
+    text.match(/(\d+)\s*개\s*(?:마다|당)\s*(?:부과|발생|배송)?/) ??
     text.match(/(?:수량별|묶음)\s*배송[^\d]{0,12}(\d+)\s*개/);
   const shippingFee = feeMatch ? Number(feeMatch[1]) : Math.max(0, fallbackFee);
   const shippingUnitCount = unitMatch
@@ -196,7 +196,7 @@ export function parseShippingCondition(
   const ambiguous = /묶음\s*배송|수량별\s*배송/.test(text) && !unitMatch;
   const hasFallbackFee = Number(fallbackFee) > 0;
   const hasKnownCondition =
-    /무료\s*배송|배송비\s*무료/.test(text) ||
+    /무료\s*배송|배송\s*무료|배송비\s*무료/.test(text) ||
     Boolean(unitMatch) ||
     Boolean(feeMatch && !ambiguous) ||
     hasFallbackFee;
