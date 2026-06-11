@@ -6,6 +6,7 @@ import {
   formatComposition,
   getRecommendationMetric,
   parseProductSpec,
+  parseShippingCondition,
   priceSortValue,
 } from "@/lib/neworder/price-analysis";
 
@@ -46,11 +47,75 @@ describe("calculatePriceMetrics", () => {
       title: "올리브유 250ml, 5개",
       itemPrice: 53060,
       shippingFee: 3000,
+      shippingStatus: "PAID",
     });
     expect(metrics.totalPrice).toBe(56060);
+    expect(metrics.effectiveShippingFee).toBe(3000);
     expect(metrics.unitPrice).toBeCloseTo(11212);
     expect(metrics.pricePer100).toBeCloseTo(4484.8);
     expect(formatComposition(metrics)).toBe("250ml × 5개");
+  });
+
+  it("n개마다 부과되는 배송비를 구간별로 반영한다", () => {
+    const single = calculatePriceMetrics({
+      title: "피자소스 2kg",
+      itemPrice: 6390,
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+    });
+    expect(single.effectiveShippingFee).toBe(2500);
+    expect(single.totalPrice).toBe(8890);
+    expect(single.unitPrice).toBe(8890);
+    expect(single.pricePer100).toBe(444.5);
+
+    const bundle = calculatePriceMetrics({
+      title: "피자소스 2kg × 6개",
+      itemPrice: 38040,
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+    });
+    expect(bundle.effectiveShippingFee).toBe(2500);
+    expect(bundle.totalPrice).toBe(40540);
+    expect(bundle.unitPrice).toBeCloseTo(6756.67);
+    expect(bundle.pricePer100).toBeCloseTo(337.83);
+
+    const overUnit = calculatePriceMetrics({
+      title: "베이컨 크럼블 567g × 12개",
+      itemPrice: 24360,
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+    });
+    expect(overUnit.effectiveShippingFee).toBe(5000);
+  });
+
+  it("베이컨 567g 10개 상품에 10개당 배송비를 한 번 적용한다", () => {
+    const metrics = calculatePriceMetrics({
+      title: "코스트코 베이컨 크럼블 567g 10개",
+      itemPrice: 20300,
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+    });
+    expect(metrics.unitCount).toBe(10);
+    expect(metrics.effectiveShippingFee).toBe(2500);
+    expect(metrics.totalPrice).toBe(22800);
+    expect(metrics.unitPrice).toBe(2280);
+    expect(metrics.pricePer100).toBeCloseTo(402.12, 2);
+  });
+
+  it("배송비 미확인 후보는 배송비를 확정 가격에 반영하지 않는다", () => {
+    const metrics = calculatePriceMetrics({
+      title: "피자소스 2kg × 6개",
+      itemPrice: 38040,
+      shippingFee: 2500,
+      shippingUnitCount: 1,
+      shippingStatus: "UNKNOWN",
+      shippingNeedsConfirmation: true,
+    });
+    expect(metrics.effectiveShippingFee).toBe(0);
   });
 
   it("매 상품은 매당 가격을 계산한다", () => {
@@ -58,9 +123,46 @@ describe("calculatePriceMetrics", () => {
       title: "냅킨 100매, 3팩",
       itemPrice: 9000,
       shippingFee: 0,
+      shippingStatus: "FREE",
     });
     expect(metrics.unitPrice).toBe(3000);
     expect(metrics.pricePerMeasure).toBe(30);
+  });
+});
+
+describe("parseShippingCondition", () => {
+  it("무료배송과 n개마다 부과 조건을 파싱한다", () => {
+    expect(parseShippingCondition("무료배송")).toMatchObject({
+      shippingFee: 0,
+      shippingNeedsConfirmation: false,
+      shippingStatus: "FREE",
+    });
+    expect(
+      parseShippingCondition("배송비 2,500원 (10개마다 부과)")
+    ).toMatchObject({
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+      shippingNeedsConfirmation: false,
+    });
+  });
+
+  it("수량이 없는 묶음배송은 확인 필요로 처리한다", () => {
+    expect(parseShippingCondition("배송비 3,000원 / 묶음배송")).toMatchObject({
+      shippingFee: 3000,
+      shippingUnitCount: 1,
+      shippingStatus: "UNKNOWN",
+      shippingNeedsConfirmation: true,
+    });
+  });
+
+  it("API가 숫자 배송비를 주면 유료배송으로 확정한다", () => {
+    expect(parseShippingCondition("", 2500)).toMatchObject({
+      shippingFee: 2500,
+      shippingUnitCount: 1,
+      shippingStatus: "PAID",
+      shippingNeedsConfirmation: false,
+    });
   });
 });
 

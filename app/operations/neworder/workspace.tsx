@@ -121,10 +121,19 @@ type PriceCandidate = {
   title: string;
   productUrl: string;
   imageUrl: string | null;
+  productPrice: number;
   shippingFee: number;
+  shippingUnitCount: number;
+  shippingStatus: "FREE" | "PAID" | "UNKNOWN";
+  shippingNote: string | null;
+  shippingCondition: string | null;
+  shippingNeedsConfirmation: boolean;
+  effectiveShippingFee: number;
   totalPrice: number;
+  totalPriceWithShipping: number;
   unitPrice: number;
   quantityPerPack: number;
+  bundleQuantity: number;
   volumePerUnit: number | null;
   volumeUnit: string | null;
   packageUnit: string | null;
@@ -147,9 +156,19 @@ type PriceHistory = {
   mallName: string;
   productName: string;
   productUrl: string;
+  imageUrl: string | null;
+  productPrice: number;
   totalPrice: number;
+  totalPriceWithShipping: number;
   shippingFee: number;
+  shippingUnitCount: number;
+  shippingStatus: "FREE" | "PAID" | "UNKNOWN";
+  shippingNote: string | null;
+  shippingCondition: string | null;
+  shippingNeedsConfirmation: boolean;
+  effectiveShippingFee: number;
   quantity: number;
+  bundleQuantity: number;
   unitAmount: number | null;
   unitType: string | null;
   packageUnit: string | null;
@@ -252,6 +271,17 @@ type SearchCandidate = {
   matchedKeyword?: string | null;
   itemPrice: number;
   shippingFee: number;
+  shippingUnitCount: number;
+  shippingStatus: "FREE" | "PAID" | "UNKNOWN";
+  shippingNote?: string | null;
+  shippingEnrichmentStatus?:
+    | "CHECKING"
+    | "COMPLETED"
+    | "FAILED"
+    | "NOT_CHECKED";
+  shippingCondition?: string | null;
+  shippingNeedsConfirmation?: boolean;
+  effectiveShippingFee?: number;
   quantityPerPack: number;
   volumePerUnit: number | null;
   volumeUnit: string | null;
@@ -332,7 +362,13 @@ const buttonClass =
 const secondaryButtonClass =
   "inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50";
 
-export function NewOrderWorkspace({ view }: { view: View }) {
+export function NewOrderWorkspace({
+  view,
+  initialItemId = "",
+}: {
+  view: View;
+  initialItemId?: string;
+}) {
   const [data, setData] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -439,7 +475,12 @@ export function NewOrderWorkspace({ view }: { view: View }) {
         <PurchasesView data={data} saving={saving} mutate={mutate} />
       )}
       {view === "price-compare" && (
-        <PriceCompareView data={data} saving={saving} mutate={mutate} />
+        <PriceCompareView
+          data={data}
+          saving={saving}
+          mutate={mutate}
+          initialItemId={initialItemId}
+        />
       )}
     </>
   );
@@ -721,6 +762,16 @@ function sourceLabel(source: PriceCandidate["source"]) {
   }[source];
 }
 
+function sourceBadgeClass(source: PriceCandidate["source"]) {
+  return {
+    NAVER: "bg-emerald-50 text-emerald-700",
+    COUPANG: "bg-rose-50 text-rose-700",
+    ORDERHERO: "bg-blue-50 text-blue-700",
+    MANUAL: "bg-violet-50 text-violet-700",
+    ETC: "bg-slate-100 text-slate-700",
+  }[source];
+}
+
 function formatSavedComposition(candidate: {
   quantity: number;
   unitAmount: number | null;
@@ -731,6 +782,40 @@ function formatSavedComposition(candidate: {
     return `${candidate.unitAmount}${candidate.unitType} × ${candidate.quantity}${candidate.packageUnit || "개"}`;
   }
   return `${candidate.quantity}${candidate.packageUnit || "개"}`;
+}
+
+function ProductImage({
+  src,
+  alt,
+  compact = false,
+}: {
+  src: string | null;
+  alt: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-center font-black tracking-wide text-slate-400 ${
+        compact
+          ? "size-14 text-[9px]"
+          : "size-[72px] text-[10px] sm:size-24 sm:text-xs"
+      }`}
+    >
+      <span aria-hidden="true">NO IMAGE</span>
+      {src && (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 size-full bg-white object-contain p-1"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 function PurchaseListView({ data }: { data: Snapshot }) {
@@ -755,12 +840,23 @@ function PurchaseListView({ data }: { data: Snapshot }) {
             date: history.createdAt,
             type: "저장" as const,
             source: history.mallName || sourceLabel(history.source),
-            totalPrice: history.totalPrice,
+            totalPrice:
+              history.totalPriceWithShipping || history.totalPrice,
             composition: formatSavedComposition(history),
             pricePer100: history.pricePer100,
             unitType: history.unitType,
+            shippingFee: history.shippingFee,
+            shippingUnitCount: history.shippingUnitCount || 1,
+            shippingStatus: history.shippingStatus,
+            shippingNote: history.shippingNote,
+            shippingCondition: history.shippingCondition,
+            effectiveShippingFee:
+              history.effectiveShippingFee || history.shippingFee,
+            shippingNeedsConfirmation:
+              history.shippingNeedsConfirmation,
             person: history.createdBy,
             url: history.productUrl as string | null,
+            imageUrl: history.imageUrl,
           })),
         ...data.purchases
           .filter((purchase) => purchase.item.id === historyItemId)
@@ -773,8 +869,16 @@ function PurchaseListView({ data }: { data: Snapshot }) {
             composition: `${purchase.quantity}개`,
             pricePer100: null,
             unitType: null,
+            shippingFee: 0,
+            shippingUnitCount: 1,
+            shippingStatus: null,
+            shippingNote: null,
+            shippingCondition: null,
+            effectiveShippingFee: 0,
+            shippingNeedsConfirmation: false,
             person: purchase.createdByName,
             url: null,
+            imageUrl: null,
           })),
       ].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -788,114 +892,196 @@ function PurchaseListView({ data }: { data: Snapshot }) {
         description="가격비교에서 저장한 품목별 최신 구매 후보를 함께 확인하고 구매 링크를 엽니다."
       />
       <Panel>
-        <select
-          className={`${inputClass} max-w-xs`}
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-        >
-          <option value="ALL">전체 카테고리</option>
-          {categories.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-      </Panel>
-      <Panel className="mt-4 overflow-hidden p-0 lg:p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1500px] text-sm">
-            <thead className="bg-slate-50 text-left text-xs text-slate-500">
-              <tr>
-                <th className="px-4 py-3">품목명</th>
-                <th className="px-4 py-3">카테고리</th>
-                <th className="px-4 py-3">추천 구매처</th>
-                <th className="px-4 py-3">상품명</th>
-                <th className="px-4 py-3">구성</th>
-                <th className="px-4 py-3">배송비 포함 총액</th>
-                <th className="px-4 py-3">개당 가격</th>
-                <th className="px-4 py-3">100ml/g당</th>
-                <th className="px-4 py-3">마지막 업데이트</th>
-                <th className="px-4 py-3">업데이트한 사람</th>
-                <th className="px-4 py-3">작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((candidate) => (
-                <tr key={candidate.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-bold">{candidate.item.name}</td>
-                  <td className="px-4 py-3 text-slate-500">
-                    {candidate.item.category}
-                  </td>
-                  <td className="px-4 py-3 font-semibold">
-                    {candidate.mallName || sourceLabel(candidate.source)}
-                    {candidate.source === "MANUAL" && (
-                      <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">
-                        직접 추가
-                      </span>
-                    )}
-                  </td>
-                  <td className="max-w-sm px-4 py-3">
-                    <p className="line-clamp-2 font-semibold">
-                      {candidate.title}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3">
-                    {formatSavedComposition({
-                      quantity: candidate.quantityPerPack,
-                      unitAmount: candidate.volumePerUnit,
-                      unitType: candidate.volumeUnit,
-                      packageUnit: candidate.packageUnit,
-                    })}
-                  </td>
-                  <td className="px-4 py-3 font-bold">
-                    {money(candidate.totalPrice)}
-                    {candidate.shippingFee > 0 && (
-                      <span className="block text-xs font-normal text-slate-500">
-                        배송비 {money(candidate.shippingFee)} 포함
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">{money(candidate.unitPrice)}</td>
-                  <td className="px-4 py-3">
-                    {candidate.pricePer100 != null &&
-                    (candidate.volumeUnit === "ml" ||
-                      candidate.volumeUnit === "g")
-                      ? `${money(candidate.pricePer100)}/100${candidate.volumeUnit}`
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    {dateTime(candidate.checkedAt)}
-                  </td>
-                  <td className="px-4 py-3">{candidate.savedBy}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className={secondaryButtonClass}
-                        onClick={() => setHistoryItemId(candidate.itemId)}
-                      >
-                        가격변동
-                      </button>
-                      <a
-                        href={candidate.productUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={buttonClass}
-                      >
-                        구매 링크 <ArrowUpRight className="size-4" />
-                      </a>
-                    </div>
-                  </td>
-                </tr>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <label className="w-full max-w-xs text-xs font-semibold text-slate-500">
+            카테고리
+            <select
+              className={`${inputClass} mt-1`}
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+            >
+              <option value="ALL">전체 카테고리</option>
+              {categories.map((value) => (
+                <option key={value}>{value}</option>
               ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length === 0 && (
-          <p className="p-6 text-sm text-slate-500">
-            저장된 구매 후보가 없습니다. 가격비교에서 후보를 구매목록에 저장해
-            주세요.
+            </select>
+          </label>
+          <p className="text-xs text-slate-500">
+            {filtered.length}개 품목의 최신 구매 후보
           </p>
-        )}
+        </div>
       </Panel>
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        {filtered.map((candidate) => {
+          const composition = formatSavedComposition({
+            quantity: candidate.quantityPerPack,
+            unitAmount: candidate.volumePerUnit,
+            unitType: candidate.volumeUnit,
+            packageUnit: candidate.packageUnit,
+          });
+          const pricePer100 =
+            candidate.pricePer100 != null &&
+            (candidate.volumeUnit === "ml" ||
+              candidate.volumeUnit === "g")
+              ? money(candidate.pricePer100)
+              : "-";
+          const unitLabel = candidate.packageUnit || "개";
+          const totalPrice =
+            candidate.totalPriceWithShipping || candidate.totalPrice;
+          const shippingUnitCount = candidate.shippingUnitCount || 1;
+          const effectiveShippingFee =
+            candidate.effectiveShippingFee || candidate.shippingFee;
+          return (
+            <article
+              key={candidate.id}
+              className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+            >
+              <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+                <ProductImage
+                  src={candidate.imageUrl}
+                  alt={`${candidate.title} 상품 이미지`}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-black text-slate-950">
+                          {candidate.item.name}
+                        </h2>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                          {candidate.item.category}
+                        </span>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${sourceBadgeClass(candidate.source)}`}
+                        >
+                          {sourceLabel(candidate.source)}
+                        </span>
+                        {candidate.shippingFee > 0 &&
+                          candidate.shippingStatus === "PAID" && (
+                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                              배송비 {shippingUnitCount}개마다 부과
+                            </span>
+                          )}
+                        {candidate.shippingStatus === "FREE" && (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                            무료배송
+                          </span>
+                        )}
+                        {candidate.shippingStatus === "UNKNOWN" && (
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                            배송비 확인 필요
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {candidate.mallName || sourceLabel(candidate.source)}
+                      </p>
+                    </div>
+                    <time className="shrink-0 text-xs text-slate-500">
+                      {dateTime(candidate.checkedAt)}
+                    </time>
+                  </div>
+
+                  <p className="mt-4 line-clamp-3 min-h-[3.75rem] break-words text-sm font-bold leading-5 text-slate-800">
+                    {candidate.title}
+                  </p>
+
+                  <div className="mt-4 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-[11px] font-semibold text-slate-500">
+                        배송비 포함 총액
+                      </p>
+                      <strong className="mt-1 block text-base text-slate-950">
+                    {money(totalPrice)}
+                      </strong>
+                      {candidate.shippingFee > 0 && (
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                      배송비 {money(candidate.shippingFee)} 포함
+                    </span>
+                  )}
+                  {candidate.shippingFee > 0 && (
+                    <span className="mt-0.5 block text-[10px] text-slate-500">
+                      {shippingUnitCount}개마다 · 반영{" "}
+                      {money(effectiveShippingFee)}
+                    </span>
+                  )}
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-[11px] font-semibold text-slate-500">
+                        {unitLabel}당 가격
+                      </p>
+                      <strong className="mt-1 block text-base text-slate-950">
+                        {money(candidate.unitPrice)}
+                      </strong>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-[11px] font-semibold text-slate-500">
+                        100{candidate.volumeUnit || "ml/g"}당
+                      </p>
+                      <strong className="mt-1 block text-base text-slate-950">
+                        {pricePer100}
+                      </strong>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-[11px] font-semibold text-slate-500">
+                        구성
+                      </p>
+                      <strong className="mt-1 block break-words text-sm text-slate-950">
+                        {composition}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-1 border-t border-slate-100 pt-4 text-xs text-slate-500 sm:grid-cols-2">
+                    <p>
+                      업데이트{" "}
+                      <strong className="text-slate-700">
+                        {candidate.savedBy}
+                      </strong>
+                    </p>
+                    <p className="sm:text-right">
+                      최근 저장일{" "}
+                      <strong className="text-slate-700">
+                        {dateTime(candidate.checkedAt)}
+                      </strong>
+                    </p>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <a
+                      href={candidate.productUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={buttonClass}
+                    >
+                      구매 링크 열기 <ArrowUpRight className="size-4" />
+                    </a>
+                    <button
+                      type="button"
+                      className={`${secondaryButtonClass} h-10`}
+                      onClick={() => setHistoryItemId(candidate.itemId)}
+                    >
+                      가격변동
+                    </button>
+                    <a
+                      href={`/operations/neworder/price-compare?itemId=${encodeURIComponent(candidate.itemId)}`}
+                      className={`${secondaryButtonClass} h-10`}
+                    >
+                      가격비교 다시하기
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {filtered.length === 0 && (
+        <Panel className="mt-4 text-sm text-slate-500">
+          저장된 구매 후보가 없습니다. 가격비교에서 후보를 구매목록에 저장해
+          주세요.
+        </Panel>
+      )}
       {historyItemId && (
         <div
           className="fixed inset-0 z-50 flex justify-end bg-slate-950/40"
@@ -927,40 +1113,69 @@ function PurchaseListView({ data }: { data: Snapshot }) {
                   key={row.id}
                   className="rounded-2xl border border-slate-200 p-4"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <strong>
-                      {new Date(row.date).toLocaleDateString("ko-KR")} ·{" "}
-                      {row.source}
-                    </strong>
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-bold ${
-                        row.type === "구매"
-                          ? "bg-blue-50 text-blue-700"
-                          : "bg-emerald-50 text-emerald-700"
-                      }`}
-                    >
-                      {row.type}
-                    </span>
+                  <div className="flex items-start gap-3">
+                    <ProductImage
+                      src={row.imageUrl}
+                      alt={`${row.source} 저장 상품 이미지`}
+                      compact
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <strong>
+                          {new Date(row.date).toLocaleDateString("ko-KR")} ·{" "}
+                          {row.source}
+                        </strong>
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-bold ${
+                            row.type === "구매"
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          {row.type}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {money(row.totalPrice)} · {row.composition}
+                        {row.pricePer100 != null && row.unitType
+                          ? ` · 100${row.unitType}당 ${money(row.pricePer100)}`
+                          : ""}
+                      </p>
+                      {row.shippingFee > 0 && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          배송비 {money(row.shippingFee)} /{" "}
+                          {row.shippingUnitCount}개마다 · 반영 배송비{" "}
+                          {money(row.effectiveShippingFee)}
+                        </p>
+                      )}
+                      {row.shippingStatus === "FREE" && (
+                        <span className="mt-2 inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                          무료배송
+                        </span>
+                      )}
+                      {row.shippingStatus === "UNKNOWN" && (
+                        <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                          배송비 확인 필요
+                        </span>
+                      )}
+                      {row.person && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {row.person}
+                        </p>
+                      )}
+                      {row.url && (
+                        <a
+                          href={row.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-emerald-700"
+                        >
+                          저장 링크 열기{" "}
+                          <ArrowUpRight className="size-4" />
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {money(row.totalPrice)} · {row.composition}
-                    {row.pricePer100 != null && row.unitType
-                      ? ` · 100${row.unitType}당 ${money(row.pricePer100)}`
-                      : ""}
-                  </p>
-                  {row.person && (
-                    <p className="mt-1 text-xs text-slate-500">{row.person}</p>
-                  )}
-                  {row.url && (
-                    <a
-                      href={row.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-emerald-700"
-                    >
-                      저장 링크 열기 <ArrowUpRight className="size-4" />
-                    </a>
-                  )}
                 </div>
               ))}
               {historyRows.length === 0 && (
@@ -1745,6 +1960,7 @@ function PriceCompareView({
   data,
   saving,
   mutate,
+  initialItemId,
 }: {
   data: Snapshot;
   saving: boolean;
@@ -1752,9 +1968,11 @@ function PriceCompareView({
     payload: Record<string, unknown>,
     successMessage: string
   ) => Promise<boolean>;
+  initialItemId: string;
 }) {
   const activeItems = data.items.filter((item) => item.isActive);
-  const initialItem = activeItems[0];
+  const initialItem =
+    activeItems.find((item) => item.id === initialItemId) ?? activeItems[0];
   const [itemId, setItemId] = useState(initialItem?.id || "");
   const [directQuery, setDirectQuery] = useState("");
   const [searchedDirectQuery, setSearchedDirectQuery] = useState("");
@@ -1796,6 +2014,10 @@ function PriceCompareView({
         Number(b.candidate.passesRequired !== false) -
         Number(a.candidate.passesRequired !== false);
       if (requiredDiff) return requiredDiff;
+      const shippingDiff =
+        Number(a.candidate.shippingStatus === "UNKNOWN") -
+        Number(b.candidate.shippingStatus === "UNKNOWN");
+      if (shippingDiff) return shippingDiff;
       const priceDiff = comparePriceMetrics(
         a.metrics,
         b.metrics,
@@ -1820,6 +2042,7 @@ function PriceCompareView({
       sortedCandidates.find(
         (entry) =>
           entry.candidate.passesRequired !== false &&
+          entry.candidate.shippingStatus !== "UNKNOWN" &&
           priceSortValue(entry.metrics, sort, recentUnitPrice) != null
       ),
     [recentUnitPrice, sort, sortedCandidates]
@@ -1829,6 +2052,13 @@ function PriceCompareView({
     const query = directQuery.trim();
     if (!query && !itemId) return;
     setSearching(true);
+    setCandidates((rows) =>
+      rows.map((candidate) =>
+        candidate.source === "NAVER"
+          ? { ...candidate, shippingEnrichmentStatus: "CHECKING" }
+          : candidate
+      )
+    );
     setNotice(null);
     setSearchError(null);
     try {
@@ -1919,6 +2149,13 @@ function PriceCompareView({
           : payload.warning ?? null
       );
     } catch (cause) {
+      setCandidates((rows) =>
+        rows.map((candidate) =>
+          candidate.shippingEnrichmentStatus === "CHECKING"
+            ? { ...candidate, shippingEnrichmentStatus: "FAILED" }
+            : candidate
+        )
+      );
       if (process.env.NODE_ENV === "development") {
         console.warn("[neworder/price-search] 요청 실패", {
           reason: cause instanceof Error ? cause.message : String(cause),
@@ -1991,10 +2228,20 @@ function PriceCompareView({
     const title = String(form.get("title") || "").trim();
     const itemPrice = Number(form.get("itemPrice")) || 0;
     const shippingFee = Number(form.get("shippingFee")) || 0;
+    const shippingUnitCount = Math.max(
+      1,
+      Number(form.get("shippingUnitCount")) || 1
+    );
+    const shippingStatus = String(form.get("shippingStatus") || "UNKNOWN") as
+      | "FREE"
+      | "PAID"
+      | "UNKNOWN";
     const titleMetrics = calculatePriceMetrics({
       title,
       itemPrice,
       shippingFee,
+      shippingUnitCount,
+      shippingStatus,
     });
     const candidate: SearchCandidate = {
       source,
@@ -2005,6 +2252,20 @@ function PriceCompareView({
         String(form.get("mallName") || "").trim() || sourceLabel(source),
       itemPrice,
       shippingFee,
+      shippingUnitCount,
+      shippingStatus,
+      shippingNote:
+        shippingStatus === "UNKNOWN"
+          ? "배송비를 직접 확인해 주세요."
+          : null,
+      shippingCondition:
+        shippingStatus === "PAID"
+          ? `배송비 ${shippingFee.toLocaleString("ko-KR")}원 / ${shippingUnitCount}개마다 부과`
+          : shippingStatus === "FREE"
+            ? "무료배송"
+            : null,
+      shippingNeedsConfirmation: shippingStatus === "UNKNOWN",
+      effectiveShippingFee: titleMetrics.effectiveShippingFee,
       quantityPerPack: form.get("quantityPerPack")
         ? Math.max(1, Number(form.get("quantityPerPack")) || 1)
         : titleMetrics.unitCount,
@@ -2196,6 +2457,15 @@ function PriceCompareView({
               placeholder="상품명"
               required
             />
+            <select
+              className={inputClass}
+              name="shippingStatus"
+              defaultValue="UNKNOWN"
+            >
+              <option value="UNKNOWN">배송비 확인 필요</option>
+              <option value="PAID">유료배송</option>
+              <option value="FREE">무료배송</option>
+            </select>
             <input
               className={inputClass}
               name="productUrl"
@@ -2230,6 +2500,15 @@ function PriceCompareView({
               min="0"
               defaultValue="0"
               placeholder="배송비"
+              required
+            />
+            <input
+              className={inputClass}
+              name="shippingUnitCount"
+              type="number"
+              min="1"
+              defaultValue="1"
+              placeholder="배송비 부과 기준 수량"
               required
             />
             <input
@@ -2338,10 +2617,35 @@ function PriceCompareView({
                         {candidate.matchedKeyword}
                       </span>
                     )}
+                    {candidate.shippingEnrichmentStatus === "CHECKING" && (
+                      <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+                        배송비 확인 중
+                      </span>
+                    )}
+                    {candidate.shippingFee > 0 &&
+                      candidate.shippingEnrichmentStatus !== "CHECKING" &&
+                      candidate.shippingStatus === "PAID" &&
+                      candidate.shippingUnitCount > 1 && (
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700">
+                          배송비 {candidate.shippingUnitCount}개마다 부과
+                        </span>
+                      )}
+                    {candidate.shippingEnrichmentStatus !== "CHECKING" &&
+                      candidate.shippingStatus === "FREE" && (
+                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">
+                        무료배송
+                      </span>
+                    )}
+                    {candidate.shippingEnrichmentStatus !== "CHECKING" &&
+                      candidate.shippingStatus === "UNKNOWN" && (
+                      <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700">
+                        배송비 확인 필요
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-              <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-5">
+              <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-6">
                 <label className="text-xs font-semibold text-slate-500">
                   상품가
                   <input
@@ -2357,7 +2661,7 @@ function PriceCompareView({
                   />
                 </label>
                 <label className="text-xs font-semibold text-slate-500">
-                  배송비
+                  기본 배송비
                   <input
                     className={`${inputClass} mt-1`}
                     type="number"
@@ -2366,9 +2670,63 @@ function PriceCompareView({
                     onChange={(event) =>
                       updateCandidate(originalIndex, {
                         shippingFee: Number(event.target.value) || 0,
+                        shippingStatus:
+                          Number(event.target.value) > 0 ? "PAID" : "UNKNOWN",
+                        shippingNeedsConfirmation:
+                          Number(event.target.value) <= 0,
                       })
                     }
                   />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">
+                  배송 상태
+                  <select
+                    className={`${inputClass} mt-1`}
+                    value={candidate.shippingStatus}
+                    onChange={(event) => {
+                      const shippingStatus = event.target.value as
+                        | "FREE"
+                        | "PAID"
+                        | "UNKNOWN";
+                      updateCandidate(originalIndex, {
+                        shippingStatus,
+                        shippingFee:
+                          shippingStatus === "FREE"
+                            ? 0
+                            : candidate.shippingFee,
+                        shippingNeedsConfirmation:
+                          shippingStatus === "UNKNOWN",
+                      });
+                    }}
+                  >
+                    <option value="UNKNOWN">확인 필요</option>
+                    <option value="PAID">유료배송</option>
+                    <option value="FREE">무료배송</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-500">
+                  배송비 부과 기준
+                  <input
+                    className={`${inputClass} mt-1`}
+                    type="number"
+                    min="1"
+                    value={candidate.shippingUnitCount || 1}
+                    onChange={(event) =>
+                      updateCandidate(originalIndex, {
+                        shippingUnitCount: Math.max(
+                          1,
+                          Number(event.target.value) || 1
+                        ),
+                        shippingStatus:
+                          candidate.shippingFee > 0 ? "PAID" : "UNKNOWN",
+                        shippingNeedsConfirmation:
+                          candidate.shippingFee <= 0,
+                      })
+                    }
+                  />
+                  <span className="mt-1 block text-[10px] font-normal">
+                    개마다
+                  </span>
                 </label>
                 <label className="text-xs font-semibold text-slate-500">
                   묶음 수량
@@ -2422,7 +2780,11 @@ function PriceCompareView({
                   </select>
                 </label>
               </div>
-              <PriceCalculationSummary metrics={metrics} diff={diff} />
+              <PriceCalculationSummary
+                metrics={metrics}
+                diff={diff}
+                shippingStatus={candidate.shippingStatus}
+              />
               {recommendationReason && (
                 <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold leading-5 text-emerald-800">
                   {recommendationReason}
@@ -2607,9 +2969,11 @@ function PriceCompareView({
 function PriceCalculationSummary({
   metrics,
   diff,
+  shippingStatus,
 }: {
   metrics: PriceMetrics;
   diff: number | null;
+  shippingStatus: "FREE" | "PAID" | "UNKNOWN";
 }) {
   const volumeLabel =
     metrics.pricePer100 != null && metrics.volumeUnit
@@ -2622,12 +2986,27 @@ function PriceCalculationSummary({
   return (
     <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-sm lg:grid-cols-4">
       <div>
-        <p className="text-xs text-slate-500">배송비 포함 총액</p>
-        <strong className="text-base">{money(metrics.totalPrice)}</strong>
+        <p className="text-xs text-slate-500">상품가</p>
+        <strong>{money(metrics.productPrice)}</strong>
       </div>
       <div>
-        <p className="text-xs text-slate-500">구성</p>
-        <strong>{formatComposition(metrics)}</strong>
+        <p className="text-xs text-slate-500">기본 배송비</p>
+        <strong>{money(metrics.shippingFee)}</strong>
+        <span className="block text-[10px] text-slate-500">
+          {shippingStatus === "FREE"
+            ? "무료배송 확인됨"
+            : shippingStatus === "UNKNOWN"
+              ? "배송비 확인 필요"
+              : `${metrics.shippingUnitCount}개마다`}
+        </span>
+      </div>
+      <div>
+        <p className="text-xs text-slate-500">반영 배송비</p>
+        <strong>{money(metrics.effectiveShippingFee)}</strong>
+      </div>
+      <div>
+        <p className="text-xs text-slate-500">배송비 포함 총액</p>
+        <strong className="text-base">{money(metrics.totalPrice)}</strong>
       </div>
       <div>
         <p className="text-xs text-slate-500">
@@ -2638,6 +3017,10 @@ function PriceCalculationSummary({
       <div>
         <p className="text-xs text-slate-500">{volumeLabel || "용량 기준 단가"}</p>
         <strong>{volumePrice == null ? "-" : money(volumePrice)}</strong>
+      </div>
+      <div>
+        <p className="text-xs text-slate-500">구성</p>
+        <strong>{formatComposition(metrics)}</strong>
       </div>
       <span className="sr-only">
         최근 구매가 대비 {diff == null ? "비교 없음" : `${diff.toFixed(1)}%`}

@@ -6,6 +6,10 @@ export type ParsedProductSpec = {
 };
 
 export type PriceMetrics = ParsedProductSpec & {
+  productPrice: number;
+  shippingFee: number;
+  shippingUnitCount: number;
+  effectiveShippingFee: number;
   totalPrice: number;
   unitPrice: number;
   totalVolume: number | null;
@@ -13,10 +17,15 @@ export type PriceMetrics = ParsedProductSpec & {
   pricePerMeasure: number | null;
 };
 
+export type ShippingStatus = "FREE" | "PAID" | "UNKNOWN";
+
 export type PriceCandidateLike = {
   title: string;
   itemPrice: number;
   shippingFee: number;
+  shippingUnitCount?: number;
+  shippingStatus?: ShippingStatus;
+  shippingNeedsConfirmation?: boolean;
   quantityPerPack?: number;
   volumePerUnit?: number | null;
   volumeUnit?: string | null;
@@ -103,9 +112,25 @@ export function calculatePriceMetrics(
       ? candidate.volumeUnit
       : parsed.volumeUnit;
   const packageUnit = candidate.packageUnit?.trim() || parsed.packageUnit;
-  const totalPrice =
-    Math.max(0, Number(candidate.itemPrice) || 0) +
-    Math.max(0, Number(candidate.shippingFee) || 0);
+  const productPrice = Math.max(0, Number(candidate.itemPrice) || 0);
+  const shippingFee = Math.max(0, Number(candidate.shippingFee) || 0);
+  const shippingUnitCount = Math.round(
+    positiveNumber(candidate.shippingUnitCount, 1)
+  );
+  const shippingStatus =
+    candidate.shippingStatus ??
+    (candidate.shippingNeedsConfirmation
+      ? "UNKNOWN"
+      : shippingFee > 0
+        ? "PAID"
+        : "FREE");
+  const effectiveShippingFee =
+    shippingStatus === "PAID" && shippingFee > 0
+      ? shippingUnitCount > 1
+        ? shippingFee * Math.ceil(unitCount / shippingUnitCount)
+        : shippingFee
+      : 0;
+  const totalPrice = productPrice + effectiveShippingFee;
   const totalVolume =
     volumePerUnit && volumeUnit ? volumePerUnit * unitCount : null;
 
@@ -114,6 +139,10 @@ export function calculatePriceMetrics(
     packageUnit,
     volumePerUnit,
     volumeUnit,
+    productPrice,
+    shippingFee,
+    shippingUnitCount,
+    effectiveShippingFee,
     totalPrice,
     unitPrice: totalPrice / unitCount,
     totalVolume,
@@ -123,6 +152,67 @@ export function calculatePriceMetrics(
         : null,
     pricePerMeasure:
       totalVolume && volumeUnit === "매" ? totalPrice / totalVolume : null,
+  };
+}
+
+export type ParsedShippingCondition = {
+  shippingFee: number;
+  shippingUnitCount: number;
+  shippingStatus: ShippingStatus;
+  shippingNote: string | null;
+  shippingCondition: string | null;
+  shippingNeedsConfirmation: boolean;
+};
+
+export function parseShippingCondition(
+  value: unknown,
+  fallbackFee = 0
+): ParsedShippingCondition {
+  const text = String(value ?? "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/무료\s*배송|배송비\s*무료/.test(text)) {
+    return {
+      shippingFee: 0,
+      shippingUnitCount: 1,
+      shippingStatus: "FREE",
+      shippingNote: text || "무료배송",
+      shippingCondition: text || "무료배송",
+      shippingNeedsConfirmation: false,
+    };
+  }
+
+  const feeMatch = text.match(
+    /(?:배송비|배송료|운임)[^\d]{0,12}(\d{2,})\s*원?/
+  );
+  const unitMatch =
+    text.match(/(\d+)\s*개\s*(?:마다|당)[^)]{0,12}(?:부과|발생|배송)/) ??
+    text.match(/(?:수량별|묶음)\s*배송[^\d]{0,12}(\d+)\s*개/);
+  const shippingFee = feeMatch ? Number(feeMatch[1]) : Math.max(0, fallbackFee);
+  const shippingUnitCount = unitMatch
+    ? Math.max(1, Number(unitMatch[1]) || 1)
+    : 1;
+  const ambiguous = /묶음\s*배송|수량별\s*배송/.test(text) && !unitMatch;
+  const hasFallbackFee = Number(fallbackFee) > 0;
+  const hasKnownCondition =
+    /무료\s*배송|배송비\s*무료/.test(text) ||
+    Boolean(unitMatch) ||
+    Boolean(feeMatch && !ambiguous) ||
+    hasFallbackFee;
+
+  const shippingStatus: ShippingStatus =
+    shippingFee > 0 && hasKnownCondition ? "PAID" : "UNKNOWN";
+  return {
+    shippingFee,
+    shippingUnitCount,
+    shippingStatus,
+    shippingNote:
+      shippingStatus === "UNKNOWN"
+        ? text || "배송비 정보를 자동으로 확인하지 못했습니다."
+        : text || null,
+    shippingCondition: text || null,
+    shippingNeedsConfirmation: shippingStatus === "UNKNOWN",
   };
 }
 

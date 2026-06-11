@@ -49,17 +49,83 @@ async function backfillLegacyPriceCandidates() {
             candidate.createdBy ||
             "system"
           : candidate.savedBy;
+      const needsShippingBackfill =
+        candidate.productPrice === 0 &&
+        candidate.totalPriceWithShipping === 0;
+      const shippingStatus =
+        candidate.shippingStatus === "UNKNOWN" &&
+        /무료\s*배송|배송비\s*무료/.test(candidate.shippingCondition ?? "")
+          ? "FREE"
+          : candidate.shippingStatus === "UNKNOWN" && candidate.shippingFee > 0
+            ? "PAID"
+            : candidate.shippingStatus;
+      const productPrice = candidate.productPrice || candidate.itemPrice;
+      const bundleQuantity =
+        candidate.bundleQuantity || candidate.quantityPerPack || 1;
+      const shippingUnitCount = candidate.shippingUnitCount || 1;
+      const effectiveShippingFee =
+        shippingStatus === "PAID" && candidate.shippingFee > 0
+          ? shippingUnitCount > 1
+            ? candidate.shippingFee *
+              Math.ceil(bundleQuantity / shippingUnitCount)
+            : candidate.shippingFee
+          : 0;
+      const totalPriceWithShipping = productPrice + effectiveShippingFee;
+      const shippingBackfill = needsShippingBackfill
+        ? {
+            productPrice,
+            shippingUnitCount,
+            shippingStatus,
+            shippingNeedsConfirmation: shippingStatus === "UNKNOWN",
+            effectiveShippingFee,
+            totalPrice: totalPriceWithShipping,
+            totalPriceWithShipping,
+            bundleQuantity,
+          }
+        : {};
+      const needsShippingRecalculation =
+        candidate.effectiveShippingFee !== effectiveShippingFee ||
+        candidate.totalPriceWithShipping !== totalPriceWithShipping ||
+        candidate.totalPrice !== totalPriceWithShipping;
 
       if (
         mallName !== candidate.mallName ||
-        savedBy !== candidate.savedBy
+        savedBy !== candidate.savedBy ||
+        shippingStatus !== candidate.shippingStatus ||
+        needsShippingBackfill ||
+        needsShippingRecalculation
       ) {
         await tx.newOrderPriceCandidate.update({
           where: { id: candidate.id },
-          data: { mallName, savedBy },
+          data: {
+            mallName,
+            savedBy,
+            shippingStatus,
+            shippingNeedsConfirmation: shippingStatus === "UNKNOWN",
+            effectiveShippingFee,
+            totalPrice: totalPriceWithShipping,
+            totalPriceWithShipping,
+            ...shippingBackfill,
+          },
         });
       }
 
+      const shippingNeedsConfirmation =
+        shippingStatus === "UNKNOWN";
+      const historyShippingData = {
+        productPrice,
+        shippingFee: candidate.shippingFee,
+        shippingUnitCount,
+        shippingStatus,
+        shippingNote: candidate.shippingNote,
+        shippingCondition: candidate.shippingCondition,
+        shippingNeedsConfirmation,
+        effectiveShippingFee,
+        totalPrice: totalPriceWithShipping,
+        totalPriceWithShipping,
+        quantity: candidate.quantityPerPack,
+        bundleQuantity,
+      };
       await tx.newOrderPriceHistory.upsert({
         where: { id: `history_${candidate.id}` },
         create: {
@@ -71,9 +137,7 @@ async function backfillLegacyPriceCandidates() {
           productUrl: candidate.productUrl,
           imageUrl: candidate.imageUrl,
           itemPrice: candidate.itemPrice,
-          shippingFee: candidate.shippingFee,
-          totalPrice: candidate.totalPrice,
-          quantity: candidate.quantityPerPack,
+          ...historyShippingData,
           unitAmount: candidate.volumePerUnit,
           unitType: candidate.volumeUnit,
           packageUnit: candidate.packageUnit,
@@ -83,7 +147,7 @@ async function backfillLegacyPriceCandidates() {
           createdBy: savedBy,
           createdAt: candidate.checkedAt,
         },
-        update: {},
+        update: historyShippingData,
       });
     }
 

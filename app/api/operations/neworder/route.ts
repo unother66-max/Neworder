@@ -291,6 +291,18 @@ export async function POST(request: Request) {
       const mallName = text(body.mallName, 120) || "기타";
       const itemPrice = integer(body.itemPrice, 0);
       const shippingFee = integer(body.shippingFee, 0);
+      const shippingUnitCount = integer(body.shippingUnitCount, 1);
+      const shippingStatus =
+        body.shippingStatus === "FREE" ||
+        body.shippingStatus === "PAID" ||
+        body.shippingStatus === "UNKNOWN"
+          ? body.shippingStatus
+          : shippingFee && shippingFee > 0
+            ? "PAID"
+            : "UNKNOWN";
+      const shippingNote = text(body.shippingNote, 500) || null;
+      const shippingCondition = text(body.shippingCondition, 500) || null;
+      const shippingNeedsConfirmation = shippingStatus === "UNKNOWN";
       const quantityPerPack = integer(body.quantityPerPack, 1);
       const volumePerUnit =
         body.volumePerUnit == null || body.volumePerUnit === ""
@@ -311,6 +323,7 @@ export async function POST(request: Request) {
         !productUrl ||
         itemPrice === null ||
         shippingFee === null ||
+        shippingUnitCount === null ||
         quantityPerPack === null
       ) {
         return error("가격 후보 정보를 확인해 주세요.");
@@ -319,6 +332,9 @@ export async function POST(request: Request) {
         title,
         itemPrice,
         shippingFee,
+        shippingUnitCount,
+        shippingStatus,
+        shippingNeedsConfirmation,
         quantityPerPack,
         volumePerUnit:
           volumePerUnit != null && Number.isFinite(volumePerUnit)
@@ -373,9 +389,18 @@ export async function POST(request: Request) {
             productUrl,
             imageUrl,
             itemPrice,
+            productPrice: metrics.productPrice,
             shippingFee,
-            totalPrice: metrics.totalPrice,
+            shippingUnitCount: metrics.shippingUnitCount,
+            shippingStatus,
+            shippingNote,
+            shippingCondition,
+            shippingNeedsConfirmation,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
             quantityPerPack: metrics.unitCount,
+            bundleQuantity: metrics.unitCount,
             unitPrice: metrics.unitPrice,
             volumePerUnit: metrics.volumePerUnit,
             volumeUnit: metrics.volumeUnit,
@@ -397,9 +422,18 @@ export async function POST(request: Request) {
             productUrl,
             imageUrl,
             itemPrice,
+            productPrice: metrics.productPrice,
             shippingFee,
-            totalPrice: metrics.totalPrice,
+            shippingUnitCount: metrics.shippingUnitCount,
+            shippingStatus,
+            shippingNote,
+            shippingCondition,
+            shippingNeedsConfirmation,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
             quantity: metrics.unitCount,
+            bundleQuantity: metrics.unitCount,
             unitAmount: metrics.volumePerUnit,
             unitType: metrics.volumeUnit,
             packageUnit: metrics.packageUnit,

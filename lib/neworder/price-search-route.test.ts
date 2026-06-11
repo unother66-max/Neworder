@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getNewOrderAccess: vi.fn(),
   findUnique: vi.fn(),
   calculatePriceMetrics: vi.fn(),
+  parseShippingCondition: vi.fn(),
 }));
 
 vi.mock("@/lib/neworder/auth", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/neworder/price-analysis", () => ({
   calculatePriceMetrics: mocks.calculatePriceMetrics,
   getRecommendationMetric: vi.fn(() => "pricePer100"),
+  parseShippingCondition: mocks.parseShippingCondition,
   metricValue: vi.fn(
     (metrics: { pricePer100: number | null; unitPrice: number }) =>
       metrics.pricePer100 ?? metrics.unitPrice
@@ -61,6 +63,14 @@ describe("NewOrder price search route", () => {
     vi.stubEnv("NAVER_CLIENT_SECRET", "client-secret");
     mocks.getNewOrderAccess.mockResolvedValue({ operator: { id: "operator-1" } });
     mocks.findUnique.mockResolvedValue(item);
+    mocks.parseShippingCondition.mockReturnValue({
+      shippingFee: 0,
+      shippingUnitCount: 1,
+      shippingStatus: "UNKNOWN",
+      shippingNote: "배송비 정보를 자동으로 확인하지 못했습니다.",
+      shippingCondition: null,
+      shippingNeedsConfirmation: true,
+    });
     mocks.calculatePriceMetrics.mockReturnValue({
       unitCount: 1,
       packageUnit: "개",
@@ -198,6 +208,146 @@ describe("NewOrder price search route", () => {
       ok: true,
       candidates: [],
       message: null,
+    });
+  });
+
+  it("네이버 배송비 부과 기준과 반영 배송비를 후보에 포함한다", async () => {
+    mocks.parseShippingCondition.mockReturnValue({
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+      shippingNote: "배송비 2,500원 (10개마다 부과)",
+      shippingCondition: "배송비 2,500원 (10개마다 부과)",
+      shippingNeedsConfirmation: false,
+    });
+    mocks.calculatePriceMetrics.mockReturnValue({
+      unitCount: 6,
+      packageUnit: "개",
+      volumePerUnit: 2000,
+      volumeUnit: "g",
+      productPrice: 38040,
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      effectiveShippingFee: 2500,
+      totalPrice: 40540,
+      unitPrice: 6756.666666666667,
+      totalVolume: 12000,
+      pricePer100: 329.5,
+      pricePerMeasure: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                title: "올리타리아 소스 2kg × 6개",
+                link: "https://shopping.example/shipping",
+                productId: "shipping",
+                lprice: "38040",
+                deliveryFeeContent: "배송비 2,500원 (10개마다 부과)",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    const response = await GET(request());
+    const data = await response.json();
+
+    expect(data.candidates[0]).toMatchObject({
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+      effectiveShippingFee: 2500,
+      shippingNeedsConfirmation: false,
+      unitPrice: 6756.666666666667,
+      pricePer100: 329.5,
+    });
+  });
+
+  it("네이버 상세 JSON의 배송비를 검색 후보에 자동 반영한다", async () => {
+    mocks.parseShippingCondition.mockImplementation((value: unknown) => {
+      const text = String(value ?? "");
+      return text.includes("2500") && text.includes("10개마다")
+        ? {
+            shippingFee: 2500,
+            shippingUnitCount: 10,
+            shippingStatus: "PAID",
+            shippingNote: "평균 3일 이내 도착 확률 86%",
+            shippingCondition: "배송비 2,500원 / 10개마다 부과",
+            shippingNeedsConfirmation: false,
+          }
+        : {
+            shippingFee: 0,
+            shippingUnitCount: 1,
+            shippingStatus: "UNKNOWN",
+            shippingNote: "배송비 정보를 자동으로 확인하지 못했습니다.",
+            shippingCondition: null,
+            shippingNeedsConfirmation: true,
+          };
+    });
+    mocks.calculatePriceMetrics.mockReturnValue({
+      unitCount: 10,
+      packageUnit: "개",
+      volumePerUnit: 567,
+      volumeUnit: "g",
+      productPrice: 20300,
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      effectiveShippingFee: 2500,
+      totalPrice: 22800,
+      unitPrice: 2280,
+      totalVolume: 5670,
+      pricePer100: 402.1164021164021,
+      pricePerMeasure: null,
+    });
+    const searchResponse = new Response(
+      JSON.stringify({
+        items: [
+          {
+            title: "올리타리아 코스트코 베이컨 크럼블 567g 10개",
+            link: "https://smartstore.naver.com/example/products/1",
+            productId: "bacon",
+            lprice: "20300",
+          },
+        ],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+    const detailResponse = new Response(
+      `<script id="__NEXT_DATA__" type="application/json">
+        {"props":{"pageProps":{"product":{"delivery":{
+          "deliveryFee":2500,
+          "repeatQuantity":10,
+          "notice":"평균 3일 이내 도착 확률 86%"
+        }}}}}
+      </script>`,
+      { status: 200, headers: { "Content-Type": "text/html" } }
+    );
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) =>
+      String(input).includes("openapi.naver.com")
+        ? Promise.resolve(searchResponse.clone())
+        : Promise.resolve(detailResponse.clone())
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(request());
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(data.candidates[0]).toMatchObject({
+      shippingFee: 2500,
+      shippingUnitCount: 10,
+      shippingStatus: "PAID",
+      shippingEnrichmentStatus: "COMPLETED",
+      effectiveShippingFee: 2500,
+      totalPriceWithShipping: 22800,
+      unitPrice: 2280,
     });
   });
 

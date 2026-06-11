@@ -3,10 +3,17 @@ import { NextResponse } from "next/server";
 import { getNewOrderAccess } from "@/lib/neworder/auth";
 import { normalizeStringArray } from "@/lib/neworder/item-keywords";
 import {
+  enrichNaverShipping,
+  enrichNaverShippingCandidates,
+  type NaverShippingEnrichment,
+} from "@/lib/neworder/naver-shipping";
+import {
   calculatePriceMetrics,
   getRecommendationMetric,
   metricValue,
+  parseShippingCondition,
   type PriceMetrics,
+  type ShippingStatus,
 } from "@/lib/neworder/price-analysis";
 import {
   compareKeywordMatches,
@@ -24,6 +31,15 @@ type NaverShopItem = {
   lprice?: string;
   mallName?: string;
   productId?: string;
+  shippingFee?: string | number;
+  deliveryFee?: string | number;
+  deliveryFeeContent?: string;
+  shippingInfo?: string;
+};
+
+type NaverCandidate = NaverShopItem & {
+  matchedKeyword: string;
+  shippingEnrichment?: NaverShippingEnrichment;
 };
 
 type ResponseContext = {
@@ -98,6 +114,10 @@ function fallbackMetrics(itemPrice: number, shippingFee: number): PriceMetrics {
     packageUnit: "개",
     volumePerUnit: null,
     volumeUnit: null,
+    productPrice: Math.max(0, Number(itemPrice) || 0),
+    shippingFee: Math.max(0, Number(shippingFee) || 0),
+    shippingUnitCount: 1,
+    effectiveShippingFee: Math.max(0, Number(shippingFee) || 0),
     totalPrice,
     unitPrice: totalPrice,
     totalVolume: null,
@@ -109,10 +129,20 @@ function fallbackMetrics(itemPrice: number, shippingFee: number): PriceMetrics {
 function safePriceMetrics(
   title: string,
   itemPrice: number,
-  shippingFee: number
+  shippingFee: number,
+  shippingUnitCount = 1,
+  shippingNeedsConfirmation = false,
+  shippingStatus: ShippingStatus = "UNKNOWN"
 ): PriceMetrics {
   try {
-    return calculatePriceMetrics({ title, itemPrice, shippingFee });
+    return calculatePriceMetrics({
+      title,
+      itemPrice,
+      shippingFee,
+      shippingUnitCount,
+      shippingNeedsConfirmation,
+      shippingStatus,
+    });
   } catch (cause) {
     console.warn("[neworder/price-search] 상품 규격 분석 실패", {
       title,
@@ -266,10 +296,7 @@ export async function GET(request: Request) {
       })
     );
 
-    const merged = new Map<
-      string,
-      NaverShopItem & { matchedKeyword: string }
-    >();
+    const merged = new Map<string, NaverCandidate>();
     const failedKeywords: string[] = [];
     for (const result of results) {
       if (result.status === "rejected") {
@@ -309,13 +336,46 @@ export async function GET(request: Request) {
       preferredKeywords,
       excludedKeywords,
     };
-    const candidates = [...merged.values()]
+    const mergedCandidates = [...merged.values()];
+    const detailTargets = mergedCandidates
+      .filter((candidate) => {
+        const title = stripHtml(candidate.title ?? "");
+        const keywordMatch = matchProductKeywords(title, rules);
+        return keywordMatch.passesRequired && keywordMatch.passesExcluded;
+      })
+      .slice(0, 15);
+    await enrichNaverShippingCandidates(
+      detailTargets,
+      async (candidate) => {
+        candidate.shippingEnrichment = await enrichNaverShipping(candidate);
+      },
+      3
+    );
+
+    const candidates = mergedCandidates
       .map((candidate) => {
         const title = stripHtml(
           candidate.title ?? (directSearch ? directQuery : item?.name ?? "")
         );
         const itemPrice = Number(candidate.lprice) || 0;
-        const metrics = safePriceMetrics(title, itemPrice, 0);
+        const rawShippingFee =
+          Number(candidate.shippingFee ?? candidate.deliveryFee) || 0;
+        const shipping =
+          candidate.shippingEnrichment ??
+          parseShippingCondition(
+            [candidate.deliveryFeeContent, candidate.shippingInfo]
+              .filter(Boolean)
+              .join(" "),
+            rawShippingFee
+          );
+        const metrics = safePriceMetrics(
+          title,
+          itemPrice,
+          shipping.shippingFee,
+          shipping.shippingUnitCount,
+          shipping.shippingNeedsConfirmation,
+          shipping.shippingStatus ?? "UNKNOWN"
+        );
         const keywordMatch = matchProductKeywords(title, rules);
         return {
           metrics,
@@ -329,7 +389,25 @@ export async function GET(request: Request) {
             mallName: candidate.mallName ?? "네이버 쇼핑",
             matchedKeyword: candidate.matchedKeyword,
             itemPrice,
-            shippingFee: 0,
+            shippingFee: shipping.shippingFee,
+            shippingUnitCount: shipping.shippingUnitCount,
+            shippingStatus: shipping.shippingStatus ?? "UNKNOWN",
+            shippingNote:
+              shipping.shippingNote ??
+              (shipping.shippingNeedsConfirmation
+                ? "배송비 정보를 자동으로 확인하지 못했습니다."
+                : null),
+            shippingCondition: shipping.shippingCondition,
+            shippingNeedsConfirmation:
+              shipping.shippingNeedsConfirmation,
+            shippingEnrichmentStatus:
+              candidate.shippingEnrichment == null
+                ? "NOT_CHECKED"
+                : candidate.shippingEnrichment.source === "UNKNOWN"
+                  ? "FAILED"
+                  : "COMPLETED",
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPriceWithShipping: metrics.totalPrice,
             quantityPerPack: metrics.unitCount,
             volumePerUnit: metrics.volumePerUnit,
             volumeUnit: metrics.volumeUnit,
@@ -353,6 +431,8 @@ export async function GET(request: Request) {
       .sort(
         (a, b) =>
           compareKeywordMatches(a.keywordMatch, b.keywordMatch) ||
+          Number(a.candidate.shippingStatus === "UNKNOWN") -
+            Number(b.candidate.shippingStatus === "UNKNOWN") ||
           metricValue(a.metrics, recommendationMetric) -
             metricValue(b.metrics, recommendationMetric) ||
           a.metrics.totalPrice - b.metrics.totalPrice

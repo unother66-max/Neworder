@@ -45,6 +45,12 @@ enum NewOrderPriceSource {
   ETC
 }
 
+enum NewOrderShippingStatus {
+  FREE
+  PAID
+  UNKNOWN
+}
+
 // --- 🚨 사용자 모델 (인증 및 관계 설정) ---
 model User {
   id                String    @id @default(cuid())
@@ -887,30 +893,39 @@ model NewOrderOrder {
 }
 
 model NewOrderPriceCandidate {
-  id              String              @id @default(cuid())
-  itemId          String
-  source          NewOrderPriceSource
-  mallName        String              @default("")
-  title           String
-  productUrl      String              @db.Text
-  imageUrl        String?             @db.Text
-  itemPrice       Int
-  shippingFee     Int                 @default(0)
-  totalPrice      Int
-  quantityPerPack Int                 @default(1)
-  unitPrice       Float
-  volumePerUnit   Float?
-  volumeUnit      String?
-  packageUnit     String?
-  pricePer100     Float?
-  pricePerMeasure Float?
-  savedBy         String              @default("system")
-  isCurrentBest   Boolean             @default(false)
-  checkedAt       DateTime            @default(now())
-  createdBy       String
-  updatedBy       String
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  id                        String                 @id @default(cuid())
+  itemId                    String
+  source                    NewOrderPriceSource
+  mallName                  String                 @default("")
+  title                     String
+  productUrl                String                 @db.Text
+  imageUrl                  String?                @db.Text
+  itemPrice                 Int
+  productPrice              Int                    @default(0)
+  shippingFee               Int                    @default(0)
+  shippingUnitCount         Int                    @default(1)
+  shippingStatus            NewOrderShippingStatus @default(UNKNOWN)
+  shippingNote              String?                @db.Text
+  shippingCondition         String?                @db.Text
+  shippingNeedsConfirmation Boolean                @default(false)
+  effectiveShippingFee      Int                    @default(0)
+  totalPrice                Int
+  totalPriceWithShipping    Int                    @default(0)
+  quantityPerPack           Int                    @default(1)
+  bundleQuantity            Int                    @default(1)
+  unitPrice                 Float
+  volumePerUnit             Float?
+  volumeUnit                String?
+  packageUnit               String?
+  pricePer100               Float?
+  pricePerMeasure           Float?
+  savedBy                   String                 @default("system")
+  isCurrentBest             Boolean                @default(false)
+  checkedAt                 DateTime               @default(now())
+  createdBy                 String
+  updatedBy                 String
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
 
   item NewOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
@@ -920,26 +935,35 @@ model NewOrderPriceCandidate {
 }
 
 model NewOrderPriceHistory {
-  id              String              @id @default(cuid())
-  itemId          String
-  source          NewOrderPriceSource
-  mallName        String              @default("")
-  productName     String
-  productUrl      String              @db.Text
-  imageUrl        String?             @db.Text
-  itemPrice       Int
-  shippingFee     Int                 @default(0)
-  totalPrice      Int
-  quantity        Int                 @default(1)
-  unitAmount      Float?
-  unitType        String?
-  packageUnit     String?
-  unitPrice       Float
-  pricePer100     Float?
-  pricePerMeasure Float?
-  note            String?             @db.Text
-  createdBy       String              @default("system")
-  createdAt       DateTime            @default(now())
+  id                        String                 @id @default(cuid())
+  itemId                    String
+  source                    NewOrderPriceSource
+  mallName                  String                 @default("")
+  productName               String
+  productUrl                String                 @db.Text
+  imageUrl                  String?                @db.Text
+  itemPrice                 Int
+  productPrice              Int                    @default(0)
+  shippingFee               Int                    @default(0)
+  shippingUnitCount         Int                    @default(1)
+  shippingStatus            NewOrderShippingStatus @default(UNKNOWN)
+  shippingNote              String?                @db.Text
+  shippingCondition         String?                @db.Text
+  shippingNeedsConfirmation Boolean                @default(false)
+  effectiveShippingFee      Int                    @default(0)
+  totalPrice                Int
+  totalPriceWithShipping    Int                    @default(0)
+  quantity                  Int                    @default(1)
+  bundleQuantity            Int                    @default(1)
+  unitAmount                Float?
+  unitType                  String?
+  packageUnit               String?
+  unitPrice                 Float
+  pricePer100               Float?
+  pricePerMeasure           Float?
+  note                      String?                @db.Text
+  createdBy                 String                 @default("system")
+  createdAt                 DateTime               @default(now())
 
   item NewOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
