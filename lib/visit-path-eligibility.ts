@@ -12,6 +12,7 @@ export function visitPathnameFromFullPath(full: string): string {
 export function shouldPersistVisitorEvent(pathname: string): boolean {
   const p = pathname.startsWith("/") ? pathname : `/${pathname}`;
   if (p.startsWith("/admin")) return false;
+  if (p.startsWith("/operations")) return false;
   if (p.startsWith("/api")) return false;
   if (p === "/login" || p.startsWith("/login/")) return false;
   if (p.startsWith("/_next")) return false;

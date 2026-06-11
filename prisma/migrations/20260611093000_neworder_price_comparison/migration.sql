@@ -1,0 +1,9 @@
+ALTER TABLE "NewOrderItem"
+ADD COLUMN "naverSearchKeywords" TEXT[] DEFAULT ARRAY[]::TEXT[];
+
+ALTER TABLE "NewOrderPriceCandidate"
+ADD COLUMN "volumePerUnit" DOUBLE PRECISION,
+ADD COLUMN "volumeUnit" TEXT,
+ADD COLUMN "packageUnit" TEXT,
+ADD COLUMN "pricePer100" DOUBLE PRECISION,
+ADD COLUMN "pricePerMeasure" DOUBLE PRECISION;

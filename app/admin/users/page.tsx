@@ -140,6 +140,11 @@ function adminAlertLevelBadgeClass(level: string): string {
 
 const QUICK_LINKS = [
   { href: "/admin/users", label: "회원관리", icon: Shield },
+  {
+    href: "/admin/neworder-operators",
+    label: "뉴오더 운영자",
+    icon: Users,
+  },
   { href: "/place", label: "플레이스", icon: MapPin },
   { href: "/place-review", label: "리뷰추적", icon: ClipboardList },
   { href: "/smartstore", label: "스마트스토어", icon: Store },

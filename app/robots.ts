@@ -5,6 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
+      disallow: ["/operations/", "/api/operations/"],
     },
 
     sitemap: "https://postlabs.co.kr/sitemap.xml",

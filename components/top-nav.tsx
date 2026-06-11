@@ -10,7 +10,17 @@ import {
   fetchUserQuotaCached,
   getUserQuotaSessionKey,
 } from "@/lib/browser-user-quota-fetch"; 
-import { ChevronDown, ChevronRight, LogOut, Menu, MessageCircle, Shield, User, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Shield,
+  User,
+  X,
+} from "lucide-react";
 
 type TopNavProps = {
   active?: unknown;
@@ -90,6 +100,7 @@ const TopNav = (_props: TopNavProps) => {
     tier: string;
     isAdmin?: boolean;
   } | null>(null);
+  const [canAccessNewOrder, setCanAccessNewOrder] = useState(false);
 
   // 🚨 [추가] 로그인 버튼 호버 및 마우스 위치 추적 상태
   const [isLoginHovered, setIsLoginHovered] = useState(false);
@@ -138,6 +149,37 @@ const TopNav = (_props: TopNavProps) => {
   }, [sessionKey]);
 
   useEffect(() => {
+    if (status !== "authenticated" || !sessionKey) {
+      const clearAccessTimer = window.setTimeout(
+        () => setCanAccessNewOrder(false),
+        0
+      );
+      return () => window.clearTimeout(clearAccessTimer);
+    }
+
+    let cancelled = false;
+    fetch("/api/internal/neworder-access", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as {
+          canAccess?: boolean;
+        };
+        if (!cancelled) {
+          setCanAccessNewOrder(response.ok && payload.canAccess === true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCanAccessNewOrder(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionKey, status]);
+
+  useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
     };
@@ -148,6 +190,8 @@ const TopNav = (_props: TopNavProps) => {
   }, []);
 
   useEffect(() => {
+    // Close the account popover after client-side navigation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAccountMenuOpen(false);
   }, [pathname]);
 
@@ -236,6 +280,7 @@ const TopNav = (_props: TopNavProps) => {
     pathname.startsWith("/kakao-ranking");
   
   const isCommunityActive = pathname.startsWith("/community");
+  const isNewOrderActive = pathname.startsWith("/operations/neworder");
   const isProfileActive = pathname.startsWith("/profile");
   const sessionIsEnvAdmin = session?.user?.isAdmin === true;
   const isAdminUsersPageActive = pathname.startsWith("/admin");
@@ -905,6 +950,28 @@ const TopNav = (_props: TopNavProps) => {
             />
           </div>
 
+          {canAccessNewOrder && (
+            <div className="group relative flex h-full items-center">
+              <Link
+                href="/operations/neworder"
+                aria-current={isNewOrderActive ? "page" : undefined}
+                className={`${notoSansKr.className} flex items-center py-2 text-base lg:text-lg tracking-tighter leading-none transition-colors ${
+                  isNewOrderActive
+                    ? "!text-black font-black [text-shadow:0_6px_18px_rgba(0,41,255,0.22)]"
+                    : "text-slate-500 font-extrabold hover:!text-black hover:font-black hover:[text-shadow:0_6px_18px_rgba(0,41,255,0.22)]"
+                }`}
+              >
+                뉴오더 운영관리
+              </Link>
+
+              <div
+                className={`absolute bottom-0 left-0 right-0 h-[2px] origin-left bg-[#86A9C6] transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  isNewOrderActive ? "scale-x-100" : "scale-x-0"
+                }`}
+              />
+            </div>
+          )}
+
         </div>
 
         {/* 🚨 우측 상단 (로그인 / 사용자 정보 분기) */}
@@ -1247,6 +1314,41 @@ const TopNav = (_props: TopNavProps) => {
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-current" strokeWidth={2.4} />
               </Link>
+
+              {canAccessNewOrder && (
+                <Link
+                  href="/operations/neworder"
+                  aria-current={isNewOrderActive ? "page" : undefined}
+                  onClick={closeMobileMenu}
+                  className={`flex min-h-9 items-center gap-3 rounded-[14px] py-1.5 transition-colors ${
+                    isNewOrderActive
+                      ? "text-[#0F172A]"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                    <ClipboardList
+                      className={`h-6 w-6 object-contain text-current ${
+                        isNewOrderActive ? "opacity-100" : "opacity-80"
+                      }`}
+                      strokeWidth={1.8}
+                    />
+                  </span>
+                  <span
+                    className={`min-w-0 flex-1 text-[15px] ${
+                      isNewOrderActive
+                        ? "font-bold text-[#0F172A]"
+                        : "font-semibold text-slate-600"
+                    }`}
+                  >
+                    뉴오더
+                  </span>
+                  <ChevronRight
+                    className="h-4 w-4 shrink-0 text-current"
+                    strokeWidth={2.4}
+                  />
+                </Link>
+              )}
             </div>
 
             <div className="my-2 pt-1">

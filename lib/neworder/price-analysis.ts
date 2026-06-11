@@ -1,0 +1,171 @@
+export type ParsedProductSpec = {
+  unitCount: number;
+  packageUnit: string;
+  volumePerUnit: number | null;
+  volumeUnit: "ml" | "g" | "매" | null;
+};
+
+export type PriceMetrics = ParsedProductSpec & {
+  totalPrice: number;
+  unitPrice: number;
+  totalVolume: number | null;
+  pricePer100: number | null;
+  pricePerMeasure: number | null;
+};
+
+export type PriceCandidateLike = {
+  title: string;
+  itemPrice: number;
+  shippingFee: number;
+  quantityPerPack?: number;
+  volumePerUnit?: number | null;
+  volumeUnit?: string | null;
+  packageUnit?: string | null;
+};
+
+const COUNT_UNITS = "개|병|팩|박스|봉|캔|입|롤|통|세트";
+
+function positiveNumber(value: unknown, fallback: number): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+export function parseProductSpec(title: string): ParsedProductSpec {
+  const normalized = String(title ?? "")
+    .replace(/[×＊]/g, "x")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  let volumePerUnit: number | null = null;
+  let volumeUnit: ParsedProductSpec["volumeUnit"] = null;
+  let measureEnd = -1;
+
+  const physical = normalized.match(
+    /(\d+(?:\.\d+)?)\s*(ml|mL|ML|l|L|g|G|kg|KG|Kg)\b/
+  );
+  if (physical) {
+    const raw = Number(physical[1]);
+    const rawUnit = physical[2].toLowerCase();
+    if (rawUnit === "l") {
+      volumePerUnit = raw * 1000;
+      volumeUnit = "ml";
+    } else if (rawUnit === "kg") {
+      volumePerUnit = raw * 1000;
+      volumeUnit = "g";
+    } else {
+      volumePerUnit = raw;
+      volumeUnit = rawUnit === "ml" ? "ml" : "g";
+    }
+    measureEnd = (physical.index ?? 0) + physical[0].length;
+  } else {
+    const sheets = normalized.match(/(\d+(?:\.\d+)?)\s*매/);
+    if (sheets) {
+      volumePerUnit = Number(sheets[1]);
+      volumeUnit = "매";
+      measureEnd = (sheets.index ?? 0) + sheets[0].length;
+    }
+  }
+
+  const afterMeasure = measureEnd >= 0 ? normalized.slice(measureEnd) : normalized;
+  const countPatterns = [
+    new RegExp(`(?:x|X|\\*)\\s*(\\d+)\\s*(${COUNT_UNITS})`),
+    new RegExp(`(?:,|/|\\+)?\\s*(\\d+)\\s*(${COUNT_UNITS})`),
+  ];
+
+  let unitCount = 1;
+  let packageUnit = "개";
+  for (const pattern of countPatterns) {
+    const match = afterMeasure.match(pattern);
+    if (!match) continue;
+    unitCount = Math.max(1, Number(match[1]) || 1);
+    packageUnit = match[2];
+    break;
+  }
+
+  return { unitCount, packageUnit, volumePerUnit, volumeUnit };
+}
+
+export function calculatePriceMetrics(
+  candidate: PriceCandidateLike
+): PriceMetrics {
+  const parsed = parseProductSpec(candidate.title);
+  const unitCount = Math.round(
+    positiveNumber(candidate.quantityPerPack, parsed.unitCount)
+  );
+  const volumePerUnit =
+    candidate.volumePerUnit == null
+      ? parsed.volumePerUnit
+      : positiveNumber(candidate.volumePerUnit, parsed.volumePerUnit ?? 0) || null;
+  const volumeUnit =
+    candidate.volumeUnit === "ml" ||
+    candidate.volumeUnit === "g" ||
+    candidate.volumeUnit === "매"
+      ? candidate.volumeUnit
+      : parsed.volumeUnit;
+  const packageUnit = candidate.packageUnit?.trim() || parsed.packageUnit;
+  const totalPrice =
+    Math.max(0, Number(candidate.itemPrice) || 0) +
+    Math.max(0, Number(candidate.shippingFee) || 0);
+  const totalVolume =
+    volumePerUnit && volumeUnit ? volumePerUnit * unitCount : null;
+
+  return {
+    unitCount,
+    packageUnit,
+    volumePerUnit,
+    volumeUnit,
+    totalPrice,
+    unitPrice: totalPrice / unitCount,
+    totalVolume,
+    pricePer100:
+      totalVolume && (volumeUnit === "ml" || volumeUnit === "g")
+        ? (totalPrice / totalVolume) * 100
+        : null,
+    pricePerMeasure:
+      totalVolume && volumeUnit === "매" ? totalPrice / totalVolume : null,
+  };
+}
+
+export function formatComposition(metrics: ParsedProductSpec): string {
+  if (metrics.volumePerUnit && metrics.volumeUnit) {
+    return `${formatMeasure(metrics.volumePerUnit)}${metrics.volumeUnit} × ${metrics.unitCount}${metrics.packageUnit}`;
+  }
+  return `${metrics.unitCount}${metrics.packageUnit}`;
+}
+
+function formatMeasure(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+export type RecommendationMetric =
+  | "totalPrice"
+  | "unitPrice"
+  | "pricePer100"
+  | "pricePerMeasure";
+
+export function getRecommendationMetric(
+  itemName: string,
+  category: string
+): RecommendationMetric {
+  const text = `${itemName} ${category}`.toLowerCase();
+  if (/오일|올리브유|소스|식초|시럽|액상|음료|주스|우유/.test(text)) {
+    return "pricePer100";
+  }
+  if (/장갑|냅킨|티슈|종이|행주|수세미|봉투|빨대|컵/.test(text)) {
+    return "pricePerMeasure";
+  }
+  return "unitPrice";
+}
+
+export function metricValue(
+  metrics: PriceMetrics,
+  metric: RecommendationMetric
+): number {
+  if (metric === "pricePer100") {
+    return metrics.pricePer100 ?? metrics.unitPrice;
+  }
+  if (metric === "pricePerMeasure") {
+    return metrics.pricePerMeasure ?? metrics.unitPrice;
+  }
+  return metrics[metric];
+}

@@ -9,6 +9,17 @@ function isBlogAnalysisPath(path: string): boolean {
   return path === "/blog-analysis" || path.startsWith("/blog-analysis/");
 }
 
+function isNewOrderOperationsPath(path: string): boolean {
+  return (
+    path === "/operations/neworder" ||
+    path.startsWith("/operations/neworder/")
+  );
+}
+
+function isNewOrderOperationsApiPath(path: string): boolean {
+  return path.startsWith("/api/operations/neworder");
+}
+
 function isSmartstoreAdminOnlyPath(path: string): boolean {
   return (
     path === "/smartstore/review-track" ||
@@ -38,6 +49,26 @@ function isSmartstoreAuthRequiredApiPath(path: string): boolean {
 const SMARTSTORE_ADMIN_ONLY_API_ERROR = "관리자만 사용할 수 있는 기능입니다.";
 const LOGIN_REQUIRED_API_ERROR = "로그인이 필요한 기능입니다.";
 
+function newOrderLoginRequiredResponse(path: string) {
+  if (path === "/api/operations/neworder/price-search") {
+    return NextResponse.json(
+      {
+        ok: false,
+        candidates: [],
+        message: LOGIN_REQUIRED_API_ERROR,
+        reason: "로그인 세션이 없습니다.",
+        searchedKeywords: [],
+        coupangSearchUrl: null,
+      },
+      { status: 401 }
+    );
+  }
+  return NextResponse.json(
+    { ok: false, error: LOGIN_REQUIRED_API_ERROR },
+    { status: 401 }
+  );
+}
+
 function isLegacyAuthPath(path: string): boolean {
   if (path === "/community" || path.startsWith("/community/")) return true;
   return false;
@@ -54,6 +85,24 @@ function redirectLogin(req: NextRequest) {
 
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
+
+  if (isNewOrderOperationsApiPath(path)) {
+    if (!secret) {
+      return newOrderLoginRequiredResponse(path);
+    }
+    const token = await getToken({ req, secret });
+    if (!token) {
+      return newOrderLoginRequiredResponse(path);
+    }
+    return NextResponse.next();
+  }
+
+  if (isNewOrderOperationsPath(path)) {
+    if (!secret) return redirectLogin(req);
+    const token = await getToken({ req, secret });
+    if (!token) return redirectLogin(req);
+    return NextResponse.next();
+  }
 
   if (isSmartstoreAuthRequiredApiPath(path)) {
     if (!secret) {
@@ -146,6 +195,7 @@ export const config = {
     "/api/smartstore/keyword-analyze/detail",
     "/api/smartstore-review-targets",
     "/api/smartstore-review-sync",
+    "/api/operations/neworder/:path*",
     "/((?!api(?:/|$)|_next(?:/|$)|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|woff2?|woff|ttf|eot|map|txt|xml|json|csv|pdf|wasm|js|css)$).*)",
   ],
 };

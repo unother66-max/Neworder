@@ -19,27 +19,57 @@ enum UserTier {
   PRO
 }
 
+enum NewOrderOperatorRole {
+  STORE_MANAGER
+  ADMIN
+  SUPERADMIN
+}
+
+enum NewOrderStore {
+  HANNAM
+  YEONNAM
+}
+
+enum NewOrderStatus {
+  REQUESTED
+  REVIEWING
+  PURCHASED
+  ON_HOLD
+}
+
+enum NewOrderPriceSource {
+  NAVER
+  COUPANG
+  MANUAL
+}
+
 // --- 🚨 사용자 모델 (인증 및 관계 설정) ---
 model User {
-  id                      String                   @id @default(cuid())
-  email                   String?                  @unique
-  name                    String?
-  image                   String?
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  /** false: 마이그레이션으로 createdAt만 채워져 실제 가입일과 다를 수 있음 */
-  createdAtReliable       Boolean                  @default(true)
-  /** 관리자 전용 회원 메모 (비공개) */
-  adminMemo               String?                  @db.Text
-  tier                    UserTier                 @default(FREE)
-  emailVerified           DateTime?
-  /** 로그인 세션으로 확인된 페이지 방문 시 /api/internal/visit 에서 갱신 */
-  lastVisitAt             DateTime?
+  id                String    @id @default(cuid())
+  email             String?   @unique
+  name              String?
+  image             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  /**
+   * false: 마이그레이션으로 createdAt만 채워져 실제 가입일과 다를 수 있음
+   */
+  createdAtReliable Boolean   @default(true)
+  /**
+   * 관리자 전용 회원 메모 (비공개)
+   */
+  adminMemo         String?   @db.Text
+  tier              UserTier  @default(FREE)
+  emailVerified     DateTime?
+  /**
+   * 로그인 세션으로 확인된 페이지 방문 시 /api/internal/visit 에서 갱신
+   */
+  lastVisitAt       DateTime?
 
   // 인증 관련 연결
-  accounts                Account[]
-  sessions                Session[]
-  
+  accounts Account[]
+  sessions Session[]
+
   // 기존 기능 연결 (이 모델들이 아래에 정의되어 있어야 에러가 안 납니다)
   places                  Place[]
   smartstoreProducts      SmartstoreProduct[]
@@ -47,25 +77,25 @@ model User {
   posts                   Post[]
   comments                Comment[]
   visitorEvents           VisitorEvent[]
-  blogAnalysisHistories BlogAnalysisHistory[]
+  blogAnalysisHistories   BlogAnalysisHistory[]
+  newOrderOperator        NewOrderOperator?
 }
 
 // --- 🚨 인증 필수 모델 ---
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?  @db.Text
-  access_token       String?  @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?  @db.Text
-  session_state      String?
-refresh_token_expires_in Int?
-
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String? @db.Text
+  access_token             String? @db.Text
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String? @db.Text
+  session_state            String?
+  refresh_token_expires_in Int?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -88,7 +118,9 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-/** 하루 단위 방문: IP + User-Agent 해시로 같은 날 중복 제거 (날짜는 Asia/Seoul yyyy-MM-dd) */
+/**
+ * 하루 단위 방문: IP + User-Agent 해시로 같은 날 중복 제거 (날짜는 Asia/Seoul yyyy-MM-dd)
+ */
 model VisitorLog {
   id        String   @id @default(cuid())
   visitDate String
@@ -100,21 +132,29 @@ model VisitorLog {
   @@index([visitDate])
 }
 
-/** 방문 건별 이벤트 (대시보드·유입·최근 로그용). 일 방문 카운트는 VisitorLog 유지 */
+/**
+ * 방문 건별 이벤트 (대시보드·유입·최근 로그용). 일 방문 카운트는 VisitorLog 유지
+ */
 model VisitorEvent {
-  id                 String   @id @default(cuid())
-  createdAt          DateTime @default(now())
-  /** Asia/Seoul yyyy-MM-dd 집계 키 */
-  visitDate          String
-  path               String?  @db.VarChar(512)
-  /** 짧게만 저장 */
-  referrer           String?  @db.VarChar(512)
-  referrerCategory   String   @default("other")
-  ipHash             String   @db.VarChar(64)
-  uaSnippet          String?  @db.VarChar(256)
-  /** 로그인 세션 있을 때만 기록 (익명 방문은 null) */
-  userId             String?
-  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id               String   @id @default(cuid())
+  createdAt        DateTime @default(now())
+  /**
+   * Asia/Seoul yyyy-MM-dd 집계 키
+   */
+  visitDate        String
+  path             String?  @db.VarChar(512)
+  /**
+   * 짧게만 저장
+   */
+  referrer         String?  @db.VarChar(512)
+  referrerCategory String   @default("other")
+  ipHash           String   @db.VarChar(64)
+  uaSnippet        String?  @db.VarChar(256)
+  /**
+   * 로그인 세션 있을 때만 기록 (익명 방문은 null)
+   */
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([visitDate])
   @@index([createdAt])
@@ -124,7 +164,9 @@ model VisitorEvent {
   @@index([userId])
 }
 
-/** 관리자용 운영 알림 (수집/크론 실패 등) */
+/**
+ * 관리자용 운영 알림 (수집/크론 실패 등)
+ */
 model AdminAlert {
   id        String   @id @default(cuid())
   type      String
@@ -239,24 +281,26 @@ model PlaceReviewHistory {
 }
 
 model SmartstoreProduct {
-  id              String          @id @default(cuid())
-  userId          String
-  productId       String
-  space           SmartstoreSpace @default(NAVER_PRICE)
-  productUrl      String
-  name            String
-  category        String?
-  /** 네이버 스토어 카탈로그 리프 카테고리 번호 — 리뷰 product-summary API에 사용 */
-  leafCategoryId  Int?
-  thumbnailLink   String?
-  imageUrl        String?
-  mallName      String?
-  sellerTags    String[]        @default([])
-  rankPinned    Boolean         @default(false)
-  rankPinnedAt  DateTime?
-  autoTracking  Boolean         @default(true)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  userId         String
+  productId      String
+  space          SmartstoreSpace @default(NAVER_PRICE)
+  productUrl     String
+  name           String
+  category       String?
+  /**
+   * 네이버 스토어 카탈로그 리프 카테고리 번호 — 리뷰 product-summary API에 사용
+   */
+  leafCategoryId Int?
+  thumbnailLink  String?
+  imageUrl       String?
+  mallName       String?
+  sellerTags     String[]        @default([])
+  rankPinned     Boolean         @default(false)
+  rankPinnedAt   DateTime?
+  autoTracking   Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   keywords  SmartstoreKeyword[]
@@ -275,9 +319,13 @@ model SmartstoreReviewTarget {
   name                  String
   imageUrl              String?
   storeName             String?
-  /** 리뷰 요약 JSON API path id — URL productId와 다를 수 있음 */
+  /**
+   * 리뷰 요약 JSON API path id — URL productId와 다를 수 있음
+   */
   reviewProductId       String?
-  /** 리뷰 요약 JSON API(leafCategoryId 쿼리) */
+  /**
+   * 리뷰 요약 JSON API(leafCategoryId 쿼리)
+   */
   leafCategoryId        Int?
   reviewCount           Int?     @default(0)
   reviewRating          Float?
@@ -376,45 +424,49 @@ model SystemConfig {
   updatedAt   DateTime @updatedAt
 }
 
-/** 블로그 채널 분석 결과 히스토리 (우리 서비스 기준 순위 계산용) */
+/**
+ * 블로그 채널 분석 결과 히스토리 (우리 서비스 기준 순위 계산용)
+ */
 model BlogAnalysisHistory {
-  id                      String    @id @default(cuid())
-  userId                  String?
-  user                    User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  blogId                  String
-  blogName                String?
-  nickname                String?
-  profileImage            String?   @db.Text
-  blogTopic               String?
+  blogId       String
+  blogName     String?
+  nickname     String?
+  profileImage String? @db.Text
+  blogTopic    String?
 
-  visitorCount            Int?
-  postCount               Int?
-  subscriberCount         Int?
-  postingFrequency        Float?
+  visitorCount     Int?
+  postCount        Int?
+  subscriberCount  Int?
+  postingFrequency Float?
 
-  validKeywordCount       Int?
+  validKeywordCount Int?
 
-  level                   Int?
-  grade                   String?
-  totalScore              Float?
-  influenceScore          Float?
-  keywordInfluenceScore   Float?
-  contentInfluenceScore   Float?
+  level                 Int?
+  grade                 String?
+  totalScore            Float?
+  influenceScore        Float?
+  keywordInfluenceScore Float?
+  contentInfluenceScore Float?
 
-  /** 최근 포스팅 패턴 분석 평균·점수 (저장 시점 스냅샷) */
-  averageTitleLength      Float?
-  averageContentLength    Float?
-  averageImageCount       Float?
-  titleLengthScore        Float?
-  contentLengthScore      Float?
-  imageCountScore         Float?
+  /**
+   * 최근 포스팅 패턴 분석 평균·점수 (저장 시점 스냅샷)
+   */
+  averageTitleLength   Float?
+  averageContentLength Float?
+  averageImageCount    Float?
+  titleLengthScore     Float?
+  contentLengthScore   Float?
+  imageCountScore      Float?
 
-  totalRank               Int?
-  topicRank               Int?
+  totalRank Int?
+  topicRank Int?
 
-  analyzedAt              DateTime  @default(now())
-  createdAt               DateTime  @default(now())
+  analyzedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([blogId])
   @@index([blogTopic])
@@ -423,50 +475,54 @@ model BlogAnalysisHistory {
   @@index([blogTopic, totalScore])
 }
 
-/** PostLabs 자체 랭킹용 블로그 최신 프로필 */
+/**
+ * PostLabs 자체 랭킹용 블로그 최신 프로필
+ */
 model BlogProfile {
-  id                 String    @id @default(cuid())
-  blogId             String    @unique
-  blogUrl            String?   @db.Text
-  blogName           String?
-  nickname           String?
-  profileImage       String?   @db.Text
-  officialBlogTopic  String?
+  id                String  @id @default(cuid())
+  blogId            String  @unique
+  blogUrl           String? @db.Text
+  blogName          String?
+  nickname          String?
+  profileImage      String? @db.Text
+  officialBlogTopic String?
 
-  postCount          Int?
-  scrapCount         Int?
-  neighborCount      Int?
-  postingFrequency   Float?
-  lastAnalyzedAt     DateTime?
+  postCount        Int?
+  scrapCount       Int?
+  neighborCount    Int?
+  postingFrequency Float?
+  lastAnalyzedAt   DateTime?
 
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([officialBlogTopic])
   @@index([lastAnalyzedAt])
 }
 
-/** PostLabs 자체 랭킹 계산용 블로그 단위 메트릭 스냅샷 */
+/**
+ * PostLabs 자체 랭킹 계산용 블로그 단위 메트릭 스냅샷
+ */
 model BlogMetricSnapshot {
-  id                       String   @id @default(cuid())
-  blogId                   String
+  id     String @id @default(cuid())
+  blogId String
 
-  influenceScore           Float?
-  keywordInfluenceScore    Float?
-  contentInfluenceScore    Float?
-  validKeywordCount        Int?
-  recentActivityScore      Float?
+  influenceScore        Float?
+  keywordInfluenceScore Float?
+  contentInfluenceScore Float?
+  validKeywordCount     Int?
+  recentActivityScore   Float?
 
-  avgWordCount             Float?
-  avgImageCount            Float?
-  avgVideoCount            Float?
-  avgCommentCount          Float?
-  avgSympathyCount         Float?
-  avgShareCount            Float?
+  avgWordCount     Float?
+  avgImageCount    Float?
+  avgVideoCount    Float?
+  avgCommentCount  Float?
+  avgSympathyCount Float?
+  avgShareCount    Float?
 
-  totalScore               Float?
-  analyzedAt               DateTime @default(now())
-  createdAt                DateTime @default(now())
+  totalScore Float?
+  analyzedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([blogId])
   @@index([blogId, analyzedAt])
@@ -474,18 +530,20 @@ model BlogMetricSnapshot {
   @@index([analyzedAt])
 }
 
-/** PostLabs 자체 랭킹 계산 결과 스냅샷 */
+/**
+ * PostLabs 자체 랭킹 계산 결과 스냅샷
+ */
 model BlogRankSnapshot {
-  id                 String   @id @default(cuid())
-  blogId             String
-  overallRank        Int?
-  topicRank          Int?
-  officialBlogTopic  String?
-  totalBlogsCount    Int
-  topicBlogsCount    Int?
-  rankSource         String   @default("postlabs")
-  calculatedAt       DateTime @default(now())
-  createdAt          DateTime @default(now())
+  id                String   @id @default(cuid())
+  blogId            String
+  overallRank       Int?
+  topicRank         Int?
+  officialBlogTopic String?
+  totalBlogsCount   Int
+  topicBlogsCount   Int?
+  rankSource        String   @default("postlabs")
+  calculatedAt      DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   @@index([blogId])
   @@index([blogId, calculatedAt])
@@ -494,22 +552,24 @@ model BlogRankSnapshot {
   @@index([rankSource, calculatedAt])
 }
 
-/** PostLabs 자체 랭킹 확장을 위한 블로그 후보 수집 큐 */
+/**
+ * PostLabs 자체 랭킹 확장을 위한 블로그 후보 수집 큐
+ */
 model BlogDiscoveryQueue {
-  id                 String    @id @default(cuid())
-  blogId             String    @unique
-  blogUrl            String?   @db.Text
-  source             String
-  seedKeyword        String?
-  officialBlogTopic  String?
-  status             String    @default("pending")
-  priority           Int       @default(50)
-  discoveredAt       DateTime  @default(now())
-  lastTriedAt        DateTime?
-  analyzedAt         DateTime?
-  errorMessage       String?   @db.Text
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  blogId            String    @unique
+  blogUrl           String?   @db.Text
+  source            String
+  seedKeyword       String?
+  officialBlogTopic String?
+  status            String    @default("pending")
+  priority          Int       @default(50)
+  discoveredAt      DateTime  @default(now())
+  lastTriedAt       DateTime?
+  analyzedAt        DateTime?
+  errorMessage      String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([status])
   @@index([priority])
@@ -519,24 +579,26 @@ model BlogDiscoveryQueue {
   @@index([lastTriedAt])
 }
 
-/** 블로그 최근 포스팅별 분석 메트릭 캐시 */
+/**
+ * 블로그 최근 포스팅별 분석 메트릭 캐시
+ */
 model BlogPostMetricSnapshot {
-  id                 String    @id @default(cuid())
-  blogId             String
-  postKey            String
-  postUrl            String    @db.Text
-  orgUrl             String?   @db.Text
-  logNo              String?
-  title              String
-  publishedAt        DateTime?
-  thumbnail          String?   @db.Text
+  id          String    @id @default(cuid())
+  blogId      String
+  postKey     String
+  postUrl     String    @db.Text
+  orgUrl      String?   @db.Text
+  logNo       String?
+  title       String
+  publishedAt DateTime?
+  thumbnail   String?   @db.Text
 
-  wordCount          Int?
-  imageCount         Int?
-  videoCount         Int?
-  commentCount       Int?
-  sympathyCount      Int?
-  shareCount         Int?
+  wordCount     Int?
+  imageCount    Int?
+  videoCount    Int?
+  commentCount  Int?
+  sympathyCount Int?
+  shareCount    Int?
 
   titleScore         Float?
   contentLengthScore Float?
@@ -548,10 +610,10 @@ model BlogPostMetricSnapshot {
   exposureStatus     String?
   foundOnSearch      Boolean?
 
-  analyzedAt         DateTime?
-  keywordAnalyzedAt  DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  analyzedAt        DateTime?
+  keywordAnalyzedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@unique([blogId, postKey])
   @@index([blogId])
@@ -561,13 +623,17 @@ model BlogPostMetricSnapshot {
   @@index([exposureStatus])
 }
 
-/** 블로그별 실제 검색 노출 기반 유효 키워드 캐시 */
+/**
+ * 블로그별 실제 검색 노출 기반 유효 키워드 캐시
+ */
 model BlogKeywordExposureSnapshot {
-  id                    String   @id @default(cuid())
-  blogId                String
-  keyword               String
+  id      String @id @default(cuid())
+  blogId  String
+  keyword String
 
-  /** valid | rank_only | volume_only | out_of_rank | low_volume | unchecked — 블로그 노출·검색량 확정 여부 */
+  /**
+   * valid | rank_only | volume_only | out_of_rank | low_volume | unchecked — 블로그 노출·검색량 확정 여부
+   */
   keywordValidationStatus String?
 
   exposureType          String?
@@ -576,16 +642,16 @@ model BlogKeywordExposureSnapshot {
   smartBlockCount       Int?
   blogRank              Int?
 
-  monthlySearchVolume   Int?
-  mobileSearchVolume    Int?
-  pcSearchVolume        Int?
-  contentSaturation     Float?
+  monthlySearchVolume Int?
+  mobileSearchVolume  Int?
+  pcSearchVolume      Int?
+  contentSaturation   Float?
 
-  sourcePostUrl         String?  @db.Text
-  sourcePostTitle       String?
-  checkedAt             DateTime @default(now())
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  sourcePostUrl   String?  @db.Text
+  sourcePostTitle String?
+  checkedAt       DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([blogId, keyword])
   @@index([blogId])
@@ -600,22 +666,26 @@ model BlogKeywordExposureSnapshot {
  * normalizedKeyword 기준 14일 TTL.
  */
 model KeywordSearchVolumeCache {
-  id                   String   @id @default(cuid())
-  keyword              String   @db.VarChar(512)
-  normalizedKeyword    String   @unique @db.VarChar(512)
-  monthlyPcQcCnt       Int?
-  monthlyMobileQcCnt   Int?
-  totalVolume          Int
-  /** 월간 합계 기준 250 미만(또는 미발견 0건)으로 확정된 경우 SearchAD 재조회 생략에 사용 */
-  belowThreshold       Boolean  @default(false)
-  source               String   @default("naver-searchad")
-  checkedAt            DateTime @default(now())
-  raw                  Json?
+  id                 String   @id @default(cuid())
+  keyword            String   @db.VarChar(512)
+  normalizedKeyword  String   @unique @db.VarChar(512)
+  monthlyPcQcCnt     Int?
+  monthlyMobileQcCnt Int?
+  totalVolume        Int
+  /**
+   * 월간 합계 기준 250 미만(또는 미발견 0건)으로 확정된 경우 SearchAD 재조회 생략에 사용
+   */
+  belowThreshold     Boolean  @default(false)
+  source             String   @default("naver-searchad")
+  checkedAt          DateTime @default(now())
+  raw                Json?
 
   @@index([checkedAt])
 }
 
-/** 블로그 분석 저장 목록: 고정/자동추적 상태 영구 저장 */
+/**
+ * 블로그 분석 저장 목록: 고정/자동추적 상태 영구 저장
+ */
 model BlogAnalysisSaved {
   id           String   @id @default(cuid())
   userId       String?
@@ -648,7 +718,7 @@ model Post {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-comments  Comment[]
+  comments Comment[]
 
   @@index([userId])
 }
@@ -680,9 +750,185 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([postId])
   @@index([userId])
+}
+
+/**
+ * 뉴오더클럽 운영관리 접근자. 역할은 표시용이며 모든 접근자는 같은 기능 권한을 가진다.
+ */
+model NewOrderOperator {
+  id        String               @id @default(cuid())
+  userId    String               @unique
+  role      NewOrderOperatorRole @default(STORE_MANAGER)
+  isActive  Boolean              @default(true)
+  createdBy String
+  updatedBy String
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isActive])
+}
+
+model NewOrderSupplier {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  contact   String?
+  website   String?  @db.Text
+  memo      String?  @db.Text
+  isActive  Boolean  @default(true)
+  createdBy String
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     NewOrderItem[]
+  purchases NewOrderPurchase[]
+
+  @@index([isActive])
+}
+
+model NewOrderItem {
+  id                    String   @id @default(cuid())
+  name                  String
+  category              String
+  minimumStock          Int      @default(0)
+  orderUnit             String
+  orderUnitQuantity     Int      @default(1)
+  naverSearchKeyword    String?
+  naverSearchKeywords   String[] @default([])
+  coupangSearchKeyword  String?
+  coupangSearchKeywords String[] @default([])
+  excludedKeywords      String[] @default([])
+  defaultSupplierId     String?
+  isActive              Boolean  @default(true)
+  createdBy             String
+  updatedBy             String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  defaultSupplier  NewOrderSupplier?        @relation(fields: [defaultSupplierId], references: [id], onDelete: SetNull)
+  inventoryEntries NewOrderInventoryEntry[]
+  orders           NewOrderOrder[]
+  priceCandidates  NewOrderPriceCandidate[]
+  purchases        NewOrderPurchase[]
+
+  @@unique([name, category])
+  @@index([isActive])
+  @@index([category])
+  @@index([defaultSupplierId])
+}
+
+model NewOrderInventoryCheck {
+  id          String        @id @default(cuid())
+  store       NewOrderStore
+  memo        String?       @db.Text
+  completedAt DateTime      @default(now())
+  createdBy   String
+  updatedBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  entries NewOrderInventoryEntry[]
+  orders  NewOrderOrder[]
+
+  @@index([store, completedAt])
+}
+
+model NewOrderInventoryEntry {
+  id          String   @id @default(cuid())
+  checkId     String
+  itemId      String
+  currentQty  Int
+  shortageQty Int
+  createdBy   String
+  updatedBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  check NewOrderInventoryCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  item  NewOrderItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([checkId, itemId])
+  @@index([itemId])
+}
+
+model NewOrderOrder {
+  id            String         @id @default(cuid())
+  store         NewOrderStore
+  itemId        String
+  sourceCheckId String?
+  requestedQty  Int
+  status        NewOrderStatus @default(REQUESTED)
+  memo          String?        @db.Text
+  createdBy     String
+  updatedBy     String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  item        NewOrderItem            @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  sourceCheck NewOrderInventoryCheck? @relation(fields: [sourceCheckId], references: [id], onDelete: SetNull)
+  purchases   NewOrderPurchase[]
+
+  @@index([store, status])
+  @@index([itemId])
+  @@index([sourceCheckId])
+}
+
+model NewOrderPriceCandidate {
+  id              String              @id @default(cuid())
+  itemId          String
+  source          NewOrderPriceSource
+  title           String
+  productUrl      String              @db.Text
+  itemPrice       Int
+  shippingFee     Int                 @default(0)
+  totalPrice      Int
+  quantityPerPack Int                 @default(1)
+  unitPrice       Float
+  volumePerUnit   Float?
+  volumeUnit      String?
+  packageUnit     String?
+  pricePer100     Float?
+  pricePerMeasure Float?
+  checkedAt       DateTime            @default(now())
+  createdBy       String
+  updatedBy       String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  item NewOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, checkedAt])
+  @@index([source])
+}
+
+model NewOrderPurchase {
+  id          String   @id @default(cuid())
+  purchasedAt DateTime
+  itemId      String
+  supplierId  String?
+  orderId     String?
+  quantity    Int
+  totalPrice  Int
+  unitPrice   Float
+  memo        String?  @db.Text
+  createdBy   String
+  updatedBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  item     NewOrderItem      @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  supplier NewOrderSupplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  order    NewOrderOrder?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([purchasedAt])
+  @@index([itemId, purchasedAt])
+  @@index([supplierId])
+  @@index([orderId])
 }

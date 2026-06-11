@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "postinstall": "prisma generate",
+    "neworder:seed-operators": "node scripts/seed-neworder-operators.mjs",
     "naver-map-token": "node scripts/refresh-naver-map-allsearch-token.mjs"
   },
   "dependencies": {
