@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -44,7 +45,7 @@ export function NewOrderShell({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="min-h-dvh bg-[#f5f7f4] text-slate-950">
+    <div className="min-h-dvh bg-[#f7f8f8] text-slate-950">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 lg:px-8">
           <div className="flex items-center gap-3">
@@ -60,13 +61,18 @@ export function NewOrderShell({
               href="/operations/neworder/price-compare"
               className="flex items-center gap-3"
             >
-              <span className="grid size-9 place-items-center rounded-xl bg-[#173f35] text-sm font-black text-white">
-                NO
-              </span>
+              <Image
+                src="/images/new-order-club-logo.png"
+                width={491}
+                height={412}
+                alt=""
+                className="h-auto w-[58px] max-w-[58px] shrink-0 object-contain sm:w-[72px] sm:max-w-[72px]"
+                priority
+              />
               <span>
                 <strong className="block text-sm">NEW ORDER CLUB</strong>
                 <span className="block text-xs text-slate-500">
-                  PostLabs 운영관리
+                  발주 및 운영관리
                 </span>
               </span>
             </Link>
@@ -93,9 +99,10 @@ export function NewOrderShell({
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
+                  aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
                     active
-                      ? "bg-[#173f35] text-white"
+                      ? "bg-[#173f35] !text-white hover:bg-[#173f35] hover:!text-white [&_svg]:!text-white"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
                   }`}
                 >
@@ -105,7 +112,7 @@ export function NewOrderShell({
               );
             })}
           </nav>
-          <div className="mt-6 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
             이 페이지는 내부 운영 전용입니다. 고객용 뉴오더클럽 사이트와
             분리되어 있습니다.
           </div>

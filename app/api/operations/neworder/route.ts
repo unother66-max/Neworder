@@ -4,6 +4,7 @@ import { getNewOrderAccess } from "@/lib/neworder/auth";
 import { getNewOrderSnapshot } from "@/lib/neworder/data";
 import { normalizeStringArray } from "@/lib/neworder/item-keywords";
 import { calculatePriceMetrics } from "@/lib/neworder/price-analysis";
+import { isBaeminMartUrl } from "@/lib/neworder/sellers";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -131,6 +132,9 @@ export async function POST(request: Request) {
           /[,;\r\n]+/
         ),
         defaultSupplierId,
+        ...(typeof body.isActive === "boolean"
+          ? { isActive: body.isActive }
+          : {}),
         updatedBy: actor,
       };
       let savedItemId = id;
@@ -334,6 +338,7 @@ export async function POST(request: Request) {
         body.source === "NAVER" ||
         body.source === "COUPANG" ||
         body.source === "ORDERHERO" ||
+        body.source === "BAEMIN_MART" ||
         body.source === "ETC"
           ? body.source
           : "MANUAL";
@@ -347,6 +352,11 @@ export async function POST(request: Request) {
         quantityPerPack === null
       ) {
         return error("가격 후보 정보를 확인해 주세요.");
+      }
+      if (source === "BAEMIN_MART" && !isBaeminMartUrl(productUrl)) {
+        return error(
+          "배민상회 구매 링크는 mart.baemin.com 주소를 입력해 주세요."
+        );
       }
       const metrics = calculatePriceMetrics({
         title,

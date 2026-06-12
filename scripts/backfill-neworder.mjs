@@ -20,6 +20,7 @@ function defaultMallName(source) {
   if (source === "NAVER") return "네이버";
   if (source === "COUPANG") return "쿠팡";
   if (source === "ORDERHERO") return "오더히어로";
+  if (source === "BAEMIN_MART") return "배민상회";
   return "직접 추가";
 }
 

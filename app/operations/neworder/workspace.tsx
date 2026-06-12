@@ -16,7 +16,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  Fragment,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 import {
   calculatePriceMetrics,
@@ -32,6 +38,7 @@ import {
   parseLines,
 } from "@/lib/neworder/item-keywords";
 import { matchProductKeywords } from "@/lib/neworder/product-matching";
+import { BAEMIN_MART_BASE_URL } from "@/lib/neworder/sellers";
 
 type View =
   | "dashboard"
@@ -118,7 +125,13 @@ type InventoryCheck = {
 type PriceCandidate = {
   id: string;
   itemId: string;
-  source: "NAVER" | "COUPANG" | "ORDERHERO" | "MANUAL" | "ETC";
+  source:
+    | "NAVER"
+    | "COUPANG"
+    | "ORDERHERO"
+    | "BAEMIN_MART"
+    | "MANUAL"
+    | "ETC";
   mallName: string;
   title: string;
   productUrl: string;
@@ -268,7 +281,13 @@ function responseError(
 }
 
 type SearchCandidate = {
-  source: "NAVER" | "COUPANG" | "ORDERHERO" | "MANUAL" | "ETC";
+  source:
+    | "NAVER"
+    | "COUPANG"
+    | "ORDERHERO"
+    | "BAEMIN_MART"
+    | "MANUAL"
+    | "ETC";
   title: string;
   productUrl: string;
   image: string | null;
@@ -361,13 +380,13 @@ function Panel({
 }
 
 const inputClass =
-  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#2f6f5e] focus:ring-2 focus:ring-[#2f6f5e]/15";
+  "h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-600 focus:ring-2 focus:ring-slate-200";
 const buttonClass =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#173f35] px-4 text-sm font-bold text-white transition hover:bg-[#245b4c] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-10 items-center justify-center gap-2 rounded-xl border-0 bg-[#123f34] px-4 text-sm font-bold text-white transition hover:bg-[#0f332b] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500";
 const primaryLinkClass =
-  "inline-flex items-center justify-center gap-1 border-0 bg-[#0F4A3A] font-bold !text-white shadow-sm transition hover:bg-[#0B382D] hover:!text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F4A3A] focus-visible:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:bg-slate-200 aria-disabled:!text-slate-700 aria-disabled:shadow-none";
+  "inline-flex items-center justify-center gap-1 border-0 bg-[#123f34] font-bold !text-white transition hover:bg-[#0f332b] hover:!text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:bg-slate-200 aria-disabled:!text-slate-600";
 const secondaryButtonClass =
-  "inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50";
+  "inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
 
 export function NewOrderWorkspace({
   view,
@@ -497,7 +516,7 @@ export function NewOrderWorkspace({
   return (
     <>
       {message && (
-        <div className="mb-4 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <span>{message}</span>
           <button onClick={() => setMessage(null)} aria-label="알림 닫기">
             ×
@@ -544,25 +563,25 @@ function Dashboard({ data }: { data: Snapshot }) {
       label: "활성 품목",
       value: activeItems.length,
       icon: PackageCheck,
-      tone: "bg-emerald-50 text-emerald-700",
+      tone: "bg-slate-100 text-slate-700",
     },
     {
       label: "미완료 발주",
       value: pending.length,
       icon: ShoppingCart,
-      tone: "bg-amber-50 text-amber-700",
+      tone: "bg-slate-100 text-slate-700",
     },
     {
       label: "등록 거래처",
       value: data.suppliers.filter((supplier) => supplier.isActive).length,
       icon: Store,
-      tone: "bg-blue-50 text-blue-700",
+      tone: "bg-slate-100 text-slate-700",
     },
     {
       label: "구매 기록",
       value: data.purchases.length,
       icon: CircleDollarSign,
-      tone: "bg-violet-50 text-violet-700",
+      tone: "bg-slate-100 text-slate-700",
     },
   ];
 
@@ -606,7 +625,7 @@ function Dashboard({ data }: { data: Snapshot }) {
                   className={`rounded-full px-2.5 py-1 text-xs font-bold ${
                     check.shortageItemCount
                       ? "bg-red-50 text-red-700"
-                      : "bg-emerald-50 text-emerald-700"
+                      : "bg-slate-100 text-slate-600"
                   }`}
                 >
                   부족 {check.shortageItemCount}개
@@ -768,7 +787,7 @@ function InventoryCheckView({
                             <AlertTriangle className="size-3" /> 부족
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
                             <Check className="size-3" /> 정상
                           </span>
                         )}
@@ -806,6 +825,7 @@ function sourceLabel(source: PriceCandidate["source"]) {
     NAVER: "네이버",
     COUPANG: "쿠팡",
     ORDERHERO: "오더히어로",
+    BAEMIN_MART: "배민상회",
     MANUAL: "직접 추가",
     ETC: "기타",
   }[source];
@@ -813,10 +833,11 @@ function sourceLabel(source: PriceCandidate["source"]) {
 
 function sourceBadgeClass(source: PriceCandidate["source"]) {
   return {
-    NAVER: "bg-emerald-50 text-emerald-700",
-    COUPANG: "bg-rose-50 text-rose-700",
-    ORDERHERO: "bg-blue-50 text-blue-700",
-    MANUAL: "bg-violet-50 text-violet-700",
+    NAVER: "bg-slate-100 text-slate-700",
+    COUPANG: "bg-slate-100 text-slate-700",
+    ORDERHERO: "bg-slate-100 text-slate-700",
+    BAEMIN_MART: "bg-slate-100 text-slate-700",
+    MANUAL: "bg-slate-100 text-slate-700",
     ETC: "bg-slate-100 text-slate-700",
   }[source];
 }
@@ -1069,7 +1090,7 @@ function PurchaseListView({
                       {sourceLabel(candidate.source)}
                     </span>
                     {candidate.shippingStatus === "PAID" && (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                         유료배송
                         {shippingUnitCount > 1
                           ? ` · ${shippingUnitCount}개마다`
@@ -1077,17 +1098,17 @@ function PurchaseListView({
                       </span>
                     )}
                     {candidate.shippingStatus === "FREE" && (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                         무료배송
                       </span>
                     )}
                     {shippingUnknown && (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
                         배송비 확인 필요
                       </span>
                     )}
                     {hasSavedShipping && (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                         저장된 배송비 적용
                       </span>
                     )}
@@ -1109,7 +1130,7 @@ function PurchaseListView({
                         {money(displayedTotal)}
                       </strong>
                       {shippingUnknown && (
-                        <em className="ml-1 not-italic text-amber-700">
+                        <em className="ml-1 not-italic text-slate-500">
                           배송비 미확인
                         </em>
                       )}
@@ -1267,7 +1288,7 @@ function PurchaseListView({
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-bold text-emerald-700">가격변동</p>
+                <p className="text-xs font-bold text-slate-600">가격변동</p>
                 <h2 className="mt-1 text-xl font-black">
                   {selectedCandidate?.item.name || "품목"}
                 </h2>
@@ -1302,8 +1323,8 @@ function PurchaseListView({
                         <span
                           className={`rounded-full px-2 py-1 text-xs font-bold ${
                             row.type === "구매"
-                              ? "bg-blue-50 text-blue-700"
-                              : "bg-emerald-50 text-emerald-700"
+                              ? "bg-slate-200 text-slate-700"
+                              : "bg-slate-100 text-slate-600"
                           }`}
                         >
                           {row.type}
@@ -1323,12 +1344,12 @@ function PurchaseListView({
                         </p>
                       )}
                       {row.shippingStatus === "FREE" && (
-                        <span className="mt-2 inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                        <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
                           무료배송
                         </span>
                       )}
                       {row.shippingStatus === "UNKNOWN" && (
-                        <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                        <span className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500">
                           배송비 확인 필요
                         </span>
                       )}
@@ -1342,7 +1363,7 @@ function PurchaseListView({
                           href={row.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-emerald-700"
+                          className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-slate-800 hover:text-slate-950"
                         >
                           저장 링크 열기{" "}
                           <ArrowUpRight className="size-4" />
@@ -1593,9 +1614,25 @@ function ItemsView({
     successMessage: string
   ) => Promise<boolean>;
 }) {
-  const [editing, setEditing] = useState<Item | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [inlineDraft, setInlineDraft] = useState<{
+    name: string;
+    category: string;
+    minimumStock: string;
+    orderUnit: string;
+    orderUnitQuantity: string;
+    defaultSupplierId: string;
+    isActive: boolean;
+    naverSearchKeywords: string;
+    coupangSearchKeywords: string;
+    requiredKeywords: string;
+    optionalKeywords: string;
+    preferredKeywords: string;
+    excludedKeywords: string;
+  } | null>(null);
+  const [inlineError, setInlineError] = useState<string | null>(null);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submitNewItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const formData = new FormData(formElement);
@@ -1624,7 +1661,6 @@ function ItemsView({
     const ok = await mutate(
       {
         action: "saveItem",
-        id: editing?.id,
         name: formData.get("name"),
         category: formData.get("category"),
         minimumStock: formData.get("minimumStock"),
@@ -1640,12 +1676,104 @@ function ItemsView({
         excludedKeywords,
         defaultSupplierId: formData.get("defaultSupplierId"),
       },
-      editing ? "품목을 수정했습니다." : "품목을 추가했습니다."
+      "품목을 추가했습니다."
     );
     if (ok) {
-      setEditing(null);
       formElement.reset();
     }
+  }
+
+  function startInlineEdit(item: Item) {
+    setEditingItemId(item.id);
+    setInlineDraft({
+      name: item.name,
+      category: item.category,
+      minimumStock: String(item.minimumStock),
+      orderUnit: item.orderUnit,
+      orderUnitQuantity: String(item.orderUnitQuantity),
+      defaultSupplierId: item.defaultSupplierId || "",
+      isActive: item.isActive,
+      naverSearchKeywords: item.naverSearchKeywords.join("\n"),
+      coupangSearchKeywords: item.coupangSearchKeywords.join("\n"),
+      requiredKeywords: item.requiredKeywords.join(", "),
+      optionalKeywords: item.optionalKeywords.join(", "),
+      preferredKeywords: item.preferredKeywords.join(", "),
+      excludedKeywords: item.excludedKeywords.join(", "),
+    });
+    setInlineError(null);
+  }
+
+  function cancelInlineEdit() {
+    setEditingItemId(null);
+    setInlineDraft(null);
+    setInlineError(null);
+  }
+
+  async function saveInlineItem(item: Item) {
+    if (!inlineDraft || editingItemId !== item.id) return;
+    const name = inlineDraft.name.trim();
+    const category = inlineDraft.category.trim();
+    const orderUnit = inlineDraft.orderUnit.trim();
+    const minimumStock = Number(inlineDraft.minimumStock);
+    const orderUnitQuantity = Number(inlineDraft.orderUnitQuantity);
+
+    if (!name) {
+      setInlineError("품목명을 입력해 주세요.");
+      return;
+    }
+    if (!category) {
+      setInlineError("카테고리를 입력해 주세요.");
+      return;
+    }
+    if (!Number.isFinite(minimumStock) || minimumStock < 0) {
+      setInlineError("최소재고는 0 이상의 숫자로 입력해 주세요.");
+      return;
+    }
+    if (!orderUnit) {
+      setInlineError("발주 단위를 입력해 주세요.");
+      return;
+    }
+    if (!Number.isInteger(orderUnitQuantity) || orderUnitQuantity < 1) {
+      setInlineError("단위당 수량은 1 이상의 정수로 입력해 주세요.");
+      return;
+    }
+
+    setInlineError(null);
+    const ok = await mutate(
+      {
+        action: "saveItem",
+        id: item.id,
+        name,
+        category,
+        minimumStock,
+        orderUnit,
+        orderUnitQuantity,
+        naverSearchKeyword: item.naverSearchKeyword,
+        naverSearchKeywords: parseLines(inlineDraft.naverSearchKeywords),
+        coupangSearchKeyword: item.coupangSearchKeyword,
+        coupangSearchKeywords: parseLines(inlineDraft.coupangSearchKeywords),
+        requiredKeywords: normalizeStringArray(
+          inlineDraft.requiredKeywords,
+          /[,;\r\n]+/
+        ),
+        optionalKeywords: normalizeStringArray(
+          inlineDraft.optionalKeywords,
+          /[,;\r\n]+/
+        ),
+        preferredKeywords: normalizeStringArray(
+          inlineDraft.preferredKeywords,
+          /[,;\r\n]+/
+        ),
+        excludedKeywords: normalizeStringArray(
+          inlineDraft.excludedKeywords,
+          /[,;\r\n]+/
+        ),
+        defaultSupplierId: inlineDraft.defaultSupplierId,
+        isActive: inlineDraft.isActive,
+      },
+      `${name} 품목을 수정했습니다.`
+    );
+    if (ok) cancelInlineEdit();
   }
 
   return (
@@ -1655,33 +1783,20 @@ function ItemsView({
         description="최소재고, 발주 단위, 가격 검색어와 기본 거래처를 관리합니다. 삭제 대신 비활성화합니다."
       />
       <Panel>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-bold">{editing ? "품목 수정" : "새 품목 추가"}</h2>
-          {editing && (
-            <button
-              className={secondaryButtonClass}
-              onClick={() => setEditing(null)}
-            >
-              신규 입력으로 전환
-            </button>
-          )}
-        </div>
+        <h2 className="mb-4 font-bold">새 품목 추가</h2>
         <form
-          key={editing?.id || "new"}
-          onSubmit={submit}
+          onSubmit={submitNewItem}
           className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"
         >
           <input
             className={inputClass}
             name="name"
-            defaultValue={editing?.name}
             placeholder="품목명"
             required
           />
           <input
             className={inputClass}
             name="category"
-            defaultValue={editing?.category}
             placeholder="카테고리"
             required
           />
@@ -1690,14 +1805,13 @@ function ItemsView({
             name="minimumStock"
             type="number"
             min="0"
-            defaultValue={editing?.minimumStock ?? 0}
+            defaultValue={0}
             placeholder="최소재고"
             required
           />
           <input
             className={inputClass}
             name="orderUnit"
-            defaultValue={editing?.orderUnit}
             placeholder="발주 단위 (예: 1박스)"
             required
           />
@@ -1706,20 +1820,18 @@ function ItemsView({
             name="orderUnitQuantity"
             type="number"
             min="1"
-            defaultValue={editing?.orderUnitQuantity ?? 1}
+            defaultValue={1}
             placeholder="단위당 수량"
             required
           />
           <textarea
-            className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#2f6f5e] focus:ring-2 focus:ring-[#2f6f5e]/15"
+            className="min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-600 focus:ring-2 focus:ring-slate-200"
             name="naverSearchKeywords"
-            defaultValue={(editing?.naverSearchKeywords ?? []).join("\n")}
             placeholder={"네이버 정확 검색어 (줄바꿈 구분)\n예: 올리타리아 트러플 오일 250ml"}
           />
           <textarea
-            className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#2f6f5e] focus:ring-2 focus:ring-[#2f6f5e]/15"
+            className="min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-600 focus:ring-2 focus:ring-slate-200"
             name="coupangSearchKeywords"
-            defaultValue={(editing?.coupangSearchKeywords ?? []).join("\n")}
             placeholder="쿠팡 정확 검색어 (줄바꿈 구분)"
           />
           <label className="text-sm font-semibold">
@@ -1727,7 +1839,6 @@ function ItemsView({
             <input
               className={`${inputClass} mt-1`}
               name="requiredKeywords"
-              defaultValue={(editing?.requiredKeywords ?? []).join(", ")}
               placeholder="예: 올리타리아"
             />
           </label>
@@ -1736,7 +1847,6 @@ function ItemsView({
             <input
               className={`${inputClass} mt-1`}
               name="optionalKeywords"
-              defaultValue={(editing?.optionalKeywords ?? []).join(", ")}
               placeholder="예: 트러플, 송로버섯"
             />
           </label>
@@ -1745,7 +1855,6 @@ function ItemsView({
             <input
               className={`${inputClass} mt-1`}
               name="preferredKeywords"
-              defaultValue={(editing?.preferredKeywords ?? []).join(", ")}
               placeholder="예: 250ml"
             />
           </label>
@@ -1754,14 +1863,13 @@ function ItemsView({
             <input
               className={`${inputClass} mt-1`}
               name="excludedKeywords"
-              defaultValue={(editing?.excludedKeywords ?? []).join(", ")}
               placeholder="쉼표로 구분"
             />
           </label>
           <select
             className={inputClass}
             name="defaultSupplierId"
-            defaultValue={editing?.defaultSupplierId || ""}
+            defaultValue=""
           >
             <option value="">기본 거래처 없음</option>
             {data.suppliers
@@ -1774,13 +1882,13 @@ function ItemsView({
           </select>
           <button className={buttonClass} disabled={saving}>
             <Plus className="size-4" />
-            {editing ? "수정 저장" : "품목 추가"}
+            품목 추가
           </button>
         </form>
       </Panel>
       <Panel className="mt-4 overflow-hidden p-0 lg:p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
+          <table className="w-full min-w-[1180px] text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-3">품목</th>
@@ -1794,84 +1902,345 @@ function ItemsView({
               </tr>
             </thead>
             <tbody>
-              {data.items.map((item) => (
-                <tr
-                  key={item.id}
-                  className={`border-t border-slate-100 ${
-                    item.isActive ? "" : "bg-slate-50 text-slate-400"
-                  }`}
-                >
-                  <td className="px-4 py-3 font-bold">{item.name}</td>
-                  <td className="px-4 py-3">{item.category}</td>
-                  <td className="px-4 py-3">{item.minimumStock}</td>
-                  <td className="px-4 py-3">
-                    {item.orderUnit} / {item.orderUnitQuantity}개
-                  </td>
-                  <td className="px-4 py-3">
-                    {item.defaultSupplier?.name || "-"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {item.purchases[0]
-                      ? money(item.purchases[0].unitPrice)
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {item.isActive ? "활성" : "비활성"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        className={secondaryButtonClass}
-                        onClick={() =>
-                          setEditing(
-                            normalizeItem({
-                              ...item,
-                              naverSearchKeywords:
-                                item.naverSearchKeywords ?? [],
-                              coupangSearchKeywords:
-                                item.coupangSearchKeywords ?? [],
+              {data.items.map((item) => {
+                const draft =
+                  editingItemId === item.id ? inlineDraft : null;
+                const isEditing = draft !== null;
+                return (
+                  <Fragment key={item.id}>
+                  <tr
+                    className={`border-t border-slate-100 align-top ${
+                      isEditing
+                        ? "bg-slate-50 outline outline-1 -outline-offset-1 outline-slate-300"
+                        : item.isActive
+                          ? ""
+                          : "bg-slate-50 text-slate-400"
+                    }`}
+                  >
+                    <td className="px-4 py-3 font-bold">
+                      {draft ? (
+                        <input
+                          className={`${inputClass} min-w-48`}
+                          value={draft.name}
+                          onChange={(event) =>
+                            setInlineDraft({
+                              ...draft,
+                              name: event.target.value,
                             })
-                          )
-                        }
-                      >
-                        <Pencil className="size-3.5" /> 수정
-                      </button>
-                      {item.isActive && (
-                        <button
-                          className={secondaryButtonClass}
-                          disabled={saving}
-                          onClick={() =>
-                            void mutate(
-                              { action: "deactivateItem", id: item.id },
-                              `${item.name} 품목을 비활성화했습니다.`
-                            )
                           }
-                        >
-                          비활성화
-                        </button>
+                          aria-label={`${item.name} 품목명`}
+                        />
+                      ) : (
+                        item.name
                       )}
-                      {!item.isActive && (
-                        <button
-                          className={secondaryButtonClass}
-                          disabled={saving}
-                          onClick={() =>
-                            void mutate(
-                              {
-                                action: "setItemActive",
-                                id: item.id,
-                                isActive: true,
-                              },
-                              `${item.name} 품목을 다시 활성화했습니다.`
-                            )
+                    </td>
+                    <td className="px-4 py-3">
+                      {draft ? (
+                        <input
+                          className={`${inputClass} w-32`}
+                          value={draft.category}
+                          onChange={(event) =>
+                            setInlineDraft({
+                              ...draft,
+                              category: event.target.value,
+                            })
                           }
-                        >
-                          활성화
-                        </button>
+                          aria-label={`${item.name} 카테고리`}
+                        />
+                      ) : (
+                        item.category
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      {draft ? (
+                        <input
+                          className={`${inputClass} w-20`}
+                          type="number"
+                          min="0"
+                          value={draft.minimumStock}
+                          onChange={(event) =>
+                            setInlineDraft({
+                              ...draft,
+                              minimumStock: event.target.value,
+                            })
+                          }
+                          aria-label={`${item.name} 최소재고`}
+                        />
+                      ) : (
+                        item.minimumStock
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {draft ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            className={`${inputClass} w-32`}
+                            value={draft.orderUnit}
+                            onChange={(event) =>
+                              setInlineDraft({
+                                ...draft,
+                                orderUnit: event.target.value,
+                              })
+                            }
+                            aria-label={`${item.name} 발주 단위`}
+                          />
+                          <span className="text-slate-400">/</span>
+                          <input
+                            className={`${inputClass} w-20`}
+                            type="number"
+                            min="1"
+                            value={draft.orderUnitQuantity}
+                            onChange={(event) =>
+                              setInlineDraft({
+                                ...draft,
+                                orderUnitQuantity: event.target.value,
+                              })
+                            }
+                            aria-label={`${item.name} 단위당 수량`}
+                          />
+                          <span className="text-xs text-slate-500">개</span>
+                        </div>
+                      ) : (
+                        <>
+                          {item.orderUnit} / {item.orderUnitQuantity}개
+                        </>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {draft ? (
+                        <select
+                          className={`${inputClass} w-40`}
+                          value={draft.defaultSupplierId}
+                          onChange={(event) =>
+                            setInlineDraft({
+                              ...draft,
+                              defaultSupplierId: event.target.value,
+                            })
+                          }
+                          aria-label={`${item.name} 기본 거래처`}
+                        >
+                          <option value="">기본 거래처 없음</option>
+                          {data.suppliers
+                            .filter(
+                              (supplier) =>
+                                supplier.isActive ||
+                                supplier.id === item.defaultSupplierId
+                            )
+                            .map((supplier) => (
+                              <option key={supplier.id} value={supplier.id}>
+                                {supplier.name}
+                              </option>
+                            ))}
+                        </select>
+                      ) : (
+                        item.defaultSupplier?.name || "-"
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.purchases[0]
+                        ? money(item.purchases[0].unitPrice)
+                        : "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {draft ? (
+                        <select
+                          className={`${inputClass} w-24`}
+                          value={draft.isActive ? "ACTIVE" : "INACTIVE"}
+                          onChange={(event) =>
+                            setInlineDraft({
+                              ...draft,
+                              isActive: event.target.value === "ACTIVE",
+                            })
+                          }
+                          aria-label={`${item.name} 상태`}
+                        >
+                          <option value="ACTIVE">활성</option>
+                          <option value="INACTIVE">비활성</option>
+                        </select>
+                      ) : item.isActive ? (
+                        "활성"
+                      ) : (
+                        "비활성"
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {draft ? (
+                        <div className="min-w-44">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className={buttonClass}
+                              disabled={saving}
+                              onClick={() => void saveInlineItem(item)}
+                            >
+                              {saving && (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              )}
+                              저장
+                            </button>
+                            <button
+                              type="button"
+                              className={secondaryButtonClass}
+                              disabled={saving}
+                              onClick={cancelInlineEdit}
+                            >
+                              취소
+                            </button>
+                          </div>
+                          {inlineError && (
+                            <p className="mt-2 max-w-56 text-xs font-semibold leading-5 text-red-600">
+                              {inlineError}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className={secondaryButtonClass}
+                            disabled={saving}
+                            onClick={() => startInlineEdit(item)}
+                          >
+                            <Pencil className="size-3.5" /> 수정
+                          </button>
+                          {item.isActive && (
+                            <button
+                              type="button"
+                              className={secondaryButtonClass}
+                              disabled={saving}
+                              onClick={() =>
+                                void mutate(
+                                  { action: "deactivateItem", id: item.id },
+                                  `${item.name} 품목을 비활성화했습니다.`
+                                )
+                              }
+                            >
+                              비활성화
+                            </button>
+                          )}
+                          {!item.isActive && (
+                            <button
+                              type="button"
+                              className={secondaryButtonClass}
+                              disabled={saving}
+                              onClick={() =>
+                                void mutate(
+                                  {
+                                    action: "setItemActive",
+                                    id: item.id,
+                                    isActive: true,
+                                  },
+                                  `${item.name} 품목을 다시 활성화했습니다.`
+                                )
+                              }
+                            >
+                              활성화
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                  {draft && (
+                    <tr className="border-t border-slate-200 bg-slate-50">
+                      <td colSpan={8} className="px-4 pb-4 pt-1">
+                        <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-2 xl:grid-cols-3">
+                          <label className="text-xs font-semibold text-slate-600">
+                            네이버 검색어
+                            <textarea
+                              className="mt-1 min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-600 focus:ring-2 focus:ring-slate-200"
+                              value={draft.naverSearchKeywords}
+                              onChange={(event) =>
+                                setInlineDraft({
+                                  ...draft,
+                                  naverSearchKeywords: event.target.value,
+                                })
+                              }
+                              placeholder="줄바꿈으로 구분"
+                            />
+                          </label>
+                          <label className="text-xs font-semibold text-slate-600">
+                            쿠팡 검색어
+                            <textarea
+                              className="mt-1 min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-600 focus:ring-2 focus:ring-slate-200"
+                              value={draft.coupangSearchKeywords}
+                              onChange={(event) =>
+                                setInlineDraft({
+                                  ...draft,
+                                  coupangSearchKeywords: event.target.value,
+                                })
+                              }
+                              placeholder="줄바꿈으로 구분"
+                            />
+                          </label>
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                            <label className="text-xs font-semibold text-slate-600">
+                              필수 포함 키워드
+                              <input
+                                className={`${inputClass} mt-1`}
+                                value={draft.requiredKeywords}
+                                onChange={(event) =>
+                                  setInlineDraft({
+                                    ...draft,
+                                    requiredKeywords: event.target.value,
+                                  })
+                                }
+                                placeholder="쉼표로 구분"
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-slate-600">
+                              선택 포함 키워드
+                              <input
+                                className={`${inputClass} mt-1`}
+                                value={draft.optionalKeywords}
+                                onChange={(event) =>
+                                  setInlineDraft({
+                                    ...draft,
+                                    optionalKeywords: event.target.value,
+                                  })
+                                }
+                                placeholder="쉼표로 구분"
+                              />
+                            </label>
+                          </div>
+                          <label className="text-xs font-semibold text-slate-600">
+                            우선 키워드 / 권장 키워드
+                            <input
+                              className={`${inputClass} mt-1`}
+                              value={draft.preferredKeywords}
+                              onChange={(event) =>
+                                setInlineDraft({
+                                  ...draft,
+                                  preferredKeywords: event.target.value,
+                                })
+                              }
+                              placeholder="쉼표로 구분"
+                            />
+                          </label>
+                          <label className="text-xs font-semibold text-slate-600">
+                            제외 키워드
+                            <input
+                              className={`${inputClass} mt-1`}
+                              value={draft.excludedKeywords}
+                              onChange={(event) =>
+                                setInlineDraft({
+                                  ...draft,
+                                  excludedKeywords: event.target.value,
+                                })
+                              }
+                              placeholder="쉼표로 구분"
+                            />
+                          </label>
+                          <p className="self-end text-xs leading-5 text-slate-500">
+                            검색 설정도 이 행의 저장 버튼으로 함께 반영됩니다.
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1968,7 +2337,7 @@ function SuppliersView({
                   {supplier.contact || "연락처 미등록"}
                 </p>
               </div>
-              <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">
                 {supplier.isActive ? "활성" : "비활성"}
               </span>
             </div>
@@ -2153,6 +2522,7 @@ function PriceCompareView({
   const [itemId, setItemId] = useState(initialItem?.id || "");
   const [directQuery, setDirectQuery] = useState("");
   const [searchedDirectQuery, setSearchedDirectQuery] = useState("");
+  const [comparedItemId, setComparedItemId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
   const [coupangUrl, setCoupangUrl] = useState("");
@@ -2173,66 +2543,89 @@ function PriceCompareView({
     initialItem?.id || ""
   );
   const selectedItem = data.items.find((item) => item.id === itemId);
+  const comparedItem = comparedItemId
+    ? data.items.find((item) => item.id === comparedItemId) ?? null
+    : null;
+  const currentPurchaseCandidate = comparedItemId
+    ? data.purchaseList.reduce<SavedPurchaseCandidate | null>(
+        (latest, candidate) => {
+          if (candidate.itemId !== comparedItemId) return latest;
+          if (!latest) return candidate;
+          return new Date(candidate.checkedAt).getTime() >
+            new Date(latest.checkedAt).getTime()
+            ? candidate
+            : latest;
+        },
+        null
+      )
+    : null;
+  const selectedRecentUnitPrice =
+    selectedItem?.purchases[0]?.unitPrice ?? null;
   const recentUnitPrice = searchedDirectQuery
     ? null
-    : selectedItem?.purchases[0]?.unitPrice ?? null;
-  const analyzedCandidates = useMemo(
-    () =>
-      candidates.map((candidate, originalIndex) => ({
-        candidate,
-        originalIndex,
-        metrics: calculatePriceMetrics(candidate),
-      })),
-    [candidates]
-  );
-  const sortedCandidates = useMemo(() => {
-    return [...analyzedCandidates].sort((a, b) => {
-      const requiredDiff =
-        Number(b.candidate.passesRequired !== false) -
-        Number(a.candidate.passesRequired !== false);
-      if (requiredDiff) return requiredDiff;
-      const shippingDiff =
-        Number(a.candidate.shippingStatus === "UNKNOWN") -
-        Number(b.candidate.shippingStatus === "UNKNOWN");
-      if (shippingDiff) return shippingDiff;
-      const priceDiff = comparePriceMetrics(
-        a.metrics,
-        b.metrics,
-        sort,
-        recentUnitPrice
-      );
-      if (priceDiff) return priceDiff;
-      const keywordDiff =
-        (b.candidate.optionalMatchCount ?? 0) -
-          (a.candidate.optionalMatchCount ?? 0) ||
-        (b.candidate.preferredMatchCount ?? 0) -
-          (a.candidate.preferredMatchCount ?? 0);
-      if (keywordDiff) return keywordDiff;
-      return (
-        a.metrics.totalPrice - b.metrics.totalPrice ||
-        a.originalIndex - b.originalIndex
-      );
-    });
-  }, [analyzedCandidates, recentUnitPrice, sort]);
-  const recommended = useMemo(
-    () =>
-      sortedCandidates.find(
-        (entry) =>
-          entry.candidate.passesRequired !== false &&
-          entry.candidate.shippingStatus !== "UNKNOWN" &&
-          priceSortValue(entry.metrics, sort, recentUnitPrice) != null
-      ),
-    [recentUnitPrice, sort, sortedCandidates]
+    : selectedRecentUnitPrice;
+  const analyzedCandidates = candidates.map((candidate, originalIndex) => ({
+    candidate,
+    originalIndex,
+    metrics: calculatePriceMetrics(candidate),
+  }));
+  const sortedCandidates = [...analyzedCandidates].sort((a, b) => {
+    const requiredDiff =
+      Number(b.candidate.passesRequired !== false) -
+      Number(a.candidate.passesRequired !== false);
+    if (requiredDiff) return requiredDiff;
+    const shippingDiff =
+      Number(a.candidate.shippingStatus === "UNKNOWN") -
+      Number(b.candidate.shippingStatus === "UNKNOWN");
+    if (shippingDiff) return shippingDiff;
+    const priceDiff = comparePriceMetrics(
+      a.metrics,
+      b.metrics,
+      sort,
+      recentUnitPrice
+    );
+    if (priceDiff) return priceDiff;
+    const keywordDiff =
+      (b.candidate.optionalMatchCount ?? 0) -
+        (a.candidate.optionalMatchCount ?? 0) ||
+      (b.candidate.preferredMatchCount ?? 0) -
+        (a.candidate.preferredMatchCount ?? 0);
+    if (keywordDiff) return keywordDiff;
+    return (
+      a.metrics.totalPrice - b.metrics.totalPrice ||
+      a.originalIndex - b.originalIndex
+    );
+  });
+  const recommended = sortedCandidates.find(
+    (entry) =>
+      entry.candidate.passesRequired !== false &&
+      entry.candidate.shippingStatus !== "UNKNOWN" &&
+      entry.candidate.itemPrice > 0 &&
+      priceSortValue(entry.metrics, sort, recentUnitPrice) != null
   );
   const hasConfirmedShippingCandidate = analyzedCandidates.some(
     ({ candidate }) =>
       candidate.passesRequired !== false &&
       candidate.shippingStatus !== "UNKNOWN"
   );
+  const selectedSearchKeywords = selectedItem
+    ? [
+        ...new Set(
+          [
+            ...selectedItem.naverSearchKeywords,
+            selectedItem.naverSearchKeyword,
+          ].filter((keyword): keyword is string => Boolean(keyword?.trim()))
+        ),
+      ]
+    : [];
 
-  async function search() {
-    const query = directQuery.trim();
-    if (!query && !itemId) return;
+  async function search(mode: "direct" | "item") {
+    const query = mode === "direct" ? directQuery.trim() : "";
+    const targetItemId = mode === "item" ? itemId : "";
+    if ((mode === "direct" && !query) || (mode === "item" && !targetItemId)) {
+      return;
+    }
+    setComparedItemId(null);
     setSearching(true);
     setCandidates((rows) =>
       rows.map((candidate) =>
@@ -2245,7 +2638,7 @@ function PriceCompareView({
     setSearchError(null);
     try {
       const params = new URLSearchParams();
-      if (itemId) params.set("itemId", itemId);
+      if (targetItemId) params.set("itemId", targetItemId);
       if (query) params.set("query", query);
       const response = await fetch(
         `/api/operations/neworder/price-search?${params.toString()}`,
@@ -2322,6 +2715,7 @@ function PriceCompareView({
       setSearchedDirectQuery(
         payload.directSearch ? payload.searchedKeywords?.[0] ?? query : ""
       );
+      setComparedItemId(payload.directSearch ? null : targetItemId);
       if (payload.directSearch) {
         setSort(defaultPriceSort(query, "기타"));
       }
@@ -2405,6 +2799,7 @@ function PriceCompareView({
       sourceValue === "NAVER" ||
       sourceValue === "COUPANG" ||
       sourceValue === "ORDERHERO" ||
+      sourceValue === "BAEMIN_MART" ||
       sourceValue === "ETC"
         ? sourceValue
         : "MANUAL";
@@ -2504,10 +2899,6 @@ function PriceCompareView({
     }
   }
 
-  const directCoupangUrl = directQuery.trim()
-    ? `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery.trim())}`
-    : coupangUrl;
-
   return (
     <>
       <PageTitle
@@ -2515,89 +2906,163 @@ function PriceCompareView({
         description="상품명의 구성과 용량을 분석해 배송비 포함 개당·100ml·100g·매당 가격을 비교합니다."
       />
       <Panel>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_220px_auto_auto]">
-          <select
-            className={inputClass}
-            value={itemId}
-            onChange={(event) => {
-              const nextItemId = event.target.value;
-              const nextItem = activeItems.find(
-                (item) => item.id === nextItemId
-              );
-              setItemId(nextItemId);
-              setSort(
-                defaultPriceSort(
-                  nextItem?.name || "",
-                  nextItem?.category || ""
-                )
-              );
-              setCandidates([]);
-              setSearchedKeywords([]);
-              setSearchedDirectQuery("");
-              setSearchError(null);
-              setNotice(null);
+        <div className="border-b border-slate-100 pb-4">
+          <h2 className="text-lg font-black text-slate-950">가격비교</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            상품을 직접 검색하거나, 등록된 품목을 선택해 개당가를 비교할
+            수 있습니다.
+          </p>
+        </div>
+
+        <div className="mt-5 grid items-stretch gap-4 lg:grid-cols-2">
+          <form
+            className="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50/70 p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!searching && directQuery.trim()) {
+                void search("direct");
+              }
             }}
           >
-            <option value="">등록 품목 선택 안 함</option>
-            {activeItems.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} · {item.category}
-              </option>
-            ))}
-          </select>
-          <input
-            className={inputClass}
-            value={directQuery}
-            onChange={(event) => setDirectQuery(event.target.value)}
-            placeholder="직접 검색어 입력 예: 올리타리아 트러플 오일 250ml"
-          />
-          <select
-            className={inputClass}
-            value={sort}
-            onChange={(event) => setSort(event.target.value as PriceSort)}
-          >
-            <option value="totalPrice">총액 낮은순</option>
-            <option value="unitPrice">개당 가격 낮은순</option>
-            <option value="pricePer100">100ml/g당 가격 낮은순</option>
-            <option value="savings">최근 구매가 대비 절감액 높은순</option>
-          </select>
-          <button
-            className={buttonClass}
-            onClick={() => void search()}
-            disabled={searching || (!itemId && !directQuery.trim())}
-          >
-            {searching ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Search className="size-4" />
-            )}
-            가격 후보 조회
-          </button>
-          {directCoupangUrl && (
-            <a
-              href={directCoupangUrl}
-              target="_blank"
-              rel="noreferrer"
-              className={secondaryButtonClass}
+            <h3 className="text-base font-black text-slate-950">
+              상품 검색하기
+            </h3>
+            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">
+              등록되지 않은 상품도 바로 검색해 가격 후보를 확인할 수
+              있습니다.
+            </p>
+            <input
+              className={`${inputClass} mt-4 !h-14 min-h-14 rounded-2xl px-4`}
+              value={directQuery}
+              onChange={(event) => setDirectQuery(event.target.value)}
+              placeholder="예: 올리타리아 트러플 오일 250ml"
+            />
+            <div className="mt-3 flex min-h-[72px] items-center rounded-2xl bg-white px-4 py-3 text-xs leading-5 text-slate-600">
+              {directQuery.trim()
+                ? "검색 결과에서 실제 구매할 상품을 선택해 구매목록에 저장할 수 있습니다."
+                : "상품명을 입력하면 네이버와 쿠팡에서 검색할 수 있습니다. 예: 트러플오일, 모짜렐라 치즈 1kg"}
+            </div>
+            <div className="mt-auto grid w-full grid-cols-1 gap-3 pt-4 sm:grid-cols-[minmax(0,1fr)_180px]">
+              <button
+                type="submit"
+                className={`${buttonClass} !h-14 min-h-14 w-full rounded-2xl leading-none whitespace-nowrap`}
+                disabled={searching || !directQuery.trim()}
+              >
+                {searching ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Search className="size-4" />
+                )}
+                네이버에서 상품 검색
+              </button>
+              <a
+                href={
+                  directQuery.trim()
+                    ? `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery.trim())}`
+                    : undefined
+                }
+                target={directQuery.trim() ? "_blank" : undefined}
+                rel={directQuery.trim() ? "noreferrer" : undefined}
+                aria-disabled={!directQuery.trim()}
+                tabIndex={directQuery.trim() ? 0 : -1}
+                onClick={(event) => {
+                  if (!directQuery.trim()) event.preventDefault();
+                }}
+                className={`${secondaryButtonClass} !h-14 min-h-14 w-full rounded-2xl px-[18px] leading-none whitespace-nowrap aria-disabled:cursor-not-allowed aria-disabled:opacity-60`}
+              >
+                쿠팡 검색
+                <ArrowUpRight className="size-[17px]" />
+              </a>
+            </div>
+          </form>
+
+          <section className="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+            <h3 className="text-base font-black text-slate-950">
+              등록된 상품 비교하기
+            </h3>
+            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">
+              품목 관리에 저장된 상품을 선택해 최근 단가와 가격 후보를
+              비교합니다.
+            </p>
+            <select
+              className={`${inputClass} mt-4 !h-14 min-h-14 rounded-2xl px-4`}
+              value={itemId}
+              onChange={(event) => {
+                const nextItemId = event.target.value;
+                const nextItem = activeItems.find(
+                  (item) => item.id === nextItemId
+                );
+                setItemId(nextItemId);
+                setSort(
+                  defaultPriceSort(
+                    nextItem?.name || "",
+                    nextItem?.category || ""
+                  )
+                );
+                setCandidates([]);
+                setSearchedKeywords([]);
+                setSearchedDirectQuery("");
+                setComparedItemId(null);
+                setSearchError(null);
+                setNotice(null);
+              }}
             >
-              쿠팡 검색 열기 <ArrowUpRight className="size-4" />
-            </a>
-          )}
+              <option value="">비교할 등록 품목 선택</option>
+              {activeItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.category}
+                </option>
+              ))}
+            </select>
+            <div className="mt-3 flex min-h-[72px] flex-col justify-center rounded-2xl bg-white px-4 py-3 text-xs leading-5 text-slate-600">
+              <p>
+                최근 구매 단가:{" "}
+                <strong>
+                  {selectedRecentUnitPrice === null
+                    ? "기록 없음"
+                    : money(selectedRecentUnitPrice)}
+                </strong>
+              </p>
+              {itemId && (
+                <p className="mt-1 truncate text-slate-500">
+                  등록 검색어:{" "}
+                  {selectedSearchKeywords.length > 0
+                    ? selectedSearchKeywords.join(", ")
+                    : "설정 없음"}
+                </p>
+              )}
+            </div>
+            <div className="mt-auto pt-4">
+              <button
+                className={`${buttonClass} !h-14 min-h-14 w-full rounded-2xl leading-none whitespace-nowrap`}
+                onClick={() => void search("item")}
+                disabled={searching || !itemId}
+              >
+                {searching ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Search className="size-4" />
+                )}
+                등록 상품 가격 비교
+              </button>
+            </div>
+          </section>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+
+        <p className="mt-4 text-xs leading-5 text-slate-500">
+          수량과 용량 정보가 포함된 상품일수록 개당가 계산이 정확합니다.
+          조회 결과에서 실제 구매할 상품을 선택해 구매목록에 저장할 수
+          있습니다.
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
           {searchedDirectQuery && (
-            <span className="rounded-full bg-violet-50 px-3 py-1.5 font-bold text-violet-700">
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 font-bold text-slate-600">
               직접 검색
             </span>
           )}
-          <span className="rounded-full bg-slate-100 px-3 py-1.5">
-            최근 구매 단가:{" "}
-            <strong>
-              {recentUnitPrice === null ? "기록 없음" : money(recentUnitPrice)}
-            </strong>
-          </span>
           {recommended && (
-            <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-800">
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
               현재 추천:{" "}
               <strong>{recommended.candidate.mallName}</strong>
             </span>
@@ -2617,7 +3082,7 @@ function PriceCompareView({
           </div>
         )}
         {candidates.length > 0 && !hasConfirmedShippingCandidate && (
-          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
             모든 후보의 배송비가 미확인 상태입니다. 배송비 확인 후 추천
             가능합니다.
           </p>
@@ -2633,11 +3098,31 @@ function PriceCompareView({
             )}
           </div>
         )}
-        {notice && <p className="mt-3 text-sm text-amber-700">{notice}</p>}
+        {notice && (
+          <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            {notice}
+          </p>
+        )}
         <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-bold">
-            직접 찾은 링크 추가
+            직접 찾은 상품 링크 추가
           </summary>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+            <span>
+              네이버 검색 결과에 없는 상품은 구매 링크를 직접 추가할 수
+              있습니다. 배민상회는 로그인·회원가·쿠폰·배송 조건을 직접
+              확인해 주세요.
+            </span>
+            <a
+              href={BAEMIN_MART_BASE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-bold text-slate-700 hover:text-slate-950"
+            >
+              배민상회에서 상품 찾기
+              <ArrowUpRight className="size-3.5" />
+            </a>
+          </div>
           <form
             onSubmit={saveCoupangCandidate}
             className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4"
@@ -2668,6 +3153,7 @@ function PriceCompareView({
               <option value="COUPANG">쿠팡</option>
               <option value="NAVER">네이버</option>
               <option value="ORDERHERO">오더히어로</option>
+              <option value="BAEMIN_MART">배민상회</option>
               <option value="MANUAL">직접 추가</option>
               <option value="ETC">기타</option>
             </select>
@@ -2681,8 +3167,7 @@ function PriceCompareView({
               name="itemPrice"
               type="number"
               min="0"
-              placeholder="상품 총액 (배송비 제외)"
-              required
+              placeholder="상품 총액 (미확인 시 비움)"
             />
             <input
               className={inputClass}
@@ -2740,11 +3225,189 @@ function PriceCompareView({
         </details>
       </Panel>
 
+      {candidates.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div>
+            <p className="text-sm font-black text-slate-900">조회 결과</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {candidates.length}개 가격 후보를 비교합니다.
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {coupangUrl && (
+              <a
+                href={coupangUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={secondaryButtonClass}
+              >
+                쿠팡 검색 열기 <ArrowUpRight className="size-4" />
+              </a>
+            )}
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+              결과 정렬
+              <select
+                className={`${inputClass} min-w-0 flex-1 sm:w-[240px]`}
+                value={sort}
+                onChange={(event) => setSort(event.target.value as PriceSort)}
+              >
+                <option value="totalPrice">총액 낮은순</option>
+                <option value="unitPrice">개당 가격 낮은순</option>
+                <option value="pricePer100">100ml/g당 가격 낮은순</option>
+                <option value="savings">
+                  최근 구매가 대비 절감액 높은순
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {candidates.length > 0 && comparedItem && (
+        <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+          <div>
+            <h2 className="text-base font-black text-slate-950">
+              현재 구매목록 등록상품
+            </h2>
+            <p className="mt-1 text-xs text-slate-600">
+              현재 저장된 구매 기준입니다. 아래 새 가격 후보와 비교해
+              보세요.
+            </p>
+          </div>
+
+          {currentPurchaseCandidate ? (
+            <article className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)] gap-3 lg:grid-cols-[72px_minmax(0,1fr)_minmax(280px,auto)] lg:items-center">
+                <ProductImage
+                  src={currentPurchaseCandidate.imageUrl}
+                  alt={`${currentPurchaseCandidate.title} 상품 이미지`}
+                />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <h3 className="font-black text-slate-950">
+                      {currentPurchaseCandidate.item.name}
+                    </h3>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                      {currentPurchaseCandidate.item.category}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${sourceBadgeClass(currentPurchaseCandidate.source)}`}
+                    >
+                      {sourceLabel(currentPurchaseCandidate.source)}
+                    </span>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                      최근 등록 상품
+                    </span>
+                    {currentPurchaseCandidate.shippingStatus === "FREE" && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                        무료배송
+                      </span>
+                    )}
+                    {currentPurchaseCandidate.shippingStatus === "PAID" && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                        유료배송
+                      </span>
+                    )}
+                    {currentPurchaseCandidate.shippingStatus === "UNKNOWN" && (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                        배송비 확인 필요
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 line-clamp-2 break-words text-sm font-semibold leading-5 text-slate-800">
+                    {currentPurchaseCandidate.title}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {currentPurchaseCandidate.mallName ||
+                      sourceLabel(currentPurchaseCandidate.source)}
+                  </p>
+                </div>
+
+                <div className="col-span-2 min-w-0 lg:col-span-1 lg:text-right">
+                  <p className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs leading-5 text-slate-600 lg:justify-end">
+                    <span>
+                      상품가{" "}
+                      <strong className="text-slate-950">
+                        {money(currentPurchaseCandidate.productPrice)}
+                      </strong>
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {currentPurchaseCandidate.shippingStatus === "UNKNOWN"
+                        ? "배송비 미확인"
+                        : `배송비 포함 ${money(
+                            currentPurchaseCandidate.totalPriceWithShipping ||
+                              currentPurchaseCandidate.totalPrice
+                          )}`}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {currentPurchaseCandidate.packageUnit || "개"}당{" "}
+                      <strong className="text-slate-950">
+                        {money(currentPurchaseCandidate.unitPrice)}
+                      </strong>
+                      {currentPurchaseCandidate.shippingStatus === "UNKNOWN"
+                        ? " (배송비 제외)"
+                        : ""}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      구성{" "}
+                      {formatSavedComposition({
+                        quantity: currentPurchaseCandidate.quantityPerPack,
+                        unitAmount: currentPurchaseCandidate.volumePerUnit,
+                        unitType: currentPurchaseCandidate.volumeUnit,
+                        packageUnit: currentPurchaseCandidate.packageUnit,
+                      })}
+                    </span>
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2 lg:justify-end">
+                    <a
+                      href={currentPurchaseCandidate.productUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`${primaryLinkClass} h-9 rounded-xl px-3 text-xs`}
+                    >
+                      구매 링크 열기
+                      <ArrowUpRight className="size-3.5" />
+                    </a>
+                  </div>
+                  <p className="mt-2 truncate text-xs font-bold text-slate-500">
+                    업데이트{" "}
+                    <span className="text-blue-600">
+                      {currentPurchaseCandidate.savedBy}
+                    </span>{" "}
+                    · {dateTime(currentPurchaseCandidate.checkedAt)}
+                  </p>
+                </div>
+              </div>
+            </article>
+          ) : (
+            <p className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              아직 구매목록에 저장된 상품이 없습니다. 아래 후보를
+              구매목록에 저장하면 다음 비교 기준으로 사용할 수 있습니다.
+            </p>
+          )}
+        </section>
+      )}
+
+      {candidates.length > 0 && (
+        <div className="mt-5">
+          <h2 className="text-base font-black text-slate-950">새 가격 후보</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            네이버 검색 결과에서 찾은 상품 후보입니다.
+          </p>
+        </div>
+      )}
+
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         {sortedCandidates.map(({ candidate, metrics, originalIndex }) => {
+          const needsManualPrice =
+            candidate.source === "BAEMIN_MART" && candidate.itemPrice <= 0;
           const diff =
             recentUnitPrice === null ||
-            candidate.shippingStatus === "UNKNOWN"
+            candidate.shippingStatus === "UNKNOWN" ||
+            needsManualPrice
               ? null
               : ((metrics.unitPrice - recentUnitPrice) / recentUnitPrice) * 100;
           const isRecommended =
@@ -2762,7 +3425,11 @@ function PriceCompareView({
           return (
             <Panel
               key={`${candidate.productUrl}-${originalIndex}`}
-              className={isRecommended ? "ring-2 ring-emerald-500" : ""}
+              className={
+                isRecommended
+                  ? "border-slate-400 ring-1 ring-slate-300"
+                  : "transition hover:border-slate-300 hover:shadow-md"
+              }
             >
               <div className="flex gap-4">
                 {candidate.image && (
@@ -2775,7 +3442,7 @@ function PriceCompareView({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-bold text-emerald-700">
+                      <p className="text-xs font-bold text-slate-600">
                         {candidate.mallName}
                       </p>
                       <h2 className="mt-1 line-clamp-2 font-bold">
@@ -2783,24 +3450,29 @@ function PriceCompareView({
                       </h2>
                     </div>
                     {isRecommended && (
-                      <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-800">
+                      <span className="shrink-0 rounded-full bg-slate-900 px-2 py-1 text-xs font-black text-white">
                         추천
                       </span>
                     )}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {metrics.unitCount > 1 && (
-                      <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
                         묶음상품
                       </span>
                     )}
                     {candidate.isManual && (
-                      <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
                         직접 추가
                       </span>
                     )}
+                    {needsManualPrice && (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-500">
+                        가격 확인 필요
+                      </span>
+                    )}
                     {candidate.isDirectSearch && (
-                      <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
                         직접 검색
                       </span>
                     )}
@@ -2810,7 +3482,7 @@ function PriceCompareView({
                       </span>
                     )}
                     {candidate.shippingEnrichmentStatus === "CHECKING" && (
-                      <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
                         배송비 확인 중
                       </span>
                     )}
@@ -2818,19 +3490,19 @@ function PriceCompareView({
                       candidate.shippingEnrichmentStatus !== "CHECKING" &&
                       candidate.shippingStatus === "PAID" &&
                       candidate.shippingUnitCount > 1 && (
-                        <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
                           배송비 {candidate.shippingUnitCount}개마다 부과
                         </span>
                       )}
                     {candidate.shippingEnrichmentStatus !== "CHECKING" &&
                       candidate.shippingStatus === "FREE" && (
-                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
                         무료배송
                       </span>
                     )}
                     {candidate.shippingEnrichmentStatus !== "CHECKING" &&
                       candidate.shippingStatus === "UNKNOWN" && (
-                      <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-500">
                         배송비 확인 필요
                       </span>
                     )}
@@ -2857,7 +3529,7 @@ function PriceCompareView({
                   <input
                     className={`${inputClass} mt-1 ${
                       candidate.shippingStatus === "UNKNOWN"
-                        ? "border-amber-400 bg-amber-50 focus:border-amber-500 focus:ring-amber-200"
+                        ? "border-slate-400 bg-slate-50 focus:border-slate-600 focus:ring-slate-200"
                         : ""
                     }`}
                     type="number"
@@ -2994,35 +3666,27 @@ function PriceCompareView({
                   </select>
                 </label>
               </div>
-              <PriceCalculationSummary
-                metrics={metrics}
-                diff={diff}
-                shippingStatus={candidate.shippingStatus}
-                shippingNote={candidate.shippingNote ?? null}
-              />
+              {needsManualPrice ? (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <strong>가격 확인 필요</strong>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    배민상회에서 회원가와 배송 조건을 확인한 뒤 상품가를
+                    직접 입력해 주세요.
+                  </p>
+                </div>
+              ) : (
+                <PriceCalculationSummary
+                  metrics={metrics}
+                  diff={diff}
+                  shippingStatus={candidate.shippingStatus}
+                  shippingNote={candidate.shippingNote ?? null}
+                />
+              )}
               {recommendationReason && (
-                <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold leading-5 text-emerald-800">
+                <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
                   {recommendationReason}
                 </p>
               )}
-              <div className="mt-3">
-                <div>
-                  <p className="text-xs text-slate-500">최근 구매가 대비</p>
-                  <strong
-                    className={
-                      diff === null
-                        ? ""
-                        : diff <= 0
-                          ? "text-emerald-700"
-                          : "text-red-700"
-                    }
-                  >
-                    {diff === null
-                      ? "-"
-                      : `${diff > 0 ? "+" : ""}${diff.toFixed(1)}%`}
-                  </strong>
-                </div>
-              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   className={secondaryButtonClass}
@@ -3061,7 +3725,7 @@ function PriceCompareView({
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-bold text-violet-700">품목 연결</p>
+                <p className="text-xs font-bold text-slate-600">품목 연결</p>
                 <h2 className="mt-1 text-xl font-black">
                   구매목록에 저장할 품목을 선택해 주세요
                 </h2>
@@ -3107,18 +3771,18 @@ function PriceCompareView({
                 선택한 품목에 저장
               </button>
             </div>
-            <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
-              <p className="text-sm font-bold text-violet-900">
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-bold text-slate-900">
                 새 품목으로 등록 후 저장
               </p>
-              <p className="mt-1 text-xs leading-5 text-violet-700">
+              <p className="mt-1 text-xs leading-5 text-slate-600">
                 품목명과 네이버·쿠팡 검색어는 “
                 {searchedDirectQuery || directQuery.trim()}”, 카테고리는 기타로
                 등록됩니다.
               </p>
               <button
                 type="button"
-                className={`${secondaryButtonClass} mt-3 w-full border-violet-200 text-violet-800`}
+                className={`${secondaryButtonClass} mt-3 w-full`}
                 disabled={
                   saving || !(searchedDirectQuery || directQuery.trim())
                 }
@@ -3167,7 +3831,7 @@ function PriceCompareView({
                     </span>
                   )}
                   {candidate.source === "MANUAL" && (
-                    <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                       직접 추가
                     </span>
                   )}
@@ -3232,7 +3896,7 @@ function PriceCalculationSummary({
         </p>
         <strong className="text-base">{money(metrics.totalPrice)}</strong>
         {shippingUnknown && (
-          <span className="block text-[10px] text-amber-700">
+          <span className="block text-[10px] text-slate-500">
             배송비 입력 시 최종 단가 계산
           </span>
         )}
@@ -3259,7 +3923,7 @@ function PriceCalculationSummary({
         최근 구매가 대비 {diff == null ? "비교 없음" : `${diff.toFixed(1)}%`}
       </span>
       {shippingUnknown && shippingNote && (
-        <p className="col-span-2 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-800 lg:col-span-4">
+        <p className="col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 lg:col-span-4">
           {shippingNote}
         </p>
       )}
