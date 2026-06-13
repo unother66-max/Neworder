@@ -920,8 +920,12 @@ model NewOrderPriceCandidate {
   packageUnit               String?
   pricePer100               Float?
   pricePerMeasure           Float?
+  optionMemo                String?                @db.Text
+  optionPriceChecked        Boolean                @default(false)
   savedBy                   String                 @default("system")
   isCurrentBest             Boolean                @default(false)
+  isPinned                  Boolean                @default(false)
+  pinnedAt                  DateTime?
   deletedAt                 DateTime?
   deletedBy                 String?
   checkedAt                 DateTime               @default(now())
@@ -935,6 +939,7 @@ model NewOrderPriceCandidate {
   @@index([itemId, checkedAt])
   @@index([itemId, isCurrentBest])
   @@index([source])
+  @@index([isPinned, pinnedAt])
   @@index([deletedAt])
 }
 
@@ -965,6 +970,8 @@ model NewOrderPriceHistory {
   unitPrice                 Float
   pricePer100               Float?
   pricePerMeasure           Float?
+  optionMemo                String?                @db.Text
+  optionPriceChecked        Boolean                @default(false)
   note                      String?                @db.Text
   createdBy                 String                 @default("system")
   createdAt                 DateTime               @default(now())

@@ -1,0 +1,7 @@
+ALTER TABLE "NewOrderPriceCandidate"
+ADD COLUMN IF NOT EXISTS "optionMemo" TEXT,
+ADD COLUMN IF NOT EXISTS "optionPriceChecked" BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE "NewOrderPriceHistory"
+ADD COLUMN IF NOT EXISTS "optionMemo" TEXT,
+ADD COLUMN IF NOT EXISTS "optionPriceChecked" BOOLEAN NOT NULL DEFAULT false;

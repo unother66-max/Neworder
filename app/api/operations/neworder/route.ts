@@ -42,6 +42,55 @@ function validUrl(value: unknown): string | null {
   }
 }
 
+function mutationFailure(cause: unknown) {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  const code =
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    typeof cause.code === "string"
+      ? cause.code
+      : null;
+
+  if (
+    /Unknown argument `?(?:optionMemo|optionPriceChecked|isPinned|pinnedAt)`?/i.test(
+      detail
+    )
+  ) {
+    return {
+      reason: "PRISMA_CLIENT_STALE",
+      message:
+        "Prisma Client가 최신 구매목록 스키마와 일치하지 않습니다. Prisma Client를 다시 생성하고 서버를 재시작해 주세요.",
+      detail,
+    };
+  }
+  if (
+    code === "P2022" ||
+    /column .*?(?:optionMemo|optionPriceChecked|isPinned|pinnedAt).*?does not exist/i.test(
+      detail
+    )
+  ) {
+    return {
+      reason: "DB_MIGRATION_REQUIRED",
+      message:
+        "최신 구매목록 필드가 DB에 반영되지 않았습니다. 최신 Prisma migration을 적용해 주세요.",
+      detail,
+    };
+  }
+  if (code === "P2025") {
+    return {
+      reason: "PURCHASE_CANDIDATE_NOT_FOUND",
+      message: "업데이트할 구매목록 상품을 찾을 수 없습니다.",
+      detail,
+    };
+  }
+  return {
+    reason: "SAVE_FAILED",
+    message: "저장 중 오류가 발생했습니다.",
+    detail,
+  };
+}
+
 export async function GET() {
   try {
     const access = await getNewOrderAccess();
@@ -327,6 +376,8 @@ export async function POST(request: Request) {
       const shippingNote = text(body.shippingNote, 500) || null;
       const shippingCondition = text(body.shippingCondition, 500) || null;
       const shippingNeedsConfirmation = shippingStatus === "UNKNOWN";
+      const optionMemo = text(body.optionMemo, 500) || null;
+      const optionPriceChecked = body.optionPriceChecked === true;
       const quantityPerPack = integer(body.quantityPerPack, 1);
       const volumePerUnit =
         body.volumePerUnit == null || body.volumePerUnit === ""
@@ -437,6 +488,8 @@ export async function POST(request: Request) {
             packageUnit: metrics.packageUnit,
             pricePer100: metrics.pricePer100,
             pricePerMeasure: metrics.pricePerMeasure,
+            optionMemo,
+            optionPriceChecked,
             savedBy,
             isCurrentBest: true,
             createdBy: actor,
@@ -470,12 +523,427 @@ export async function POST(request: Request) {
             unitPrice: metrics.unitPrice,
             pricePer100: metrics.pricePer100,
             pricePerMeasure: metrics.pricePerMeasure,
+            optionMemo,
+            optionPriceChecked,
             note: text(body.note, 1000) || null,
             createdBy: savedBy,
           },
         });
       });
       result = { itemId };
+    } else if (action === "updateExistingPriceCandidate") {
+      const candidateId = text(body.candidateId, 100);
+      const itemId = text(body.itemId, 100);
+      const title = text(body.title, 300);
+      const productUrl = validUrl(body.productUrl);
+      const imageUrl = validUrl(body.image ?? body.imageUrl);
+      const mallName = text(body.mallName, 120) || "기타";
+      const itemPrice = integer(body.itemPrice, 0);
+      const shippingFee = integer(body.shippingFee, 0);
+      const shippingUnitCount = integer(body.shippingUnitCount, 1);
+      const shippingStatus =
+        body.shippingStatus === "FREE" ||
+        body.shippingStatus === "PAID" ||
+        body.shippingStatus === "UNKNOWN"
+          ? body.shippingStatus
+          : shippingFee && shippingFee > 0
+            ? "PAID"
+            : "UNKNOWN";
+      const shippingNote = text(body.shippingNote, 500) || null;
+      const shippingCondition = text(body.shippingCondition, 500) || null;
+      const shippingNeedsConfirmation = shippingStatus === "UNKNOWN";
+      const optionMemo = text(body.optionMemo, 500) || null;
+      const optionPriceChecked = body.optionPriceChecked === true;
+      const quantityPerPack = integer(body.quantityPerPack, 1);
+      const volumePerUnit =
+        body.volumePerUnit == null || body.volumePerUnit === ""
+          ? undefined
+          : Number(body.volumePerUnit);
+      const volumeUnit = text(body.volumeUnit, 20) || undefined;
+      const packageUnit = text(body.packageUnit, 20) || undefined;
+      const source =
+        body.source === "NAVER" ||
+        body.source === "COUPANG" ||
+        body.source === "ORDERHERO" ||
+        body.source === "BAEMIN_MART" ||
+        body.source === "ETC"
+          ? body.source
+          : "MANUAL";
+
+      if (
+        !candidateId ||
+        !itemId ||
+        !title ||
+        !productUrl ||
+        itemPrice === null ||
+        shippingFee === null ||
+        shippingUnitCount === null ||
+        quantityPerPack === null
+      ) {
+        return error("업데이트할 구매 후보 정보를 확인해 주세요.");
+      }
+      if (!optionPriceChecked) {
+        return error(
+          "실제 옵션 가격 확인 후 체크해 주세요.",
+          400,
+          "OPTION_PRICE_CONFIRMATION_REQUIRED"
+        );
+      }
+      if (source === "BAEMIN_MART" && !isBaeminMartUrl(productUrl)) {
+        return error(
+          "배민상회 구매 링크는 mart.baemin.com 주소를 입력해 주세요."
+        );
+      }
+
+      const currentCandidate = await prisma.newOrderPriceCandidate.findFirst({
+        where: {
+          id: candidateId,
+          itemId,
+          isCurrentBest: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!currentCandidate) {
+        return error("업데이트할 구매목록 상품을 찾을 수 없습니다.", 404);
+      }
+
+      const metrics = calculatePriceMetrics({
+        title,
+        itemPrice,
+        shippingFee,
+        shippingUnitCount,
+        shippingStatus,
+        shippingNeedsConfirmation,
+        quantityPerPack,
+        volumePerUnit:
+          volumePerUnit != null && Number.isFinite(volumePerUnit)
+            ? volumePerUnit
+            : undefined,
+        volumeUnit,
+        packageUnit,
+      });
+      const savedBy = access.name || access.email || "운영자";
+      const checkedAt = new Date();
+
+      await prisma.$transaction([
+        prisma.newOrderPriceCandidate.updateMany({
+          where: {
+            itemId,
+            isCurrentBest: true,
+            deletedAt: null,
+            id: { not: candidateId },
+          },
+          data: { isCurrentBest: false, updatedBy: actor },
+        }),
+        prisma.newOrderPriceCandidate.update({
+          where: { id: candidateId },
+          data: {
+            source,
+            mallName,
+            title,
+            productUrl,
+            imageUrl,
+            itemPrice,
+            productPrice: metrics.productPrice,
+            shippingFee,
+            shippingUnitCount: metrics.shippingUnitCount,
+            shippingStatus,
+            shippingNote,
+            shippingCondition,
+            shippingNeedsConfirmation,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
+            quantityPerPack: metrics.unitCount,
+            bundleQuantity: metrics.unitCount,
+            unitPrice: metrics.unitPrice,
+            volumePerUnit: metrics.volumePerUnit,
+            volumeUnit: metrics.volumeUnit,
+            packageUnit: metrics.packageUnit,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            optionMemo,
+            optionPriceChecked,
+            savedBy,
+            checkedAt,
+            isCurrentBest: true,
+            updatedBy: actor,
+          },
+        }),
+        prisma.newOrderPriceHistory.create({
+          data: {
+            itemId,
+            source,
+            mallName,
+            productName: title,
+            productUrl,
+            imageUrl,
+            itemPrice,
+            productPrice: metrics.productPrice,
+            shippingFee,
+            shippingUnitCount: metrics.shippingUnitCount,
+            shippingStatus,
+            shippingNote,
+            shippingCondition,
+            shippingNeedsConfirmation,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
+            quantity: metrics.unitCount,
+            bundleQuantity: metrics.unitCount,
+            unitAmount: metrics.volumePerUnit,
+            unitType: metrics.volumeUnit,
+            packageUnit: metrics.packageUnit,
+            unitPrice: metrics.unitPrice,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            optionMemo,
+            optionPriceChecked,
+            note: "구매목록 인라인 가격비교에서 상품 정보를 업데이트했습니다.",
+            createdBy: savedBy,
+          },
+        }),
+      ]);
+      result = { candidateId, itemId };
+    } else if (action === "updatePriceCandidatePrice") {
+      const candidateId = text(body.candidateId, 100);
+      const itemPrice = integer(body.itemPrice, 1);
+      if (!candidateId || itemPrice === null) {
+        return error("상품가는 1원 이상으로 입력해 주세요.");
+      }
+
+      const candidate = await prisma.newOrderPriceCandidate.findFirst({
+        where: {
+          id: candidateId,
+          isCurrentBest: true,
+          deletedAt: null,
+        },
+      });
+      if (!candidate) {
+        return error("수정할 구매 후보를 찾을 수 없습니다.", 404);
+      }
+
+      const metrics = calculatePriceMetrics({
+        title: candidate.title,
+        itemPrice,
+        shippingFee: candidate.shippingFee,
+        shippingUnitCount: candidate.shippingUnitCount,
+        shippingStatus: candidate.shippingStatus,
+        shippingNeedsConfirmation: candidate.shippingNeedsConfirmation,
+        quantityPerPack: candidate.quantityPerPack,
+        volumePerUnit: candidate.volumePerUnit,
+        volumeUnit: candidate.volumeUnit,
+        packageUnit: candidate.packageUnit,
+      });
+      const savedBy = access.name || access.email || "운영자";
+      const checkedAt = new Date();
+
+      await prisma.$transaction([
+        prisma.newOrderPriceCandidate.update({
+          where: { id: candidate.id },
+          data: {
+            itemPrice,
+            productPrice: metrics.productPrice,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
+            unitPrice: metrics.unitPrice,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            savedBy,
+            checkedAt,
+            updatedBy: actor,
+          },
+        }),
+        prisma.newOrderPriceHistory.create({
+          data: {
+            itemId: candidate.itemId,
+            source: candidate.source,
+            mallName: candidate.mallName,
+            productName: candidate.title,
+            productUrl: candidate.productUrl,
+            imageUrl: candidate.imageUrl,
+            itemPrice,
+            productPrice: metrics.productPrice,
+            shippingFee: candidate.shippingFee,
+            shippingUnitCount: metrics.shippingUnitCount,
+            shippingStatus: candidate.shippingStatus,
+            shippingNote: candidate.shippingNote,
+            shippingCondition: candidate.shippingCondition,
+            shippingNeedsConfirmation: candidate.shippingNeedsConfirmation,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
+            quantity: metrics.unitCount,
+            bundleQuantity: metrics.unitCount,
+            unitAmount: metrics.volumePerUnit,
+            unitType: metrics.volumeUnit,
+            packageUnit: metrics.packageUnit,
+            unitPrice: metrics.unitPrice,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            optionMemo: candidate.optionMemo,
+            optionPriceChecked: candidate.optionPriceChecked,
+            note: "구매목록에서 상품가를 수정했습니다.",
+            createdBy: savedBy,
+          },
+        }),
+      ]);
+      result = { candidateId: candidate.id };
+    } else if (action === "updatePriceCandidateShipping") {
+      const candidateId = text(body.candidateId, 100);
+      const shippingMode =
+        body.shippingMode === "INCLUDED" ||
+        body.shippingMode === "ENTERED" ||
+        body.shippingMode === "UNKNOWN"
+          ? body.shippingMode
+          : null;
+      const enteredShippingFee = integer(body.shippingFee, 0);
+      if (
+        !candidateId ||
+        !shippingMode ||
+        (shippingMode === "ENTERED" &&
+          (enteredShippingFee === null || enteredShippingFee < 1))
+      ) {
+        return error("배송비 설정을 확인해 주세요.");
+      }
+
+      const candidate = await prisma.newOrderPriceCandidate.findFirst({
+        where: {
+          id: candidateId,
+          isCurrentBest: true,
+          deletedAt: null,
+        },
+      });
+      if (!candidate) {
+        return error("수정할 구매 후보를 찾을 수 없습니다.", 404);
+      }
+
+      const quantityPerPack = Math.max(
+        1,
+        candidate.quantityPerPack || candidate.bundleQuantity || 1
+      );
+      const shippingStatus =
+        shippingMode === "INCLUDED"
+          ? "FREE"
+          : shippingMode === "ENTERED"
+            ? "PAID"
+            : "UNKNOWN";
+      const shippingFee =
+        shippingMode === "ENTERED" ? enteredShippingFee ?? 0 : 0;
+      const shippingUnitCount =
+        shippingMode === "ENTERED" ? quantityPerPack : 1;
+      const shippingNeedsConfirmation = shippingStatus === "UNKNOWN";
+      const shippingNote =
+        shippingMode === "INCLUDED"
+          ? "사용자가 배송비 포함으로 설정했습니다."
+          : shippingMode === "ENTERED"
+            ? "사용자가 배송비를 직접 입력했습니다."
+            : "사용자가 배송비 미확인으로 설정했습니다.";
+      const metrics = calculatePriceMetrics({
+        title: candidate.title,
+        itemPrice: candidate.itemPrice,
+        shippingFee,
+        shippingUnitCount,
+        shippingStatus,
+        shippingNeedsConfirmation,
+        quantityPerPack,
+        volumePerUnit: candidate.volumePerUnit,
+        volumeUnit: candidate.volumeUnit,
+        packageUnit: candidate.packageUnit,
+      });
+      const savedBy = access.name || access.email || "운영자";
+      const checkedAt = new Date();
+
+      await prisma.$transaction([
+        prisma.newOrderPriceCandidate.update({
+          where: { id: candidate.id },
+          data: {
+            shippingFee,
+            shippingUnitCount: metrics.shippingUnitCount,
+            shippingStatus,
+            shippingNote,
+            shippingCondition: null,
+            shippingNeedsConfirmation,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
+            unitPrice: metrics.unitPrice,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            savedBy,
+            checkedAt,
+            updatedBy: actor,
+          },
+        }),
+        prisma.newOrderPriceHistory.create({
+          data: {
+            itemId: candidate.itemId,
+            source: candidate.source,
+            mallName: candidate.mallName,
+            productName: candidate.title,
+            productUrl: candidate.productUrl,
+            imageUrl: candidate.imageUrl,
+            itemPrice: candidate.itemPrice,
+            productPrice: metrics.productPrice,
+            shippingFee,
+            shippingUnitCount: metrics.shippingUnitCount,
+            shippingStatus,
+            shippingNote,
+            shippingCondition: null,
+            shippingNeedsConfirmation,
+            effectiveShippingFee: metrics.effectiveShippingFee,
+            totalPrice: Math.round(metrics.totalPrice),
+            totalPriceWithShipping: Math.round(metrics.totalPrice),
+            quantity: metrics.unitCount,
+            bundleQuantity: metrics.unitCount,
+            unitAmount: metrics.volumePerUnit,
+            unitType: metrics.volumeUnit,
+            packageUnit: metrics.packageUnit,
+            unitPrice: metrics.unitPrice,
+            pricePer100: metrics.pricePer100,
+            pricePerMeasure: metrics.pricePerMeasure,
+            optionMemo: candidate.optionMemo,
+            optionPriceChecked: candidate.optionPriceChecked,
+            note: "구매목록에서 배송비 설정을 수정했습니다.",
+            createdBy: savedBy,
+          },
+        }),
+      ]);
+      result = {
+        candidateId: candidate.id,
+        shippingStatus,
+        shippingFee,
+      };
+    } else if (action === "togglePriceCandidatePin") {
+      const candidateId = text(body.candidateId, 100);
+      const isPinned = body.isPinned === true;
+      if (!candidateId) {
+        return error("고정 상태를 변경할 구매 후보를 확인해 주세요.");
+      }
+
+      const candidate = await prisma.newOrderPriceCandidate.findFirst({
+        where: {
+          id: candidateId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!candidate) {
+        return error("구매 후보를 찾을 수 없습니다.", 404);
+      }
+
+      const pinnedAt = isPinned ? new Date() : null;
+      await prisma.newOrderPriceCandidate.update({
+        where: { id: candidate.id },
+        data: {
+          isPinned,
+          pinnedAt,
+          updatedBy: actor,
+        },
+      });
+      result = { candidateId: candidate.id, isPinned, pinnedAt };
     } else if (action === "deletePriceCandidate") {
       const candidateId = text(body.candidateId, 100);
       if (!candidateId) {
@@ -505,12 +973,22 @@ export async function POST(request: Request) {
       return error("지원하지 않는 작업입니다.");
     }
   } catch (cause) {
-    console.warn("[operations/neworder]", action, cause);
+    const failure = mutationFailure(cause);
+    console.warn("[operations/neworder]", {
+      action,
+      reason: failure.reason,
+      detail: failure.detail,
+    });
     return error(
       action === "deletePriceCandidate"
         ? "삭제에 실패했습니다. 다시 시도해 주세요."
-        : "저장 중 오류가 발생했습니다.",
-      500
+        : action === "togglePriceCandidatePin"
+          ? "고정 상태 변경에 실패했습니다."
+          : action === "updatePriceCandidateShipping"
+            ? "배송비 설정 변경에 실패했습니다."
+          : failure.message,
+      500,
+      failure.reason
     );
   }
 

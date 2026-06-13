@@ -5,10 +5,12 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Check,
+  ChevronDown,
   CircleDollarSign,
   Loader2,
   PackageCheck,
   Pencil,
+  Pin,
   Plus,
   Search,
   ShoppingCart,
@@ -154,8 +156,12 @@ type PriceCandidate = {
   packageUnit: string | null;
   pricePer100: number | null;
   pricePerMeasure: number | null;
+  optionMemo: string | null;
+  optionPriceChecked: boolean;
   savedBy: string;
   isCurrentBest: boolean;
+  isPinned: boolean;
+  pinnedAt: string | null;
   checkedAt: string;
   item: { id: string; name: string };
 };
@@ -190,6 +196,8 @@ type PriceHistory = {
   unitPrice: number;
   pricePer100: number | null;
   pricePerMeasure: number | null;
+  optionMemo: string | null;
+  optionPriceChecked: boolean;
   note: string | null;
   createdBy: string;
   createdAt: string;
@@ -237,7 +245,14 @@ function normalizeSnapshot(snapshot: Snapshot): Snapshot {
       ? snapshot.items.map(normalizeItem)
       : [],
     purchaseList: Array.isArray(snapshot.purchaseList)
-      ? snapshot.purchaseList
+      ? snapshot.purchaseList.map((candidate) => ({
+          ...candidate,
+          isPinned: candidate.isPinned === true,
+          pinnedAt:
+            typeof candidate.pinnedAt === "string"
+              ? candidate.pinnedAt
+              : null,
+        }))
       : [],
     priceHistories: Array.isArray(snapshot.priceHistories)
       ? snapshot.priceHistories
@@ -455,6 +470,70 @@ export function NewOrderWorkspace({
     [load]
   );
 
+  const updateInlinePriceCandidate = useCallback(
+    async (
+      payload: Record<string, unknown>
+    ): Promise<{ ok: boolean; message: string }> => {
+      setSaving(true);
+      setMessage(null);
+      try {
+        if (process.env.NODE_ENV === "development") {
+          console.log("[neworder/inline-update] 요청", {
+            candidateId: payload.candidateId,
+            itemId: payload.itemId,
+            title: payload.title,
+            source: payload.source,
+            optionPriceChecked: payload.optionPriceChecked,
+            optionMemo: payload.optionMemo,
+          });
+        }
+        const response = await fetch("/api/operations/neworder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await readJsonResponse(response);
+        if (!response.ok || result.ok !== true) {
+          const reason =
+            typeof result.reason === "string" && result.reason
+              ? ` (${result.reason})`
+              : "";
+          const failureMessage = `${responseError(
+            result,
+            "저장에 실패했습니다."
+          )}${reason}`;
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[neworder/inline-update] 실패", {
+              status: response.status,
+              response: result,
+            });
+          }
+          setMessage(failureMessage);
+          return { ok: false, message: failureMessage };
+        }
+        await load();
+        const successMessage = "구매목록이 업데이트되었습니다.";
+        setMessage(successMessage);
+        return { ok: true, message: successMessage };
+      } catch (cause) {
+        const failureMessage =
+          cause instanceof Error
+            ? cause.message
+            : "저장에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[neworder/inline-update] 요청 실패", {
+            reason: failureMessage,
+          });
+        }
+        setMessage(failureMessage);
+        return { ok: false, message: failureMessage };
+      } finally {
+        setSaving(false);
+      }
+    },
+    [load]
+  );
+
   const deletePriceCandidate = useCallback(async (candidateId: string) => {
     setMessage(null);
     try {
@@ -494,6 +573,128 @@ export function NewOrderWorkspace({
     }
   }, []);
 
+  const togglePriceCandidatePin = useCallback(
+    async (candidateId: string, nextPinned: boolean) => {
+      if (!candidateId) {
+        setMessage("고정할 상품 ID를 찾지 못했습니다.");
+        return false;
+      }
+
+      const previous = data?.purchaseList.find(
+        (candidate) => candidate.id === candidateId
+      );
+      if (!previous) {
+        setMessage("고정할 상품을 찾지 못했습니다.");
+        return false;
+      }
+
+      const optimisticPinnedAt = nextPinned
+        ? new Date().toISOString()
+        : null;
+      setMessage(null);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              purchaseList: current.purchaseList.map((candidate) =>
+                candidate.id === candidateId
+                  ? {
+                      ...candidate,
+                      isPinned: nextPinned,
+                      pinnedAt: optimisticPinnedAt,
+                    }
+                  : candidate
+              ),
+            }
+          : current
+      );
+
+      try {
+        if (process.env.NODE_ENV === "development") {
+          console.log("[neworder/toggle-pin] 요청", {
+            candidateId,
+            nextPinned,
+          });
+        }
+        const response = await fetch("/api/operations/neworder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "togglePriceCandidatePin",
+            candidateId,
+            isPinned: nextPinned,
+          }),
+        });
+        const result = await readJsonResponse(response);
+        if (!response.ok || result.ok !== true) {
+          const detail = responseError(
+            result,
+            "고정 상태 변경에 실패했습니다."
+          );
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[neworder/toggle-pin] 실패", {
+              status: response.status,
+              response: result,
+            });
+          }
+          throw new Error(detail);
+        }
+
+        const pinnedAt =
+          typeof result.pinnedAt === "string"
+            ? result.pinnedAt
+            : nextPinned
+              ? optimisticPinnedAt
+              : null;
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                purchaseList: current.purchaseList.map((candidate) =>
+                  candidate.id === candidateId
+                    ? { ...candidate, isPinned: nextPinned, pinnedAt }
+                    : candidate
+                ),
+              }
+            : current
+        );
+        setMessage(
+          nextPinned
+            ? `${previous.item.name}을(를) 상단에 고정했습니다.`
+            : `${previous.item.name} 고정을 해제했습니다.`
+        );
+        return true;
+      } catch (cause) {
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                purchaseList: current.purchaseList.map((candidate) =>
+                  candidate.id === candidateId ? previous : candidate
+                ),
+              }
+            : current
+        );
+        const detail =
+          cause instanceof Error ? cause.message : "알 수 없는 오류";
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[neworder/toggle-pin] 요청 실패", {
+            candidateId,
+            nextPinned,
+            reason: detail,
+          });
+        }
+        setMessage(
+          detail === "고정 상태 변경에 실패했습니다."
+            ? detail
+            : `고정 상태 변경에 실패했습니다. ${detail}`
+        );
+        return false;
+      }
+    },
+    [data]
+  );
+
   if (loading && !data) {
     return (
       <div className="grid min-h-[50vh] place-items-center text-slate-500">
@@ -530,6 +731,10 @@ export function NewOrderWorkspace({
       {view === "orders" && (
         <PurchaseListView
           data={data}
+          saving={saving}
+          mutate={mutate}
+          updateInlinePriceCandidate={updateInlinePriceCandidate}
+          onTogglePin={togglePriceCandidatePin}
           onDeleteCandidate={deletePriceCandidate}
         />
       )}
@@ -894,9 +1099,25 @@ function normalizePurchaseSearch(value: string) {
 
 function PurchaseListView({
   data,
+  saving,
+  mutate,
+  updateInlinePriceCandidate,
+  onTogglePin,
   onDeleteCandidate,
 }: {
   data: Snapshot;
+  saving: boolean;
+  mutate: (
+    payload: Record<string, unknown>,
+    successMessage: string
+  ) => Promise<boolean>;
+  updateInlinePriceCandidate: (
+    payload: Record<string, unknown>
+  ) => Promise<{ ok: boolean; message: string }>;
+  onTogglePin: (
+    candidateId: string,
+    nextPinned: boolean
+  ) => Promise<boolean>;
   onDeleteCandidate: (candidateId: string) => Promise<boolean>;
 }) {
   const [category, setCategory] = useState("ALL");
@@ -905,12 +1126,27 @@ function PurchaseListView({
   const [deletingCandidate, setDeletingCandidate] =
     useState<SavedPurchaseCandidate | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pinningId, setPinningId] = useState<string | null>(null);
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [priceDraft, setPriceDraft] = useState("");
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [editingShippingId, setEditingShippingId] = useState<string | null>(
+    null
+  );
+  const [shippingMode, setShippingMode] = useState<
+    "INCLUDED" | "ENTERED" | "UNKNOWN"
+  >("UNKNOWN");
+  const [shippingFeeDraft, setShippingFeeDraft] = useState("");
+  const [shippingError, setShippingError] = useState<string | null>(null);
+  const [openedCompareItemId, setOpenedCompareItemId] = useState<string | null>(
+    null
+  );
   const categories = [
     ...new Set(data.purchaseList.map((candidate) => candidate.item.category)),
   ];
   const normalizedQuery = normalizePurchaseSearch(query);
-  const filtered = data.purchaseList.filter(
-    (candidate) => {
+  const filtered = data.purchaseList
+    .filter((candidate) => {
       if (category !== "ALL" && candidate.item.category !== category) {
         return false;
       }
@@ -927,8 +1163,17 @@ function PurchaseListView({
         .filter(Boolean)
         .join(" ");
       return normalizePurchaseSearch(searchable).includes(normalizedQuery);
-    }
-  );
+    })
+    .sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+      if (a.isPinned && b.isPinned) {
+        return (
+          new Date(b.pinnedAt || 0).getTime() -
+          new Date(a.pinnedAt || 0).getTime()
+        );
+      }
+      return 0;
+    });
   const selectedCandidate = data.purchaseList.find(
     (candidate) => candidate.itemId === historyItemId
   );
@@ -986,6 +1231,90 @@ function PurchaseListView({
       )
     : [];
 
+  function startPriceEdit(candidate: SavedPurchaseCandidate) {
+    setEditingPriceId(candidate.id);
+    setPriceDraft(String(candidate.productPrice));
+    setPriceError(null);
+  }
+
+  function cancelPriceEdit() {
+    setEditingPriceId(null);
+    setPriceDraft("");
+    setPriceError(null);
+  }
+
+  async function savePriceEdit(candidate: SavedPurchaseCandidate) {
+    const nextPrice = Number(priceDraft);
+    if (!Number.isInteger(nextPrice) || nextPrice < 1) {
+      setPriceError("상품가는 1원 이상으로 입력해 주세요.");
+      return;
+    }
+    setPriceError(null);
+    const ok = await mutate(
+      {
+        action: "updatePriceCandidatePrice",
+        candidateId: candidate.id,
+        itemPrice: nextPrice,
+      },
+      `${candidate.item.name} 상품가를 수정했습니다.`
+    );
+    if (ok) cancelPriceEdit();
+  }
+
+  function startShippingEdit(candidate: SavedPurchaseCandidate) {
+    setEditingShippingId(candidate.id);
+    setShippingMode(
+      candidate.shippingStatus === "FREE"
+        ? "INCLUDED"
+        : candidate.shippingStatus === "PAID"
+          ? "ENTERED"
+          : "UNKNOWN"
+    );
+    setShippingFeeDraft(
+      candidate.shippingStatus === "PAID"
+        ? String(candidate.shippingFee)
+        : ""
+    );
+    setShippingError(null);
+  }
+
+  function cancelShippingEdit() {
+    setEditingShippingId(null);
+    setShippingFeeDraft("");
+    setShippingError(null);
+  }
+
+  async function saveShippingEdit(candidate: SavedPurchaseCandidate) {
+    const shippingFee =
+      shippingMode === "ENTERED" ? Number(shippingFeeDraft) : 0;
+    if (
+      shippingMode === "ENTERED" &&
+      (!Number.isInteger(shippingFee) || shippingFee < 1)
+    ) {
+      setShippingError("배송비는 1원 이상으로 입력해 주세요.");
+      return;
+    }
+    setShippingError(null);
+    const ok = await mutate(
+      {
+        action: "updatePriceCandidateShipping",
+        candidateId: candidate.id,
+        shippingMode,
+        shippingFee,
+      },
+      `${candidate.item.name} 배송비 설정을 변경했습니다.`
+    );
+    if (ok) cancelShippingEdit();
+  }
+
+  async function togglePin(candidate: SavedPurchaseCandidate) {
+    if (pinningId) return;
+    if (!candidate.id) return;
+    setPinningId(candidate.id);
+    await onTogglePin(candidate.id, !candidate.isPinned);
+    setPinningId(null);
+  }
+
   return (
     <>
       <PageTitle
@@ -1039,39 +1368,75 @@ function PurchaseListView({
       </Panel>
       <div className="mt-4 space-y-2.5">
         {filtered.map((candidate) => {
-          const composition = formatSavedComposition({
-            quantity: candidate.quantityPerPack,
-            unitAmount: candidate.volumePerUnit,
-            unitType: candidate.volumeUnit,
-            packageUnit: candidate.packageUnit,
-          });
           const pricePer100 =
             candidate.pricePer100 != null &&
             (candidate.volumeUnit === "ml" ||
               candidate.volumeUnit === "g")
               ? money(candidate.pricePer100)
-              : "-";
-          const unitLabel = candidate.packageUnit || "개";
-          const totalPrice =
-            candidate.totalPriceWithShipping || candidate.totalPrice;
-          const shippingUnitCount = candidate.shippingUnitCount || 1;
-          const effectiveShippingFee =
-            candidate.effectiveShippingFee || candidate.shippingFee;
+              : null;
           const shippingUnknown = candidate.shippingStatus === "UNKNOWN";
-          const displayedTotal = shippingUnknown
-            ? candidate.productPrice
-            : totalPrice;
-          const hasSavedShipping =
-            candidate.shippingStatus !== "UNKNOWN" &&
-            /저장된 배송비|사용자가 (?:배송비|무료배송|유료배송)/.test(
-              candidate.shippingNote ?? ""
-            );
+          const shippingQuantity = Math.max(
+            1,
+            candidate.quantityPerPack || candidate.bundleQuantity || 1
+          );
+          const shippingPerUnit =
+            candidate.shippingStatus === "PAID" && candidate.shippingFee > 0
+              ? Math.round(candidate.shippingFee / shippingQuantity)
+              : null;
+          const shippingLabel =
+            candidate.shippingStatus === "FREE"
+              ? "배송비 포함"
+              : candidate.shippingStatus === "PAID"
+                ? `배송비 ${money(candidate.shippingFee)}${
+                    shippingPerUnit != null
+                      ? ` · 배송비 개당 ${money(shippingPerUnit)}`
+                      : ""
+                  }`
+                : "배송비 미확인";
+          const priceSummary = [
+            ...(pricePer100
+              ? [
+                  `100${candidate.volumeUnit}당 ${pricePer100}${
+                    shippingUnknown ? " (배송비 제외)" : ""
+                  }`,
+                ]
+              : []),
+          ];
           return (
             <article
               key={candidate.id}
-              className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:min-h-[112px]"
+              className={`min-w-0 overflow-hidden rounded-2xl border bg-white transition ${
+                openedCompareItemId === candidate.itemId
+                  ? "border-slate-400 shadow-md ring-1 ring-slate-200"
+                  : "border-slate-200 shadow-sm"
+              }`}
             >
-              <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)] items-start gap-3 md:grid-cols-[72px_minmax(0,1fr)_minmax(300px,auto)] md:items-center">
+              <div className="grid min-w-0 grid-cols-[32px_72px_minmax(0,1fr)] items-start gap-3 p-3 md:min-h-[112px] md:grid-cols-[32px_72px_minmax(0,1fr)_minmax(300px,auto)] md:items-center">
+                <button
+                  type="button"
+                  title={candidate.isPinned ? "고정 해제" : "상단 고정"}
+                  aria-label={candidate.isPinned ? "고정 해제" : "상단 고정"}
+                  aria-pressed={candidate.isPinned}
+                  disabled={pinningId === candidate.id || saving}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void togglePin(candidate);
+                  }}
+                  className={`mt-1 inline-flex size-8 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    candidate.isPinned
+                      ? "border-slate-300 bg-slate-100 text-[#123f34] hover:bg-slate-200"
+                      : "border-slate-200 bg-white text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  }`}
+                >
+                  {pinningId === candidate.id ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Pin
+                      className="size-4"
+                      fill={candidate.isPinned ? "currentColor" : "none"}
+                    />
+                  )}
+                </button>
                 <ProductImage
                   src={candidate.imageUrl}
                   alt={`${candidate.title} 상품 이미지`}
@@ -1081,6 +1446,11 @@ function PurchaseListView({
                     <h2 className="mr-1 font-black text-slate-950">
                       {candidate.item.name}
                     </h2>
+                    {candidate.isPinned && (
+                      <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                        고정
+                      </span>
+                    )}
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                       {candidate.item.category}
                     </span>
@@ -1091,15 +1461,12 @@ function PurchaseListView({
                     </span>
                     {candidate.shippingStatus === "PAID" && (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        유료배송
-                        {shippingUnitCount > 1
-                          ? ` · ${shippingUnitCount}개마다`
-                          : ""}
+                        배송비 직접 입력
                       </span>
                     )}
                     {candidate.shippingStatus === "FREE" && (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        무료배송
+                        배송비 포함
                       </span>
                     )}
                     {shippingUnknown && (
@@ -1107,56 +1474,228 @@ function PurchaseListView({
                         배송비 확인 필요
                       </span>
                     )}
-                    {hasSavedShipping && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        저장된 배송비 적용
-                      </span>
-                    )}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        candidate.optionPriceChecked
+                          ? "bg-slate-200 text-slate-700"
+                          : "border border-slate-200 bg-slate-50 text-slate-500"
+                      }`}
+                    >
+                      {candidate.optionPriceChecked
+                        ? "옵션가 확인 완료"
+                        : "옵션가 확인 필요"}
+                    </span>
                   </div>
 
                   <p className="mt-1.5 line-clamp-2 break-words text-sm font-semibold leading-5 text-slate-800">
                     {candidate.title}
                   </p>
+                  {candidate.optionMemo && (
+                    <p className="mt-1 text-xs">
+                      <span className="text-slate-500">구매 옵션: </span>
+                      <span className="font-semibold text-blue-600">
+                        {candidate.optionMemo}
+                      </span>
+                    </p>
+                  )}
                   <p className="mt-1 text-[11px] text-slate-500">
                     {candidate.mallName || sourceLabel(candidate.source)}
                   </p>
                 </div>
 
-                <div className="col-span-2 flex min-w-0 flex-col md:col-span-1 md:items-end md:text-right">
-                  <p className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs leading-5 text-slate-600 md:justify-end">
-                    <span>
-                      <strong className="text-slate-950">
-                        {shippingUnknown ? "상품가" : "총액"}{" "}
-                        {money(displayedTotal)}
-                      </strong>
-                      {shippingUnknown && (
-                        <em className="ml-1 not-italic text-slate-500">
-                          배송비 미확인
-                        </em>
-                      )}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      {unitLabel}당 {money(candidate.unitPrice)}
-                      {shippingUnknown ? " (배송비 제외)" : ""}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      100{candidate.volumeUnit || "ml/g"}당 {pricePer100}
-                      {shippingUnknown ? " (배송비 제외)" : ""}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>구성 {composition}</span>
-                  </p>
-                  {candidate.shippingStatus === "PAID" &&
-                    candidate.shippingFee > 0 && (
-                      <p className="mt-0.5 text-[10px] text-slate-500">
-                        기본 배송비 {money(candidate.shippingFee)} · 반영{" "}
-                        {money(effectiveShippingFee)}
-                      </p>
+                <div className="col-span-3 flex min-w-0 flex-col md:col-span-1 md:items-end md:text-right">
+                  <div className="flex min-w-0 flex-col md:w-fit md:items-start md:text-left">
+                  <p className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs leading-5 text-slate-600">
+                    {editingPriceId === candidate.id ? (
+                      <span className="flex flex-wrap items-center gap-1.5 rounded-lg bg-red-50 p-1.5">
+                        <input
+                          type="number"
+                          min="1"
+                          value={priceDraft}
+                          autoFocus
+                          aria-label={`${candidate.item.name} 상품가`}
+                          className="h-9 w-28 rounded-lg border border-slate-300 bg-white px-2 text-right text-sm font-bold text-red-600 outline-none focus:border-[#123f34] focus:ring-2 focus:ring-slate-200"
+                          onChange={(event) => {
+                            setPriceDraft(event.target.value);
+                            setPriceError(null);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void savePriceEdit(candidate);
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              cancelPriceEdit();
+                            }
+                          }}
+                        />
+                        <span className="text-xs text-slate-500">원</span>
+                        <button
+                          type="button"
+                          className={`${buttonClass} h-8 rounded-lg px-2.5 text-xs`}
+                          disabled={saving}
+                          onClick={() => void savePriceEdit(candidate)}
+                        >
+                          {saving && <Loader2 className="size-3 animate-spin" />}
+                          저장
+                        </button>
+                        <button
+                          type="button"
+                          className={`${secondaryButtonClass} h-8 rounded-lg px-2.5 text-xs`}
+                          disabled={saving}
+                          onClick={cancelPriceEdit}
+                        >
+                          취소
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1 text-sm font-extrabold leading-5 text-red-600 transition hover:bg-red-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
+                        onClick={() => startPriceEdit(candidate)}
+                        aria-label={`${candidate.item.name} 상품가 수정`}
+                      >
+                        상품가 {money(candidate.productPrice)}
+                        <Pencil className="size-3" />
+                      </button>
                     )}
-
-                  <div className="mt-2 flex flex-wrap gap-1.5 md:justify-end">
+                    <span aria-hidden="true">·</span>
+                    <button
+                      type="button"
+                      className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-1 transition hover:bg-slate-100 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 ${
+                        shippingUnknown
+                          ? "font-medium text-slate-500 hover:text-slate-700"
+                          : "font-bold text-slate-950 hover:text-slate-950"
+                      }`}
+                      onClick={() =>
+                        editingShippingId === candidate.id
+                          ? cancelShippingEdit()
+                          : startShippingEdit(candidate)
+                      }
+                      aria-expanded={editingShippingId === candidate.id}
+                    >
+                      {shippingLabel}
+                      <Pencil className="size-3" />
+                    </button>
+                    {priceSummary.map((summary) => (
+                      <Fragment key={summary}>
+                        <span aria-hidden="true">·</span>
+                        <span>{summary}</span>
+                      </Fragment>
+                    ))}
+                  </p>
+                  {editingPriceId === candidate.id && priceError && (
+                    <p className="mt-1 text-xs font-semibold text-red-600">
+                      {priceError}
+                    </p>
+                  )}
+                  {editingShippingId === candidate.id && (
+                    <div className="mt-2 w-full max-w-sm rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
+                      <p className="text-xs font-black text-slate-800">
+                        배송비 설정
+                      </p>
+                      <div className="mt-2 grid gap-1.5">
+                        {(
+                          [
+                            ["INCLUDED", "배송비 포함"],
+                            ["ENTERED", "배송비 직접 입력"],
+                            ["UNKNOWN", "미확인으로 변경"],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <label
+                            key={value}
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
+                          >
+                            <input
+                              type="radio"
+                              name={`shipping-mode-${candidate.id}`}
+                              value={value}
+                              checked={shippingMode === value}
+                              onChange={() => {
+                                setShippingMode(value);
+                                setShippingError(null);
+                              }}
+                              className="size-4 accent-[#123f34]"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                      {shippingMode === "ENTERED" && (
+                        <label className="mt-2 block text-[11px] font-semibold text-slate-600">
+                          총 배송비
+                          <div className="mt-1 flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              value={shippingFeeDraft}
+                              onChange={(event) => {
+                                setShippingFeeDraft(event.target.value);
+                                setShippingError(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  void saveShippingEdit(candidate);
+                                }
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelShippingEdit();
+                                }
+                              }}
+                              placeholder="예: 3000"
+                              className={`${inputClass} h-9 flex-1`}
+                            />
+                            <span className="text-xs text-slate-500">원</span>
+                          </div>
+                          {Number(shippingFeeDraft) > 0 &&
+                            shippingQuantity > 0 && (
+                              <span className="mt-1 block font-medium text-slate-500">
+                                배송비 개당{" "}
+                                {money(
+                                  Math.round(
+                                    Number(shippingFeeDraft) / shippingQuantity
+                                  )
+                                )}
+                              </span>
+                            )}
+                        </label>
+                      )}
+                      {shippingError && (
+                        <p className="mt-2 text-xs font-semibold text-red-600">
+                          {shippingError}
+                        </p>
+                      )}
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className={`${secondaryButtonClass} h-8 rounded-lg px-3 text-xs`}
+                          disabled={saving}
+                          onClick={cancelShippingEdit}
+                        >
+                          취소
+                        </button>
+                        <button
+                          type="button"
+                          className={`${buttonClass} h-8 rounded-lg px-3 text-xs`}
+                          disabled={
+                            saving ||
+                            (shippingMode === "ENTERED" &&
+                              (!Number.isInteger(Number(shippingFeeDraft)) ||
+                                Number(shippingFeeDraft) < 1))
+                          }
+                          onClick={() => void saveShippingEdit(candidate)}
+                        >
+                          {saving && (
+                            <Loader2 className="size-3 animate-spin" />
+                          )}
+                          저장
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     <a
                       href={candidate.productUrl}
                       target="_blank"
@@ -1172,12 +1711,29 @@ function PurchaseListView({
                     >
                       가격변동
                     </button>
-                    <a
-                      href={`/operations/neworder/price-compare?itemId=${encodeURIComponent(candidate.itemId)}`}
+                    <button
+                      type="button"
                       className={`${secondaryButtonClass} h-8 px-3 text-xs`}
+                      aria-expanded={openedCompareItemId === candidate.itemId}
+                      onClick={() =>
+                        setOpenedCompareItemId((current) =>
+                          current === candidate.itemId
+                            ? null
+                            : candidate.itemId
+                        )
+                      }
                     >
-                      가격비교 다시하기
-                    </a>
+                      {openedCompareItemId === candidate.itemId
+                        ? "비교창 닫기"
+                        : "가격비교 다시하기"}
+                      <ChevronDown
+                        className={`size-3.5 transition-transform ${
+                          openedCompareItemId === candidate.itemId
+                            ? "rotate-180"
+                            : ""
+                        }`}
+                      />
+                    </button>
                     <button
                       type="button"
                       onClick={() => setDeletingCandidate(candidate)}
@@ -1200,8 +1756,22 @@ function PurchaseListView({
                     <span className="text-blue-600">{candidate.savedBy}</span> ·{" "}
                     {dateTime(candidate.checkedAt)}
                   </p>
+                  </div>
                 </div>
               </div>
+              {openedCompareItemId === candidate.itemId && (
+                <InlinePriceComparePanel
+                  key={candidate.itemId}
+                  purchaseCandidate={candidate}
+                  item={
+                    data.items.find((item) => item.id === candidate.itemId) ??
+                    null
+                  }
+                  saving={saving}
+                  updateInlinePriceCandidate={updateInlinePriceCandidate}
+                  onClose={() => setOpenedCompareItemId(null)}
+                />
+              )}
             </article>
           );
         })}
@@ -1381,6 +1951,591 @@ function PurchaseListView({
         </div>
       )}
     </>
+  );
+}
+
+function InlinePriceComparePanel({
+  purchaseCandidate,
+  item,
+  saving,
+  updateInlinePriceCandidate,
+  onClose,
+}: {
+  purchaseCandidate: SavedPurchaseCandidate;
+  item: Item | null;
+  saving: boolean;
+  updateInlinePriceCandidate: (
+    payload: Record<string, unknown>
+  ) => Promise<{ ok: boolean; message: string }>;
+  onClose: () => void;
+}) {
+  const initialQuery =
+    item?.naverSearchKeywords[0] ||
+    item?.naverSearchKeyword ||
+    item?.name ||
+    purchaseCandidate.title;
+  const [query, setQuery] = useState(initialQuery);
+  const [searching, setSearching] = useState(false);
+  const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
+  const [sort, setSort] = useState<PriceSort>(
+    defaultPriceSort(item?.name || purchaseCandidate.item.name, item?.category || "")
+  );
+  const [pendingSave, setPendingSave] = useState<{
+    candidate: SearchCandidate;
+    metrics: PriceMetrics;
+  } | null>(null);
+  const [optionPriceChecked, setOptionPriceChecked] = useState(false);
+  const [optionMemo, setOptionMemo] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const analyzedCandidates = candidates.map((candidate, originalIndex) => ({
+    candidate,
+    originalIndex,
+    metrics: calculatePriceMetrics(candidate),
+  }));
+  const sortedCandidates = [...analyzedCandidates].sort((a, b) => {
+    const shippingDiff =
+      Number(a.candidate.shippingStatus === "UNKNOWN") -
+      Number(b.candidate.shippingStatus === "UNKNOWN");
+    if (shippingDiff) return shippingDiff;
+    return (
+      comparePriceMetrics(a.metrics, b.metrics, sort, null) ||
+      a.metrics.totalPrice - b.metrics.totalPrice ||
+      a.originalIndex - b.originalIndex
+    );
+  });
+  const coupangUrl = query.trim()
+    ? `https://www.coupang.com/np/search?q=${encodeURIComponent(query.trim())}`
+    : "";
+
+  function updateCandidate(index: number, patch: Partial<SearchCandidate>) {
+    setCandidates((rows) =>
+      rows.map((candidate, candidateIndex) =>
+        candidateIndex === index ? { ...candidate, ...patch } : candidate
+      )
+    );
+  }
+
+  async function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const searchQuery = query.trim();
+    if (!searchQuery || searching) return;
+
+    setSearching(true);
+    setSearched(true);
+    setSearchError(null);
+    setCandidates([]);
+    try {
+      const params = new URLSearchParams({
+        itemId: purchaseCandidate.itemId,
+        query: searchQuery,
+      });
+      const response = await fetch(
+        `/api/operations/neworder/price-search?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      const responseText = await response.text();
+      let payload: {
+        ok?: boolean;
+        candidates?: SearchCandidate[];
+        message?: string | null;
+        reason?: string | null;
+      } = {};
+
+      if (responseText.trim()) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[neworder/inline-price-search] JSON 파싱 실패", {
+              status: response.status,
+              responseText,
+            });
+          }
+          setSearchError(
+            "가격 조회 API 응답을 읽지 못했습니다. 잠시 후 다시 시도해 주세요."
+          );
+          return;
+        }
+      }
+
+      if (!response.ok || payload.ok !== true) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[neworder/inline-price-search] API 응답", {
+            status: response.status,
+            data: payload,
+            responseText,
+          });
+        }
+        setSearchError(
+          [payload.message, payload.reason].filter(Boolean).join(" ") ||
+            "가격 후보 조회에 실패했습니다. 잠시 후 다시 시도해 주세요."
+        );
+        return;
+      }
+
+      setCandidates(
+        Array.isArray(payload.candidates) ? payload.candidates : []
+      );
+    } catch (cause) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[neworder/inline-price-search] 요청 실패", {
+          reason: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
+      setSearchError(
+        "가격 후보 조회에 실패했습니다. 잠시 후 다시 시도해 주세요."
+      );
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function saveCandidate() {
+    if (!pendingSave) return;
+    setSaveError(null);
+    if (!optionPriceChecked) {
+      setSaveError("실제 옵션 가격 확인 후 체크해 주세요.");
+      return;
+    }
+    const { candidate, metrics } = pendingSave;
+    if (!purchaseCandidate.id || !purchaseCandidate.itemId) {
+      setSaveError("업데이트할 구매목록 항목을 찾지 못했습니다.");
+      return;
+    }
+    if (!candidate.title || !candidate.productUrl) {
+      setSaveError("저장할 후보 상품 정보를 찾지 못했습니다.");
+      return;
+    }
+    const result = await updateInlinePriceCandidate({
+      action: "updateExistingPriceCandidate",
+      candidateId: purchaseCandidate.id,
+      itemId: purchaseCandidate.itemId,
+      searchQuery: query.trim(),
+      ...candidate,
+      quantityPerPack: metrics.unitCount,
+      volumePerUnit: metrics.volumePerUnit,
+      volumeUnit: metrics.volumeUnit,
+      packageUnit: metrics.packageUnit,
+      optionPriceChecked,
+      optionMemo: optionMemo.trim() || null,
+    });
+    if (result.ok) {
+      setPendingSave(null);
+      onClose();
+    } else {
+      setSaveError(result.message);
+    }
+  }
+
+  return (
+    <section className="border-l-4 border-t border-l-slate-700 border-t-slate-300 bg-slate-100/80 p-4 md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <span className="inline-flex rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-slate-600">
+            가격비교 패널
+          </span>
+          <h3 className="mt-2 text-lg font-black text-slate-950">
+            가격비교 다시하기
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            현재 구매목록 상품을 기준으로 새 가격 후보를 확인합니다.
+          </p>
+        </div>
+        <button
+          type="button"
+          className={`${secondaryButtonClass} h-8 px-3 text-xs`}
+          onClick={onClose}
+        >
+          비교창 닫기
+        </button>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="text-[11px] font-bold text-slate-500">현재 기준 상품</p>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <strong className="text-sm text-slate-950">
+            {purchaseCandidate.item.name}
+          </strong>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+            {sourceLabel(purchaseCandidate.source)}
+          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+            {purchaseCandidate.shippingStatus === "UNKNOWN"
+              ? "배송비 미확인"
+              : purchaseCandidate.shippingStatus === "FREE"
+                ? "무료배송"
+                : "유료배송"}
+          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+            {purchaseCandidate.optionPriceChecked
+              ? "옵션가 확인 완료"
+              : "옵션가 확인 필요"}
+          </span>
+        </div>
+        <p className="mt-1.5 line-clamp-2 text-xs font-semibold text-slate-700">
+          {purchaseCandidate.title}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          상품가 {money(purchaseCandidate.productPrice)} ·{" "}
+          {purchaseCandidate.mallName ||
+            sourceLabel(purchaseCandidate.source)}
+        </p>
+      </div>
+
+      <form
+        className="mt-4 grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] md:p-4"
+        onSubmit={search}
+      >
+        <label className="sr-only" htmlFor={`inline-query-${purchaseCandidate.id}`}>
+          가격비교 검색어
+        </label>
+        <input
+          id={`inline-query-${purchaseCandidate.id}`}
+          className={inputClass}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="가격비교 검색어"
+        />
+        <button
+          type="submit"
+          className={buttonClass}
+          disabled={searching || !query.trim()}
+        >
+          {searching ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Search className="size-4" />
+          )}
+          네이버 가격 후보 조회
+        </button>
+        <a
+          href={coupangUrl || undefined}
+          target="_blank"
+          rel="noreferrer"
+          aria-disabled={!coupangUrl}
+          onClick={(event) => {
+            if (!coupangUrl) event.preventDefault();
+          }}
+          className={`${secondaryButtonClass} ${
+            coupangUrl ? "" : "pointer-events-none opacity-60"
+          }`}
+        >
+          쿠팡 검색 <ArrowUpRight className="size-4" />
+        </a>
+      </form>
+
+      {searching && (
+        <p className="mt-4 flex items-center gap-2 text-sm text-slate-600">
+          <Loader2 className="size-4 animate-spin" />
+          가격 후보를 불러오는 중입니다.
+        </p>
+      )}
+      {searchError && (
+        <p className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-red-600">
+          {searchError}
+        </p>
+      )}
+
+      {candidates.length > 0 && (
+        <section className="mt-5 border-t border-slate-300 pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 className="text-sm font-black text-slate-950">
+                새 가격 후보
+              </h4>
+              <p className="text-xs text-slate-500">
+                네이버 검색 결과 {candidates.length}개
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+              결과 정렬
+              <select
+                className={`${inputClass} w-48`}
+                value={sort}
+                onChange={(event) => setSort(event.target.value as PriceSort)}
+              >
+                <option value="totalPrice">총액 낮은순</option>
+                <option value="unitPrice">개당 가격 낮은순</option>
+                <option value="pricePer100">100ml/g당 가격 낮은순</option>
+                <option value="savings">최근 구매가 대비 절감액순</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+            {sortedCandidates.map(
+              ({ candidate, metrics, originalIndex }) => (
+                <article
+                  key={`${candidate.productUrl}-${originalIndex}`}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-none transition hover:border-slate-300"
+                >
+                  <div className="flex min-w-0 gap-3">
+                    <ProductImage
+                      src={candidate.image}
+                      alt={`${candidate.title} 상품 이미지`}
+                      compact
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                          {candidate.source === "NAVER"
+                            ? "네이버 후보"
+                            : "가격 후보"}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-500">
+                          {candidate.mallName ||
+                            sourceLabel(candidate.source)}
+                        </span>
+                      </div>
+                      <h5 className="mt-1 line-clamp-2 text-sm font-bold leading-5 text-slate-900">
+                        {candidate.title}
+                      </h5>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {candidate.shippingStatus === "UNKNOWN"
+                          ? "배송비 확인 필요"
+                          : candidate.shippingStatus === "FREE"
+                            ? "무료배송"
+                            : `배송비 ${money(candidate.shippingFee)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                    <label className="text-[11px] font-semibold text-slate-500">
+                      상품가
+                      <input
+                        className={`${inputClass} mt-1 h-9`}
+                        type="number"
+                        min="0"
+                        value={candidate.itemPrice}
+                        onChange={(event) =>
+                          updateCandidate(originalIndex, {
+                            itemPrice: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">
+                      배송비
+                      <input
+                        className={`${inputClass} mt-1 h-9`}
+                        type="number"
+                        min="0"
+                        value={candidate.shippingFee}
+                        onChange={(event) => {
+                          const shippingFee =
+                            Number(event.target.value) || 0;
+                          updateCandidate(originalIndex, {
+                            shippingFee,
+                            shippingStatus:
+                              shippingFee > 0 ? "PAID" : "UNKNOWN",
+                            shippingNeedsConfirmation: shippingFee <= 0,
+                          });
+                        }}
+                      />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">
+                      배송 상태
+                      <select
+                        className={`${inputClass} mt-1 h-9`}
+                        value={candidate.shippingStatus}
+                        onChange={(event) => {
+                          const shippingStatus = event.target.value as
+                            | "FREE"
+                            | "PAID"
+                            | "UNKNOWN";
+                          updateCandidate(originalIndex, {
+                            shippingStatus,
+                            shippingFee:
+                              shippingStatus === "FREE"
+                                ? 0
+                                : candidate.shippingFee,
+                            shippingNeedsConfirmation:
+                              shippingStatus === "UNKNOWN",
+                          });
+                        }}
+                      >
+                        <option value="UNKNOWN">확인 필요</option>
+                        <option value="PAID">유료배송</option>
+                        <option value="FREE">무료배송</option>
+                      </select>
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-500">
+                      배송비 부과 기준
+                      <input
+                        className={`${inputClass} mt-1 h-9`}
+                        type="number"
+                        min="1"
+                        value={candidate.shippingUnitCount || 1}
+                        onChange={(event) =>
+                          updateCandidate(originalIndex, {
+                            shippingUnitCount: Math.max(
+                              1,
+                              Number(event.target.value) || 1
+                            ),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <strong className="text-slate-950">
+                      계산 단가 {money(metrics.unitPrice)}
+                    </strong>
+                    <span className="mx-1.5">·</span>
+                    <span>
+                      {candidate.shippingStatus === "UNKNOWN"
+                        ? `상품가 기준 ${money(metrics.totalPrice)}`
+                        : `배송비 포함 ${money(metrics.totalPrice)}`}
+                    </span>
+                    {metrics.pricePer100 != null && metrics.volumeUnit && (
+                      <>
+                        <span className="mx-1.5">·</span>
+                        <span>
+                          100{metrics.volumeUnit}당{" "}
+                          {money(metrics.pricePer100)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <a
+                      href={candidate.productUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`${primaryLinkClass} h-8 rounded-lg px-3 text-xs`}
+                    >
+                      구매 링크 열기
+                      <ArrowUpRight className="size-3.5" />
+                    </a>
+                    <button
+                      type="button"
+                      className={`${secondaryButtonClass} h-8 px-3 text-xs`}
+                      disabled={saving || candidate.itemPrice <= 0}
+                      onClick={() => {
+                        setOptionPriceChecked(false);
+                        setOptionMemo("");
+                        setSaveError(null);
+                        setPendingSave({ candidate, metrics });
+                      }}
+                    >
+                      구매목록에 저장
+                    </button>
+                  </div>
+                </article>
+              )
+            )}
+          </div>
+        </section>
+      )}
+
+      {searched && !searching && !searchError && candidates.length === 0 && (
+        <p className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600">
+          검색 결과가 없습니다. 검색어를 조금 더 구체적으로 입력해 주세요.
+        </p>
+      )}
+
+      {pendingSave && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"
+          onClick={() => {
+            if (!saving) {
+              setPendingSave(null);
+              setSaveError(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inline-save-confirm-title"
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3
+              id="inline-save-confirm-title"
+              className="text-lg font-black text-slate-950"
+            >
+              현재 구매목록을 업데이트할까요?
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-slate-700">
+              현재 구매목록의 &lsquo;
+              <strong>{purchaseCandidate.item.name}</strong>&rsquo; 상품 정보를
+              선택한 후보로 업데이트합니다.
+            </p>
+            <p className="mt-2 line-clamp-2 text-xs text-slate-500">
+              {pendingSave.candidate.title}
+            </p>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs leading-5 text-slate-600">
+                옵션 상품인 경우 구매 링크에서 실제 옵션을 선택한 뒤
+                상품가를 수정했는지 확인해 주세요.
+              </p>
+              <label className="mt-3 block text-xs font-semibold text-slate-600">
+                구매 옵션 메모
+                <input
+                  className={`${inputClass} mt-1`}
+                  value={optionMemo}
+                  onChange={(event) => setOptionMemo(event.target.value)}
+                  placeholder="예: 13인치 / 1000장"
+                  maxLength={500}
+                />
+              </label>
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  required
+                  className="mt-0.5 size-4 rounded border-slate-300 accent-[#123f34]"
+                  checked={optionPriceChecked}
+                  onChange={(event) => {
+                    setOptionPriceChecked(event.target.checked)
+                    setSaveError(null);
+                  }}
+                />
+                구매하려는 옵션을 선택한 뒤 실제 가격을 확인했습니다.
+              </label>
+              {!optionPriceChecked && (
+                <p className="mt-2 text-xs font-semibold text-slate-500">
+                  옵션 상품은 실제 구매 옵션 선택 후 가격 확인이 필요합니다.
+                </p>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className={secondaryButtonClass}
+                disabled={saving}
+                onClick={() => {
+                  setPendingSave(null);
+                  setSaveError(null);
+                }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className={buttonClass}
+                disabled={saving || !optionPriceChecked}
+                onClick={() => void saveCandidate()}
+              >
+                {saving && <Loader2 className="size-4 animate-spin" />}
+                {saving ? "저장 중..." : "업데이트 저장"}
+              </button>
+            </div>
+            {saveError && (
+              <p className="mt-3 text-right text-sm font-semibold text-red-600">
+                {saveError}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2539,9 +3694,19 @@ function PriceCompareView({
     candidate: SearchCandidate;
     metrics: PriceMetrics;
   } | null>(null);
+  const [confirmingExistingSave, setConfirmingExistingSave] = useState(false);
+  const [optionPriceChecked, setOptionPriceChecked] = useState(false);
+  const [optionMemo, setOptionMemo] = useState("");
   const [connectionItemId, setConnectionItemId] = useState(
     initialItem?.id || ""
   );
+  const connectionItem =
+    activeItems.find((item) => item.id === connectionItemId) ?? null;
+  const connectionItemHasPurchase = connectionItem
+    ? data.purchaseList.some(
+        (candidate) => candidate.itemId === connectionItem.id
+      )
+    : false;
   const selectedItem = data.items.find((item) => item.id === itemId);
   const comparedItem = comparedItemId
     ? data.items.find((item) => item.id === comparedItemId) ?? null
@@ -2758,7 +3923,11 @@ function PriceCompareView({
     candidate: SearchCandidate,
     metrics: PriceMetrics,
     targetItemId: string,
-    createItemFromSearch = false
+    createItemFromSearch = false,
+    optionDetails?: {
+      optionPriceChecked: boolean;
+      optionMemo: string;
+    }
   ) {
     const ok = await mutate(
       {
@@ -2771,10 +3940,17 @@ function PriceCompareView({
         volumePerUnit: metrics.volumePerUnit,
         volumeUnit: metrics.volumeUnit,
         packageUnit: metrics.packageUnit,
+        optionPriceChecked: optionDetails?.optionPriceChecked ?? false,
+        optionMemo: optionDetails?.optionMemo.trim() || null,
       },
       "구매목록에 업데이트되었습니다"
     );
-    if (ok) setPendingSave(null);
+    if (ok) {
+      setPendingSave(null);
+      setConfirmingExistingSave(false);
+      setOptionPriceChecked(false);
+      setOptionMemo("");
+    }
     return ok;
   }
 
@@ -2782,12 +3958,11 @@ function PriceCompareView({
     candidate: SearchCandidate,
     metrics: PriceMetrics
   ) {
-    if (candidate.isDirectSearch || !itemId) {
-      setConnectionItemId(itemId || activeItems[0]?.id || "");
-      setPendingSave({ candidate, metrics });
-      return;
-    }
-    void saveCandidate(candidate, metrics, itemId);
+    setConnectionItemId(itemId || activeItems[0]?.id || "");
+    setConfirmingExistingSave(false);
+    setOptionPriceChecked(false);
+    setOptionMemo("");
+    setPendingSave({ candidate, metrics });
   }
 
   async function saveCoupangCandidate(event: FormEvent<HTMLFormElement>) {
@@ -3313,10 +4488,26 @@ function PriceCompareView({
                         배송비 확인 필요
                       </span>
                     )}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        currentPurchaseCandidate.optionPriceChecked
+                          ? "bg-slate-200 text-slate-700"
+                          : "border border-slate-200 bg-slate-50 text-slate-500"
+                      }`}
+                    >
+                      {currentPurchaseCandidate.optionPriceChecked
+                        ? "옵션가 확인 완료"
+                        : "옵션가 확인 필요"}
+                    </span>
                   </div>
                   <p className="mt-1.5 line-clamp-2 break-words text-sm font-semibold leading-5 text-slate-800">
                     {currentPurchaseCandidate.title}
                   </p>
+                  {currentPurchaseCandidate.optionMemo && (
+                    <p className="mt-1 text-xs font-semibold text-slate-600">
+                      구매 옵션: {currentPurchaseCandidate.optionMemo}
+                    </p>
+                  )}
                   <p className="mt-1 text-[11px] text-slate-500">
                     {currentPurchaseCandidate.mallName ||
                       sourceLabel(currentPurchaseCandidate.source)}
@@ -3687,6 +4878,10 @@ function PriceCompareView({
                   {recommendationReason}
                 </p>
               )}
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                옵션 선택 시 가격이 달라질 수 있습니다. 구매 링크에서 실제
+                옵션을 선택한 뒤 상품가를 수정해 저장하세요.
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   className={secondaryButtonClass}
@@ -3717,10 +4912,15 @@ function PriceCompareView({
       {pendingSave && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"
-          onClick={() => setPendingSave(null)}
+          onClick={() => {
+            setPendingSave(null);
+            setConfirmingExistingSave(false);
+            setOptionPriceChecked(false);
+            setOptionMemo("");
+          }}
         >
           <section
-            className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl lg:p-7"
+            className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl lg:p-7"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -3736,18 +4936,94 @@ function PriceCompareView({
               <button
                 type="button"
                 className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xl"
-                onClick={() => setPendingSave(null)}
+                onClick={() => {
+                  setPendingSave(null);
+                  setConfirmingExistingSave(false);
+                  setOptionPriceChecked(false);
+                  setOptionMemo("");
+                }}
                 aria-label="품목 연결 닫기"
               >
                 ×
               </button>
+            </div>
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-bold text-slate-900">
+                실제 구매 옵션 확인
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                옵션 상품인 경우 구매 링크에서 실제 옵션을 선택한 뒤
+                상품가를 수정했는지 확인해 주세요.
+              </p>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+                <div>
+                  <dt className="text-slate-500">상품가</dt>
+                  <dd className="mt-0.5 font-bold text-slate-900">
+                    {money(pendingSave.metrics.productPrice)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">배송비</dt>
+                  <dd className="mt-0.5 font-bold text-slate-900">
+                    {pendingSave.candidate.shippingStatus === "UNKNOWN"
+                      ? "확인 필요"
+                      : money(pendingSave.metrics.effectiveShippingFee)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">최종가</dt>
+                  <dd className="mt-0.5 font-bold text-slate-900">
+                    {pendingSave.candidate.shippingStatus === "UNKNOWN"
+                      ? `${money(pendingSave.metrics.totalPrice)} (배송비 제외)`
+                      : money(pendingSave.metrics.totalPrice)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">개당 가격</dt>
+                  <dd className="mt-0.5 font-bold text-slate-900">
+                    {money(pendingSave.metrics.unitPrice)}
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-slate-500">구성</dt>
+                  <dd className="mt-0.5 font-bold text-slate-900">
+                    {formatComposition(pendingSave.metrics)}
+                  </dd>
+                </div>
+              </dl>
+              <label className="mt-4 block text-xs font-semibold text-slate-600">
+                구매 옵션 메모
+                <input
+                  className={`${inputClass} mt-1`}
+                  value={optionMemo}
+                  onChange={(event) => setOptionMemo(event.target.value)}
+                  placeholder="예: 13인치 / 1000장"
+                  maxLength={500}
+                />
+              </label>
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 rounded border-slate-300 accent-[#123f34]"
+                  checked={optionPriceChecked}
+                  onChange={(event) =>
+                    setOptionPriceChecked(event.target.checked)
+                  }
+                />
+                <span>
+                  구매하려는 옵션을 선택한 뒤 실제 가격을 확인했습니다.
+                </span>
+              </label>
             </div>
             <div className="mt-6 rounded-2xl border border-slate-200 p-4">
               <p className="text-sm font-bold">기존 품목에 저장</p>
               <select
                 className={`${inputClass} mt-3`}
                 value={connectionItemId}
-                onChange={(event) => setConnectionItemId(event.target.value)}
+                onChange={(event) => {
+                  setConnectionItemId(event.target.value);
+                  setConfirmingExistingSave(false);
+                }}
               >
                 <option value="">품목 선택</option>
                 {activeItems.map((item) => (
@@ -3760,13 +5036,7 @@ function PriceCompareView({
                 type="button"
                 className={`${buttonClass} mt-3 w-full`}
                 disabled={saving || !connectionItemId}
-                onClick={() =>
-                  void saveCandidate(
-                    pendingSave.candidate,
-                    pendingSave.metrics,
-                    connectionItemId
-                  )
-                }
+                onClick={() => setConfirmingExistingSave(true)}
               >
                 선택한 품목에 저장
               </button>
@@ -3782,7 +5052,7 @@ function PriceCompareView({
               </p>
               <button
                 type="button"
-                className={`${secondaryButtonClass} mt-3 w-full`}
+                className={`${buttonClass} mt-3 w-full`}
                 disabled={
                   saving || !(searchedDirectQuery || directQuery.trim())
                 }
@@ -3791,13 +5061,93 @@ function PriceCompareView({
                     pendingSave.candidate,
                     pendingSave.metrics,
                     "",
-                    true
+                    true,
+                    { optionPriceChecked, optionMemo }
                   )
                 }
               >
                 새 품목 등록 후 저장
               </button>
             </div>
+
+            {confirmingExistingSave && connectionItem && (
+              <div
+                className="absolute inset-0 z-10 grid place-items-center rounded-3xl bg-slate-950/35 p-4"
+                onClick={() => setConfirmingExistingSave(false)}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="existing-save-confirm-title"
+                  className="w-full rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <h3
+                    id="existing-save-confirm-title"
+                    className="text-lg font-black text-slate-950"
+                  >
+                    기존 품목에 저장할까요?
+                  </h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">
+                    {connectionItemHasPurchase ? (
+                      <>
+                        기존 구매목록의 &lsquo;
+                        <strong>{connectionItem.name}</strong>&rsquo;에 저장된
+                        상품 정보를 현재 상품으로 덮어쓰시겠습니까?
+                      </>
+                    ) : (
+                      <>
+                        &lsquo;<strong>{connectionItem.name}</strong>&rsquo;
+                        품목에 현재 상품을 새로 저장하시겠습니까?
+                      </>
+                    )}
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    선택된 품목: {connectionItem.name} ·{" "}
+                    {connectionItem.category}
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">
+                    옵션 상품인 경우 실제 옵션 가격을 확인했는지 다시 확인해
+                    주세요.
+                  </p>
+                  {connectionItemHasPurchase && (
+                    <p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                      이미 저장된 상품 정보가 있다면 새 상품 정보로
+                      업데이트됩니다.
+                    </p>
+                  )}
+                  <div className="mt-5 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className={secondaryButtonClass}
+                      disabled={saving}
+                      onClick={() => setConfirmingExistingSave(false)}
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      className={buttonClass}
+                      disabled={saving}
+                      onClick={() =>
+                        void saveCandidate(
+                          pendingSave.candidate,
+                          pendingSave.metrics,
+                          connectionItem.id,
+                          false,
+                          { optionPriceChecked, optionMemo }
+                        )
+                      }
+                    >
+                      {saving && (
+                        <Loader2 className="size-4 animate-spin" />
+                      )}
+                      확인 후 저장
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       )}
