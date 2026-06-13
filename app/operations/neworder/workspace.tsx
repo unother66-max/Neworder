@@ -10,10 +10,10 @@ import {
   Loader2,
   PackageCheck,
   Pencil,
-  Pin,
   Plus,
   Search,
   ShoppingCart,
+  Star,
   Store,
   Trash2,
   X,
@@ -1523,8 +1523,12 @@ function PurchaseListView({
               <div className="grid min-w-0 grid-cols-[32px_72px_minmax(0,1fr)] items-start gap-3 p-3 md:min-h-[112px] md:grid-cols-[32px_72px_minmax(0,1fr)_minmax(300px,auto)] md:items-center">
                 <button
                   type="button"
-                  title={candidate.isPinned ? "고정 해제" : "상단 고정"}
-                  aria-label={candidate.isPinned ? "고정 해제" : "상단 고정"}
+                  title={
+                    candidate.isPinned ? "즐겨찾기 해제" : "즐겨찾기 고정"
+                  }
+                  aria-label={
+                    candidate.isPinned ? "즐겨찾기 해제" : "즐겨찾기 고정"
+                  }
                   aria-pressed={candidate.isPinned}
                   disabled={pinningId === candidate.id || saving}
                   onClick={(event) => {
@@ -1533,14 +1537,14 @@ function PurchaseListView({
                   }}
                   className={`mt-1 inline-flex size-8 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     candidate.isPinned
-                      ? "border-slate-300 bg-slate-100 text-[#123f34] hover:bg-slate-200"
+                      ? "border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100"
                       : "border-slate-200 bg-white text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                   }`}
                 >
                   {pinningId === candidate.id ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
-                    <Pin
+                    <Star
                       className="size-4"
                       fill={candidate.isPinned ? "currentColor" : "none"}
                     />
@@ -1672,11 +1676,7 @@ function PurchaseListView({
                     <span aria-hidden="true">·</span>
                     <button
                       type="button"
-                      className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-1 transition hover:bg-slate-100 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 ${
-                        shippingUnknown
-                          ? "font-medium text-slate-500 hover:text-slate-700"
-                          : "font-bold text-slate-950 hover:text-slate-950"
-                      }`}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1 font-semibold text-blue-600 transition hover:bg-blue-50 hover:text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                       onClick={() =>
                         editingShippingId === candidate.id
                           ? cancelShippingEdit()
@@ -4191,88 +4191,184 @@ function PriceCompareView({
     <>
       <PageTitle
         title="상품등록"
-        description="네이버·쿠팡에서 상품을 검색하거나 직접 링크를 추가해 구매목록에 저장합니다."
+        description="네이버·쿠팡에서 상품을 검색하고 구매목록에 저장하세요."
       />
-      <Panel>
-        <div className="border-b border-slate-100 pb-4">
-          <h2 className="text-lg font-black text-slate-950">상품등록</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            상품을 검색해 구매 후보를 확인하고, 실제 구매할 상품을
-            구매목록에 저장할 수 있습니다.
-          </p>
-        </div>
-
-        <div className="mt-5">
-          <form
-            className="mx-auto flex w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-slate-50/70 p-5"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!searching && directQuery.trim()) {
-                void search();
-              }
-            }}
-          >
-            <h3 className="text-base font-black text-slate-950">
-              상품 검색하기
-            </h3>
-            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">
-              네이버 가격 후보를 조회하거나 쿠팡 검색을 열어 구매 후보를
-              확인할 수 있습니다.
-            </p>
-            <div className="mt-4 w-full">
+      <section className="mx-auto w-full max-w-5xl py-6 sm:py-10">
+        <form
+          className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)] sm:p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!searching && directQuery.trim()) {
+              void search();
+            }
+          }}
+        >
+          <div className="grid gap-3 md:grid-cols-[104px_minmax(0,1fr)_112px_132px] md:items-center">
+            <div className="flex h-14 items-center justify-center rounded-2xl bg-slate-100 px-4 text-sm font-bold text-slate-700">
+              네이버
+            </div>
+            <label className="relative block">
+              <span className="sr-only">상품 검색어</span>
+              <Search className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-slate-400" />
               <input
-                className={`${inputClass} !h-14 min-h-14 rounded-2xl px-4`}
+                className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 pr-4 pl-12 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-100"
                 value={directQuery}
                 onChange={(event) => setDirectQuery(event.target.value)}
-                placeholder="예: 올리타리아 트러플 오일 250ml"
+                placeholder="찾고 싶은 상품을 검색해보세요"
               />
-              <div className="mt-3 flex min-h-[72px] items-center rounded-2xl bg-white px-4 py-3 text-xs leading-5 text-slate-600">
-                {directQuery.trim()
-                  ? "검색 결과에서 실제 구매할 상품을 선택해 구매목록에 저장할 수 있습니다."
-                  : "상품명을 입력하면 네이버와 쿠팡에서 검색할 수 있습니다. 예: 트러플오일, 모짜렐라 치즈 1kg"}
-              </div>
-              <div className="grid w-full grid-cols-1 gap-3 pt-4 sm:grid-cols-[minmax(0,1fr)_210px]">
-                <button
-                  type="submit"
-                  className={`${buttonClass} !h-14 min-h-14 w-full rounded-2xl leading-none whitespace-nowrap`}
-                  disabled={searching || !directQuery.trim()}
-                >
-                  {searching ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Search className="size-4" />
-                  )}
-                  네이버에서 상품 검색
-                </button>
-                <a
-                  href={
-                    directQuery.trim()
-                      ? `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery.trim())}`
-                      : undefined
-                  }
-                  target={directQuery.trim() ? "_blank" : undefined}
-                  rel={directQuery.trim() ? "noreferrer" : undefined}
-                  aria-disabled={!directQuery.trim()}
-                  tabIndex={directQuery.trim() ? 0 : -1}
-                  onClick={(event) => {
-                    if (!directQuery.trim()) event.preventDefault();
-                  }}
-                  className={`${secondaryButtonClass} !h-14 min-h-14 w-full rounded-2xl px-[18px] leading-none whitespace-nowrap aria-disabled:cursor-not-allowed aria-disabled:opacity-60`}
-                >
-                  쿠팡에서 상품 검색
-                  <ArrowUpRight className="size-[17px]" />
-                </a>
-              </div>
-            </div>
-          </form>
-        </div>
-
-        <p className="mt-4 text-xs leading-5 text-slate-500">
-          수량과 용량 정보가 포함된 상품일수록 개당가 계산이 정확합니다.
-          조회 결과에서 실제 구매할 상품을 선택해 구매목록에 저장할 수
+            </label>
+            <button
+              type="submit"
+              className={`${buttonClass} !h-14 min-h-14 w-full rounded-2xl px-5`}
+              disabled={searching || !directQuery.trim()}
+            >
+              {searching ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Search className="size-4" />
+              )}
+              검색
+            </button>
+            <a
+              href={
+                directQuery.trim()
+                  ? `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery.trim())}`
+                  : undefined
+              }
+              target={directQuery.trim() ? "_blank" : undefined}
+              rel={directQuery.trim() ? "noopener noreferrer" : undefined}
+              aria-disabled={!directQuery.trim()}
+              tabIndex={directQuery.trim() ? 0 : -1}
+              onClick={(event) => {
+                if (!directQuery.trim()) event.preventDefault();
+              }}
+              className={`${secondaryButtonClass} !h-14 min-h-14 w-full rounded-2xl px-4 whitespace-nowrap aria-disabled:pointer-events-none aria-disabled:opacity-50`}
+            >
+              쿠팡보기
+              <ArrowUpRight className="size-4" />
+            </a>
+          </div>
+        </form>
+        <p className="mt-3 text-center text-xs leading-5 text-slate-500">
+          네이버에서 상품 후보를 조회하고, 쿠팡은 새 탭에서 확인할 수
           있습니다.
         </p>
+      </section>
 
+      <details className="mx-auto mb-6 max-w-5xl rounded-2xl border border-slate-200 bg-white/70 p-4">
+        <summary className="cursor-pointer text-sm font-bold text-slate-800">
+          직접 찾은 링크 추가
+        </summary>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span>
+            검색 결과에 원하는 상품이 없으면 직접 링크로 새 구매목록에
+            저장할 수 있습니다.
+          </span>
+          <a
+            href={BAEMIN_MART_BASE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 font-bold text-slate-600 hover:text-slate-950"
+          >
+            배민상회에서 상품 찾기
+            <ArrowUpRight className="size-3.5" />
+          </a>
+        </div>
+        <form
+          onSubmit={saveManualLinkCandidate}
+          className={`mt-4 grid grid-cols-1 gap-3 xl:items-end ${
+            manualShippingStatus === "PAID"
+              ? "xl:grid-cols-[200px_minmax(260px,1fr)_130px_160px_120px_140px_170px]"
+              : "xl:grid-cols-[200px_minmax(260px,1fr)_130px_160px_140px_170px]"
+          }`}
+        >
+          <input
+            className={inputClass}
+            name="title"
+            placeholder="상품명"
+            required
+          />
+          <input
+            className={inputClass}
+            name="productUrl"
+            type="url"
+            placeholder="상품 링크"
+            required
+            onChange={(event) => {
+              const detected = detectManualSource(event.target.value);
+              if (detected) setManualSource(detected);
+              setManualSaveError(null);
+            }}
+          />
+          <select
+            className={inputClass}
+            name="source"
+            value={manualSource}
+            onChange={(event) => {
+              setManualSource(
+                event.target.value as
+                  | "NAVER"
+                  | "COUPANG"
+                  | "BAEMIN_MART"
+                  | "ETC"
+              );
+              setManualSaveError(null);
+            }}
+          >
+            <option value="NAVER">네이버</option>
+            <option value="COUPANG">쿠팡</option>
+            <option value="BAEMIN_MART">배민상회</option>
+            <option value="ETC">기타</option>
+          </select>
+          <select
+            className={inputClass}
+            name="shippingStatus"
+            value={manualShippingStatus}
+            onChange={(event) => {
+              setManualShippingStatus(
+                event.target.value as "UNKNOWN" | "FREE" | "PAID"
+              );
+              setManualSaveError(null);
+            }}
+          >
+            <option value="UNKNOWN">배송비 확인 필요</option>
+            <option value="FREE">배송비 포함</option>
+            <option value="PAID">배송비 직접 입력</option>
+          </select>
+          <input
+            className={inputClass}
+            name="itemPrice"
+            type="number"
+            min="1"
+            placeholder="상품총액"
+            required
+          />
+          {manualShippingStatus === "PAID" && (
+            <input
+              className={inputClass}
+              name="shippingFee"
+              type="number"
+              min="0"
+              placeholder="배송비 금액"
+              required
+            />
+          )}
+          <button
+            className={`${buttonClass} w-full whitespace-nowrap`}
+            disabled={saving}
+          >
+            {saving && <Loader2 className="size-4 animate-spin" />}
+            새 구매목록에 저장
+          </button>
+          {manualSaveError && (
+            <p className="text-xs font-semibold text-red-600 xl:col-span-full">
+              {manualSaveError}
+            </p>
+          )}
+        </form>
+      </details>
+
+      <div className="mx-auto w-full max-w-5xl">
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
           {searchedDirectQuery && (
             <span className="rounded-full bg-slate-100 px-3 py-1.5 font-bold text-slate-600">
@@ -4321,122 +4417,10 @@ function PriceCompareView({
             {notice}
           </p>
         )}
-        <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <summary className="cursor-pointer text-sm font-bold">
-            직접 찾은 상품 링크 추가
-          </summary>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-            <span>
-              검색 결과에 없는 상품은 직접 링크로 새 구매목록에 저장할 수
-              있습니다.
-            </span>
-            <a
-              href={BAEMIN_MART_BASE_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 font-bold text-slate-700 hover:text-slate-950"
-            >
-              배민상회에서 상품 찾기
-              <ArrowUpRight className="size-3.5" />
-            </a>
-          </div>
-          <form
-            onSubmit={saveManualLinkCandidate}
-            className={`mt-4 grid grid-cols-1 gap-3 xl:items-end ${
-              manualShippingStatus === "PAID"
-                ? "xl:grid-cols-[200px_minmax(260px,1fr)_130px_160px_120px_140px_170px]"
-                : "xl:grid-cols-[200px_minmax(260px,1fr)_130px_160px_140px_170px]"
-            }`}
-          >
-            <input
-              className={inputClass}
-              name="title"
-              placeholder="상품명"
-              required
-            />
-            <input
-              className={inputClass}
-              name="productUrl"
-              type="url"
-              placeholder="상품 링크"
-              required
-              onChange={(event) => {
-                const detected = detectManualSource(event.target.value);
-                if (detected) setManualSource(detected);
-                setManualSaveError(null);
-              }}
-            />
-            <select
-              className={inputClass}
-              name="source"
-              value={manualSource}
-              onChange={(event) => {
-                setManualSource(
-                  event.target.value as
-                    | "NAVER"
-                    | "COUPANG"
-                    | "BAEMIN_MART"
-                    | "ETC"
-                );
-                setManualSaveError(null);
-              }}
-            >
-              <option value="NAVER">네이버</option>
-              <option value="COUPANG">쿠팡</option>
-              <option value="BAEMIN_MART">배민상회</option>
-              <option value="ETC">기타</option>
-            </select>
-            <select
-              className={inputClass}
-              name="shippingStatus"
-              value={manualShippingStatus}
-              onChange={(event) => {
-                setManualShippingStatus(
-                  event.target.value as "UNKNOWN" | "FREE" | "PAID"
-                );
-                setManualSaveError(null);
-              }}
-            >
-              <option value="UNKNOWN">배송비 확인 필요</option>
-              <option value="FREE">배송비 포함</option>
-              <option value="PAID">배송비 직접 입력</option>
-            </select>
-            <input
-              className={inputClass}
-              name="itemPrice"
-              type="number"
-              min="1"
-              placeholder="상품총액"
-              required
-            />
-            {manualShippingStatus === "PAID" && (
-              <input
-                className={inputClass}
-                name="shippingFee"
-                type="number"
-                min="0"
-                placeholder="배송비 금액"
-                required
-              />
-            )}
-            <button
-              className={`${buttonClass} w-full whitespace-nowrap`}
-              disabled={saving}
-            >
-              {saving && <Loader2 className="size-4 animate-spin" />}
-              새 구매목록에 저장
-            </button>
-            {manualSaveError && (
-              <p className="text-xs font-semibold text-red-600 xl:col-span-full">
-                {manualSaveError}
-              </p>
-            )}
-          </form>
-        </details>
-      </Panel>
+      </div>
 
       {candidates.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="mx-auto mt-8 flex max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div>
             <p className="text-sm font-black text-slate-900">
               네이버 검색 결과
@@ -4475,18 +4459,7 @@ function PriceCompareView({
         </div>
       )}
 
-      {candidates.length > 0 && (
-        <div className="mt-5">
-          <h2 className="text-base font-black text-slate-950">
-            네이버 상품 후보
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            네이버 검색 결과에서 찾은 상품 후보입니다.
-          </p>
-        </div>
-      )}
-
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mx-auto mt-4 grid max-w-6xl gap-4 xl:grid-cols-2">
         {sortedCandidates.map(({ candidate, metrics, originalIndex }) => {
           const needsManualPrice =
             candidate.source === "BAEMIN_MART" && candidate.itemPrice <= 0;
@@ -4792,10 +4765,11 @@ function PriceCompareView({
         })}
       </div>
       {candidates.length === 0 && !searching && (
-        <Panel className="mt-4 text-center text-sm text-slate-500">
-          검색어를 입력한 뒤 가격 후보 조회를 실행해 주세요.
-        </Panel>
+        <p className="mt-8 text-center text-sm text-slate-400">
+          검색어를 입력하면 상품 후보를 확인할 수 있습니다.
+        </p>
       )}
+
       {pendingSave && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"
@@ -5039,16 +5013,16 @@ function PriceCompareView({
         </div>
       )}
       {data.priceCandidates.length > 0 && (
-        <Panel className="mt-6">
-          <h2 className="font-bold">최근 구매목록 저장 기록</h2>
-          <div className="mt-4 grid gap-2">
+        <section className="mx-auto mt-10 max-w-6xl border-t border-slate-200 pt-5">
+          <h2 className="text-sm font-bold text-slate-700">최근 저장 기록</h2>
+          <div className="mt-3 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white/60 px-4">
             {data.priceCandidates.slice(0, 10).map((candidate) => (
               <a
                 key={candidate.id}
                 href={candidate.productUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm hover:bg-slate-50"
+                className="flex items-center justify-between gap-4 py-3 text-sm hover:bg-slate-50/80"
               >
                 <span className="min-w-0">
                   <strong className="block truncate">{candidate.title}</strong>
@@ -5076,7 +5050,7 @@ function PriceCompareView({
               </a>
             ))}
           </div>
-        </Panel>
+        </section>
       )}
     </>
   );
