@@ -91,6 +91,36 @@ describe("calculatePriceMetrics", () => {
     expect(overUnit.effectiveShippingFee).toBe(5000);
   });
 
+  it("배송비 부과 모드별 총 배송비를 계산한다", () => {
+    const base = {
+      title: "테스트 상품 10개",
+      itemPrice: 10000,
+      shippingFee: 3500,
+      shippingStatus: "PAID" as const,
+      quantityPerPack: 10,
+    };
+
+    expect(
+      calculatePriceMetrics({
+        ...base,
+        shippingFeeMode: "ORDER_ONCE",
+      }).effectiveShippingFee
+    ).toBe(3500);
+    expect(
+      calculatePriceMetrics({
+        ...base,
+        shippingFeeMode: "PER_ITEM",
+      }).effectiveShippingFee
+    ).toBe(35000);
+    expect(
+      calculatePriceMetrics({
+        ...base,
+        shippingFeeMode: "PER_N_ITEMS",
+        shippingUnitCount: 3,
+      }).effectiveShippingFee
+    ).toBe(14000);
+  });
+
   it("베이컨 567g 10개 상품에 10개당 배송비를 한 번 적용한다", () => {
     const metrics = calculatePriceMetrics({
       title: "코스트코 베이컨 크럼블 567g 10개",

@@ -905,6 +905,7 @@ model NewOrderPriceCandidate {
   productPrice              Int                    @default(0)
   shippingFee               Int                    @default(0)
   shippingUnitCount         Int                    @default(1)
+  shippingFeeMode           String?
   shippingStatus            NewOrderShippingStatus @default(UNKNOWN)
   shippingNote              String?                @db.Text
   shippingCondition         String?                @db.Text
@@ -955,6 +956,7 @@ model NewOrderPriceHistory {
   productPrice              Int                    @default(0)
   shippingFee               Int                    @default(0)
   shippingUnitCount         Int                    @default(1)
+  shippingFeeMode           String?
   shippingStatus            NewOrderShippingStatus @default(UNKNOWN)
   shippingNote              String?                @db.Text
   shippingCondition         String?                @db.Text

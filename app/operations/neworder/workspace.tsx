@@ -39,7 +39,6 @@ import {
   normalizeStringArray,
   parseLines,
 } from "@/lib/neworder/item-keywords";
-import { matchProductKeywords } from "@/lib/neworder/product-matching";
 import { BAEMIN_MART_BASE_URL } from "@/lib/neworder/sellers";
 
 type View =
@@ -141,6 +140,12 @@ type PriceCandidate = {
   productPrice: number;
   shippingFee: number;
   shippingUnitCount: number;
+  shippingFeeMode:
+    | "INCLUDED"
+    | "UNKNOWN"
+    | "ORDER_ONCE"
+    | "PER_ITEM"
+    | "PER_N_ITEMS";
   shippingStatus: "FREE" | "PAID" | "UNKNOWN";
   shippingNote: string | null;
   shippingCondition: string | null;
@@ -183,6 +188,7 @@ type PriceHistory = {
   totalPriceWithShipping: number;
   shippingFee: number;
   shippingUnitCount: number;
+  shippingFeeMode: PriceCandidate["shippingFeeMode"] | null;
   shippingStatus: "FREE" | "PAID" | "UNKNOWN";
   shippingNote: string | null;
   shippingCondition: string | null;
@@ -403,13 +409,7 @@ const primaryLinkClass =
 const secondaryButtonClass =
   "inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
 
-export function NewOrderWorkspace({
-  view,
-  initialItemId = "",
-}: {
-  view: View;
-  initialItemId?: string;
-}) {
+export function NewOrderWorkspace({ view }: { view: View }) {
   const [data, setData] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -752,7 +752,6 @@ export function NewOrderWorkspace({
           data={data}
           saving={saving}
           mutate={mutate}
-          initialItemId={initialItemId}
         />
       )}
     </>
@@ -1047,6 +1046,30 @@ function sourceBadgeClass(source: PriceCandidate["source"]) {
   }[source];
 }
 
+function detectManualSource(
+  value: string
+): "NAVER" | "COUPANG" | "BAEMIN_MART" | "ETC" | null {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    if (
+      host === "naver.com" ||
+      host.endsWith(".naver.com")
+    ) {
+      return "NAVER";
+    }
+    if (
+      host === "coupang.com" ||
+      host.endsWith(".coupang.com")
+    ) {
+      return "COUPANG";
+    }
+    if (host === "mart.baemin.com") return "BAEMIN_MART";
+    return "ETC";
+  } catch {
+    return null;
+  }
+}
+
 function formatSavedComposition(candidate: {
   quantity: number;
   unitAmount: number | null;
@@ -1136,8 +1159,13 @@ function PurchaseListView({
   const [shippingMode, setShippingMode] = useState<
     "INCLUDED" | "ENTERED" | "UNKNOWN"
   >("UNKNOWN");
+  const [shippingChargeMode, setShippingChargeMode] = useState<
+    "ORDER_ONCE" | "PER_ITEM" | "PER_N_ITEMS"
+  >("ORDER_ONCE");
   const [shippingFeeDraft, setShippingFeeDraft] = useState("");
+  const [shippingUnitCountDraft, setShippingUnitCountDraft] = useState("1");
   const [shippingError, setShippingError] = useState<string | null>(null);
+  const [shippingSavingId, setShippingSavingId] = useState<string | null>(null);
   const [openedCompareItemId, setOpenedCompareItemId] = useState<string | null>(
     null
   );
@@ -1275,36 +1303,89 @@ function PurchaseListView({
         ? String(candidate.shippingFee)
         : ""
     );
+    setShippingChargeMode(
+      candidate.shippingFeeMode === "PER_ITEM" ||
+        candidate.shippingFeeMode === "PER_N_ITEMS"
+        ? candidate.shippingFeeMode
+        : "ORDER_ONCE"
+    );
+    setShippingUnitCountDraft(
+      candidate.shippingFeeMode === "PER_N_ITEMS"
+        ? String(Math.max(1, candidate.shippingUnitCount || 1))
+        : "1"
+    );
     setShippingError(null);
   }
 
   function cancelShippingEdit() {
     setEditingShippingId(null);
     setShippingFeeDraft("");
+    setShippingChargeMode("ORDER_ONCE");
+    setShippingUnitCountDraft("1");
     setShippingError(null);
   }
 
   async function saveShippingEdit(candidate: SavedPurchaseCandidate) {
+    if (!candidate.id) {
+      setShippingError("배송비를 저장할 상품 ID를 찾지 못했습니다.");
+      return;
+    }
+    if (shippingSavingId) return;
     const shippingFee =
       shippingMode === "ENTERED" ? Number(shippingFeeDraft) : 0;
+    const shippingUnitCount =
+      shippingChargeMode === "PER_N_ITEMS"
+        ? Number(shippingUnitCountDraft)
+        : 1;
     if (
       shippingMode === "ENTERED" &&
-      (!Number.isInteger(shippingFee) || shippingFee < 1)
+      (shippingFeeDraft.trim() === "" ||
+        !Number.isInteger(shippingFee) ||
+        shippingFee < 0)
     ) {
-      setShippingError("배송비는 1원 이상으로 입력해 주세요.");
+      setShippingError("배송비 금액을 입력해 주세요.");
+      return;
+    }
+    if (
+      shippingMode === "ENTERED" &&
+      shippingChargeMode === "PER_N_ITEMS" &&
+      (!Number.isInteger(shippingUnitCount) || shippingUnitCount < 1)
+    ) {
+      setShippingError("몇 개당 배송비가 붙는지 입력해 주세요.");
       return;
     }
     setShippingError(null);
-    const ok = await mutate(
-      {
-        action: "updatePriceCandidateShipping",
-        candidateId: candidate.id,
-        shippingMode,
+    const payload = {
+      action: "updatePriceCandidateShipping",
+      candidateId: candidate.id,
+      shippingMode,
+      shippingFee,
+      shippingFeeMode:
+        shippingMode === "ENTERED" ? shippingChargeMode : shippingMode,
+      shippingUnitCount,
+    };
+    if (process.env.NODE_ENV === "development") {
+      console.log("[shipping fee save clicked]", {
+        itemId: candidate.id,
+        selectedShippingMode: payload.shippingFeeMode,
         shippingFee,
-      },
-      `${candidate.item.name} 배송비 설정을 변경했습니다.`
-    );
-    if (ok) cancelShippingEdit();
+        shippingFeeUnitCount: shippingUnitCount,
+      });
+    }
+    setShippingSavingId(candidate.id);
+    try {
+      const ok = await mutate(
+        payload,
+        `${candidate.item.name} 배송비 설정을 변경했습니다.`
+      );
+      if (ok) {
+        cancelShippingEdit();
+      } else {
+        setShippingError("배송비 설정 변경에 실패했습니다.");
+      }
+    } finally {
+      setShippingSavingId(null);
+    }
   }
 
   async function togglePin(candidate: SavedPurchaseCandidate) {
@@ -1319,7 +1400,7 @@ function PurchaseListView({
     <>
       <PageTitle
         title="구매목록"
-        description="가격비교에서 저장한 품목별 최신 구매 후보를 함께 확인하고 구매 링크를 엽니다."
+        description="상품등록에서 저장한 품목별 최신 구매 후보를 함께 확인하고 구매 링크를 엽니다."
       />
       <Panel>
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1379,20 +1460,48 @@ function PurchaseListView({
             1,
             candidate.quantityPerPack || candidate.bundleQuantity || 1
           );
-          const shippingPerUnit =
-            candidate.shippingStatus === "PAID" && candidate.shippingFee > 0
-              ? Math.round(candidate.shippingFee / shippingQuantity)
-              : null;
+          const shippingFeeMode =
+            candidate.shippingFeeMode ||
+            (candidate.shippingStatus === "FREE"
+              ? "INCLUDED"
+              : candidate.shippingStatus === "UNKNOWN"
+                ? "UNKNOWN"
+                : candidate.shippingUnitCount > 1
+                  ? "PER_N_ITEMS"
+                  : "ORDER_ONCE");
           const shippingLabel =
             candidate.shippingStatus === "FREE"
               ? "배송비 포함"
               : candidate.shippingStatus === "PAID"
-                ? `배송비 ${money(candidate.shippingFee)}${
-                    shippingPerUnit != null
-                      ? ` · 배송비 개당 ${money(shippingPerUnit)}`
-                      : ""
+                ? `배송비 ${money(candidate.shippingFee)} / ${
+                    shippingFeeMode === "PER_ITEM"
+                      ? "1개당"
+                      : shippingFeeMode === "PER_N_ITEMS"
+                        ? `${Math.max(1, candidate.shippingUnitCount)}개당`
+                        : "주문"
                   }`
                 : "배송비 미확인";
+          const shippingPreviewFee = (() => {
+            const fee = Number(shippingFeeDraft);
+            if (
+              shippingMode !== "ENTERED" ||
+              shippingFeeDraft.trim() === "" ||
+              !Number.isInteger(fee) ||
+              fee < 0
+            ) {
+              return null;
+            }
+            if (shippingChargeMode === "PER_ITEM") {
+              return fee * shippingQuantity;
+            }
+            if (shippingChargeMode === "PER_N_ITEMS") {
+              const unitCount = Number(shippingUnitCountDraft);
+              return Number.isInteger(unitCount) && unitCount > 0
+                ? Math.ceil(shippingQuantity / unitCount) * fee
+                : null;
+            }
+            return fee;
+          })();
           const priceSummary = [
             ...(pricePer100
               ? [
@@ -1534,7 +1643,7 @@ function PurchaseListView({
                         <button
                           type="button"
                           className={`${buttonClass} h-8 rounded-lg px-2.5 text-xs`}
-                          disabled={saving}
+                          disabled={saving || shippingSavingId === candidate.id}
                           onClick={() => void savePriceEdit(candidate)}
                         >
                           {saving && <Loader2 className="size-3 animate-spin" />}
@@ -1624,11 +1733,11 @@ function PurchaseListView({
                       </div>
                       {shippingMode === "ENTERED" && (
                         <label className="mt-2 block text-[11px] font-semibold text-slate-600">
-                          총 배송비
+                          배송비 금액
                           <div className="mt-1 flex items-center gap-2">
                             <input
                               type="number"
-                              min="1"
+                              min="0"
                               value={shippingFeeDraft}
                               onChange={(event) => {
                                 setShippingFeeDraft(event.target.value);
@@ -1649,18 +1758,64 @@ function PurchaseListView({
                             />
                             <span className="text-xs text-slate-500">원</span>
                           </div>
-                          {Number(shippingFeeDraft) > 0 &&
-                            shippingQuantity > 0 && (
-                              <span className="mt-1 block font-medium text-slate-500">
-                                배송비 개당{" "}
-                                {money(
-                                  Math.round(
-                                    Number(shippingFeeDraft) / shippingQuantity
-                                  )
-                                )}
-                              </span>
-                            )}
                         </label>
+                      )}
+                      {shippingMode === "ENTERED" && (
+                        <div className="mt-3">
+                          <p className="text-[11px] font-semibold text-slate-600">
+                            배송비 부과 기준
+                          </p>
+                          <div className="mt-1 grid gap-1.5 sm:grid-cols-3">
+                            {(
+                              [
+                                ["ORDER_ONCE", "주문 전체 1회"],
+                                ["PER_ITEM", "1개당"],
+                                ["PER_N_ITEMS", "n개당"],
+                              ] as const
+                            ).map(([value, label]) => (
+                              <label
+                                key={value}
+                                className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700"
+                              >
+                                <input
+                                  type="radio"
+                                  name={`shipping-charge-mode-${candidate.id}`}
+                                  checked={shippingChargeMode === value}
+                                  onChange={() => {
+                                    setShippingChargeMode(value);
+                                    setShippingError(null);
+                                  }}
+                                  className="size-3.5 accent-[#123f34]"
+                                />
+                                {label}
+                              </label>
+                            ))}
+                          </div>
+                          {shippingChargeMode === "PER_N_ITEMS" && (
+                            <label className="mt-2 block text-[11px] font-semibold text-slate-600">
+                              몇 개당 배송비가 붙나요?
+                              <input
+                                type="number"
+                                min="1"
+                                value={shippingUnitCountDraft}
+                                onChange={(event) => {
+                                  setShippingUnitCountDraft(event.target.value);
+                                  setShippingError(null);
+                                }}
+                                placeholder="예: 3"
+                                className={`${inputClass} mt-1 h-9`}
+                              />
+                            </label>
+                          )}
+                          {shippingPreviewFee != null && (
+                            <p className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-medium text-slate-600">
+                              구성 수량 {shippingQuantity}개 기준 예상 총 배송비{" "}
+                              <strong className="text-slate-900">
+                                {money(shippingPreviewFee)}
+                              </strong>
+                            </p>
+                          )}
+                        </div>
                       )}
                       {shippingError && (
                         <p className="mt-2 text-xs font-semibold text-red-600">
@@ -1681,16 +1836,26 @@ function PurchaseListView({
                           className={`${buttonClass} h-8 rounded-lg px-3 text-xs`}
                           disabled={
                             saving ||
+                            shippingSavingId === candidate.id ||
                             (shippingMode === "ENTERED" &&
-                              (!Number.isInteger(Number(shippingFeeDraft)) ||
-                                Number(shippingFeeDraft) < 1))
+                              (shippingFeeDraft.trim() === "" ||
+                                !Number.isInteger(Number(shippingFeeDraft)) ||
+                                Number(shippingFeeDraft) < 0)) ||
+                            (shippingMode === "ENTERED" &&
+                              shippingChargeMode === "PER_N_ITEMS" &&
+                              (!Number.isInteger(
+                                Number(shippingUnitCountDraft)
+                              ) ||
+                                Number(shippingUnitCountDraft) < 1))
                           }
                           onClick={() => void saveShippingEdit(candidate)}
                         >
-                          {saving && (
+                          {shippingSavingId === candidate.id && (
                             <Loader2 className="size-3 animate-spin" />
                           )}
-                          저장
+                          {shippingSavingId === candidate.id
+                            ? "저장 중..."
+                            : "저장"}
                         </button>
                       </div>
                     </div>
@@ -1784,7 +1949,7 @@ function PurchaseListView({
               <p className="mt-1">품목명이나 상품명을 다시 확인해 주세요.</p>
             </>
           ) : (
-            "저장된 구매 후보가 없습니다. 가격비교에서 후보를 구매목록에 저장해 주세요."
+            "저장된 구매 후보가 없습니다. 상품등록에서 후보를 구매목록에 저장해 주세요."
           )}
         </Panel>
       )}
@@ -3661,7 +3826,6 @@ function PriceCompareView({
   data,
   saving,
   mutate,
-  initialItemId,
 }: {
   data: Snapshot;
   saving: boolean;
@@ -3669,15 +3833,17 @@ function PriceCompareView({
     payload: Record<string, unknown>,
     successMessage: string
   ) => Promise<boolean>;
-  initialItemId: string;
 }) {
   const activeItems = data.items.filter((item) => item.isActive);
-  const initialItem =
-    activeItems.find((item) => item.id === initialItemId) ?? activeItems[0];
-  const [itemId, setItemId] = useState(initialItem?.id || "");
   const [directQuery, setDirectQuery] = useState("");
+  const [manualShippingStatus, setManualShippingStatus] = useState<
+    "UNKNOWN" | "FREE" | "PAID"
+  >("UNKNOWN");
+  const [manualSource, setManualSource] = useState<
+    "NAVER" | "COUPANG" | "BAEMIN_MART" | "ETC"
+  >("ETC");
+  const [manualSaveError, setManualSaveError] = useState<string | null>(null);
   const [searchedDirectQuery, setSearchedDirectQuery] = useState("");
-  const [comparedItemId, setComparedItemId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
   const [coupangUrl, setCoupangUrl] = useState("");
@@ -3688,7 +3854,7 @@ function PriceCompareView({
     reason: string | null;
   } | null>(null);
   const [sort, setSort] = useState<PriceSort>(
-    defaultPriceSort(initialItem?.name || "", initialItem?.category || "")
+    defaultPriceSort("", "기타")
   );
   const [pendingSave, setPendingSave] = useState<{
     candidate: SearchCandidate;
@@ -3698,7 +3864,7 @@ function PriceCompareView({
   const [optionPriceChecked, setOptionPriceChecked] = useState(false);
   const [optionMemo, setOptionMemo] = useState("");
   const [connectionItemId, setConnectionItemId] = useState(
-    initialItem?.id || ""
+    activeItems[0]?.id || ""
   );
   const connectionItem =
     activeItems.find((item) => item.id === connectionItemId) ?? null;
@@ -3707,28 +3873,7 @@ function PriceCompareView({
         (candidate) => candidate.itemId === connectionItem.id
       )
     : false;
-  const selectedItem = data.items.find((item) => item.id === itemId);
-  const comparedItem = comparedItemId
-    ? data.items.find((item) => item.id === comparedItemId) ?? null
-    : null;
-  const currentPurchaseCandidate = comparedItemId
-    ? data.purchaseList.reduce<SavedPurchaseCandidate | null>(
-        (latest, candidate) => {
-          if (candidate.itemId !== comparedItemId) return latest;
-          if (!latest) return candidate;
-          return new Date(candidate.checkedAt).getTime() >
-            new Date(latest.checkedAt).getTime()
-            ? candidate
-            : latest;
-        },
-        null
-      )
-    : null;
-  const selectedRecentUnitPrice =
-    selectedItem?.purchases[0]?.unitPrice ?? null;
-  const recentUnitPrice = searchedDirectQuery
-    ? null
-    : selectedRecentUnitPrice;
+  const recentUnitPrice = null;
   const analyzedCandidates = candidates.map((candidate, originalIndex) => ({
     candidate,
     originalIndex,
@@ -3773,24 +3918,9 @@ function PriceCompareView({
       candidate.passesRequired !== false &&
       candidate.shippingStatus !== "UNKNOWN"
   );
-  const selectedSearchKeywords = selectedItem
-    ? [
-        ...new Set(
-          [
-            ...selectedItem.naverSearchKeywords,
-            selectedItem.naverSearchKeyword,
-          ].filter((keyword): keyword is string => Boolean(keyword?.trim()))
-        ),
-      ]
-    : [];
-
-  async function search(mode: "direct" | "item") {
-    const query = mode === "direct" ? directQuery.trim() : "";
-    const targetItemId = mode === "item" ? itemId : "";
-    if ((mode === "direct" && !query) || (mode === "item" && !targetItemId)) {
-      return;
-    }
-    setComparedItemId(null);
+  async function search() {
+    const query = directQuery.trim();
+    if (!query) return;
     setSearching(true);
     setCandidates((rows) =>
       rows.map((candidate) =>
@@ -3803,8 +3933,7 @@ function PriceCompareView({
     setSearchError(null);
     try {
       const params = new URLSearchParams();
-      if (targetItemId) params.set("itemId", targetItemId);
-      if (query) params.set("query", query);
+      params.set("query", query);
       const response = await fetch(
         `/api/operations/neworder/price-search?${params.toString()}`,
         { cache: "no-store" }
@@ -3861,9 +3990,7 @@ function PriceCompareView({
         }
         setCoupangUrl(payload.coupangSearchUrl ?? "");
         setSearchedKeywords(payload.searchedKeywords ?? []);
-        setSearchedDirectQuery(
-          payload.directSearch ? payload.searchedKeywords?.[0] ?? query : ""
-        );
+        setSearchedDirectQuery(payload.searchedKeywords?.[0] ?? query);
         setSearchError({
           message: payload.message || "가격 후보 조회에 실패했습니다.",
           reason: payload.reason || null,
@@ -3877,13 +4004,8 @@ function PriceCompareView({
       setCandidates(nextCandidates);
       setCoupangUrl(payload.coupangSearchUrl ?? "");
       setSearchedKeywords(payload.searchedKeywords ?? []);
-      setSearchedDirectQuery(
-        payload.directSearch ? payload.searchedKeywords?.[0] ?? query : ""
-      );
-      setComparedItemId(payload.directSearch ? null : targetItemId);
-      if (payload.directSearch) {
-        setSort(defaultPriceSort(query, "기타"));
-      }
+      setSearchedDirectQuery(payload.searchedKeywords?.[0] ?? query);
+      setSort(defaultPriceSort(query, "기타"));
       setNotice(
         nextCandidates.length === 0
           ? "조회된 후보가 없습니다. 검색어를 추가하거나 직접 후보를 추가해 주세요."
@@ -3958,144 +4080,135 @@ function PriceCompareView({
     candidate: SearchCandidate,
     metrics: PriceMetrics
   ) {
-    setConnectionItemId(itemId || activeItems[0]?.id || "");
+    setConnectionItemId(activeItems[0]?.id || "");
     setConfirmingExistingSave(false);
     setOptionPriceChecked(false);
     setOptionMemo("");
     setPendingSave({ candidate, metrics });
   }
 
-  async function saveCoupangCandidate(event: FormEvent<HTMLFormElement>) {
+  async function saveManualLinkCandidate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const formData = new FormData(formElement);
-    const sourceValue = String(formData.get("source") || "MANUAL");
-    const source: SearchCandidate["source"] =
-      sourceValue === "NAVER" ||
-      sourceValue === "COUPANG" ||
-      sourceValue === "ORDERHERO" ||
-      sourceValue === "BAEMIN_MART" ||
-      sourceValue === "ETC"
-        ? sourceValue
-        : "MANUAL";
     const title = String(formData.get("title") || "").trim();
-    const itemPrice = Number(formData.get("itemPrice")) || 0;
-    const shippingFee = Number(formData.get("shippingFee")) || 0;
-    const shippingUnitCount = Math.max(
-      1,
-      Number(formData.get("shippingUnitCount")) || 1
-    );
-    const shippingStatus = String(
-      formData.get("shippingStatus") || "UNKNOWN"
-    ) as
-      | "FREE"
-      | "PAID"
-      | "UNKNOWN";
-    const titleMetrics = calculatePriceMetrics({
+    const productUrl = String(formData.get("productUrl") || "").trim();
+    const itemPrice = Number(formData.get("itemPrice"));
+    const shippingFee =
+      manualShippingStatus === "PAID"
+        ? Number(formData.get("shippingFee"))
+        : 0;
+
+    if (!title) {
+      setManualSaveError("상품명을 입력해 주세요.");
+      return;
+    }
+    if (!productUrl) {
+      setManualSaveError("상품 링크를 입력해 주세요.");
+      return;
+    }
+    try {
+      new URL(productUrl);
+    } catch {
+      setManualSaveError("올바른 상품 링크를 입력해 주세요.");
+      return;
+    }
+    if (!manualSource) {
+      setManualSaveError("판매처를 선택해 주세요.");
+      return;
+    }
+    if (!Number.isInteger(itemPrice) || itemPrice < 1) {
+      setManualSaveError("상품총액을 입력해 주세요.");
+      return;
+    }
+    if (
+      manualShippingStatus === "PAID" &&
+      (!Number.isInteger(shippingFee) || shippingFee < 0)
+    ) {
+      setManualSaveError("배송비 금액을 입력해 주세요.");
+      return;
+    }
+
+    const payload = {
+      action: "savePriceCandidate",
+      manualLinkCreate: true,
       title,
+      productUrl,
+      source: manualSource,
+      mallName: sourceLabel(manualSource),
       itemPrice,
       shippingFee,
-      shippingUnitCount,
-      shippingStatus,
-    });
-    const candidate: SearchCandidate = {
-      source,
-      title,
-      productUrl: String(formData.get("productUrl") || "").trim(),
-      image: null,
-      mallName:
-        String(formData.get("mallName") || "").trim() || sourceLabel(source),
-      itemPrice,
-      shippingFee,
-      shippingUnitCount,
-      shippingStatus,
+      shippingUnitCount: 1,
+      shippingFeeMode:
+        manualShippingStatus === "FREE"
+          ? "INCLUDED"
+          : manualShippingStatus === "PAID"
+            ? "ORDER_ONCE"
+            : "UNKNOWN",
+      shippingStatus: manualShippingStatus,
       shippingNote:
-        shippingStatus === "UNKNOWN"
+        manualShippingStatus === "UNKNOWN"
           ? "배송비를 직접 확인해 주세요."
           : null,
       shippingCondition:
-        shippingStatus === "PAID"
-          ? `배송비 ${shippingFee.toLocaleString("ko-KR")}원 / ${shippingUnitCount}개마다 부과`
-          : shippingStatus === "FREE"
-            ? "무료배송"
+        manualShippingStatus === "PAID"
+          ? `배송비 ${shippingFee.toLocaleString("ko-KR")}원 / 주문`
+          : manualShippingStatus === "FREE"
+            ? "배송비 포함"
             : null,
-      shippingNeedsConfirmation: shippingStatus === "UNKNOWN",
-      effectiveShippingFee: titleMetrics.effectiveShippingFee,
-      quantityPerPack: formData.get("quantityPerPack")
-        ? Math.max(1, Number(formData.get("quantityPerPack")) || 1)
-        : titleMetrics.unitCount,
-      volumePerUnit: formData.get("volumePerUnit")
-        ? Number(formData.get("volumePerUnit"))
-        : titleMetrics.volumePerUnit,
-      volumeUnit:
-        String(formData.get("volumeUnit") || "") || titleMetrics.volumeUnit,
-      packageUnit:
-        String(formData.get("packageUnit") || "") || titleMetrics.packageUnit,
-      isManual: true,
-      isDirectSearch: Boolean(directQuery.trim()),
-      passesRequired: true,
+      quantityPerPack: 1,
+      volumePerUnit: null,
+      volumeUnit: null,
+      packageUnit: "개",
+      optionPriceChecked: false,
     };
-    const parsed = calculatePriceMetrics(candidate);
-    const keywordMatch = matchProductKeywords(
-      title,
-      candidate.isDirectSearch
-        ? {
-            requiredKeywords: [],
-            optionalKeywords: [],
-            preferredKeywords: [],
-            excludedKeywords: [],
-          }
-        : {
-            requiredKeywords: selectedItem?.requiredKeywords ?? [],
-            optionalKeywords: selectedItem?.optionalKeywords ?? [],
-            preferredKeywords: selectedItem?.preferredKeywords ?? [],
-            excludedKeywords: selectedItem?.excludedKeywords ?? [],
-          }
-    );
-    candidate.quantityPerPack = parsed.unitCount;
-    candidate.volumePerUnit = parsed.volumePerUnit;
-    candidate.volumeUnit = parsed.volumeUnit;
-    candidate.packageUnit = parsed.packageUnit;
-    candidate.passesRequired =
-      keywordMatch.passesRequired && keywordMatch.passesExcluded;
-    candidate.optionalMatchCount = keywordMatch.optionalMatchCount;
-    candidate.preferredMatchCount = keywordMatch.preferredMatchCount;
-    setCandidates((rows) => [
-      ...rows.filter((row) => row.productUrl !== candidate.productUrl),
-      candidate,
-    ]);
-    if (candidate.isDirectSearch || !itemId) {
-      requestCandidateSave(candidate, parsed);
-      formElement.reset();
-      return;
+    if (process.env.NODE_ENV === "development") {
+      console.log("[manual link save]", {
+        manualProductName: title,
+        manualProductUrl: productUrl,
+        manualProvider: manualSource,
+        manualTotalPrice: itemPrice,
+        payload,
+      });
     }
-    if (await saveCandidate(candidate, parsed, itemId)) {
+
+    setManualSaveError(null);
+    const ok = await mutate(
+      payload,
+      "구매목록에 새 상품으로 저장되었습니다."
+    );
+    if (ok) {
       formElement.reset();
+      setManualShippingStatus("UNKNOWN");
+      setManualSource("ETC");
+      setNotice("구매목록에 새 상품으로 저장되었습니다.");
+    } else {
+      setManualSaveError("직접 찾은 상품 저장에 실패했습니다.");
     }
   }
 
   return (
     <>
       <PageTitle
-        title="가격비교"
-        description="상품명의 구성과 용량을 분석해 배송비 포함 개당·100ml·100g·매당 가격을 비교합니다."
+        title="상품등록"
+        description="네이버·쿠팡에서 상품을 검색하거나 직접 링크를 추가해 구매목록에 저장합니다."
       />
       <Panel>
         <div className="border-b border-slate-100 pb-4">
-          <h2 className="text-lg font-black text-slate-950">가격비교</h2>
+          <h2 className="text-lg font-black text-slate-950">상품등록</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            상품을 직접 검색하거나, 등록된 품목을 선택해 개당가를 비교할
-            수 있습니다.
+            상품을 검색해 구매 후보를 확인하고, 실제 구매할 상품을
+            구매목록에 저장할 수 있습니다.
           </p>
         </div>
 
-        <div className="mt-5 grid items-stretch gap-4 lg:grid-cols-2">
+        <div className="mt-5">
           <form
-            className="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50/70 p-5"
+            className="mx-auto flex w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-slate-50/70 p-5"
             onSubmit={(event) => {
               event.preventDefault();
               if (!searching && directQuery.trim()) {
-                void search("direct");
+                void search();
               }
             }}
           >
@@ -4103,125 +4216,55 @@ function PriceCompareView({
               상품 검색하기
             </h3>
             <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">
-              등록되지 않은 상품도 바로 검색해 가격 후보를 확인할 수
-              있습니다.
+              네이버 가격 후보를 조회하거나 쿠팡 검색을 열어 구매 후보를
+              확인할 수 있습니다.
             </p>
-            <input
-              className={`${inputClass} mt-4 !h-14 min-h-14 rounded-2xl px-4`}
-              value={directQuery}
-              onChange={(event) => setDirectQuery(event.target.value)}
-              placeholder="예: 올리타리아 트러플 오일 250ml"
-            />
-            <div className="mt-3 flex min-h-[72px] items-center rounded-2xl bg-white px-4 py-3 text-xs leading-5 text-slate-600">
-              {directQuery.trim()
-                ? "검색 결과에서 실제 구매할 상품을 선택해 구매목록에 저장할 수 있습니다."
-                : "상품명을 입력하면 네이버와 쿠팡에서 검색할 수 있습니다. 예: 트러플오일, 모짜렐라 치즈 1kg"}
-            </div>
-            <div className="mt-auto grid w-full grid-cols-1 gap-3 pt-4 sm:grid-cols-[minmax(0,1fr)_180px]">
-              <button
-                type="submit"
-                className={`${buttonClass} !h-14 min-h-14 w-full rounded-2xl leading-none whitespace-nowrap`}
-                disabled={searching || !directQuery.trim()}
-              >
-                {searching ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Search className="size-4" />
-                )}
-                네이버에서 상품 검색
-              </button>
-              <a
-                href={
-                  directQuery.trim()
-                    ? `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery.trim())}`
-                    : undefined
-                }
-                target={directQuery.trim() ? "_blank" : undefined}
-                rel={directQuery.trim() ? "noreferrer" : undefined}
-                aria-disabled={!directQuery.trim()}
-                tabIndex={directQuery.trim() ? 0 : -1}
-                onClick={(event) => {
-                  if (!directQuery.trim()) event.preventDefault();
-                }}
-                className={`${secondaryButtonClass} !h-14 min-h-14 w-full rounded-2xl px-[18px] leading-none whitespace-nowrap aria-disabled:cursor-not-allowed aria-disabled:opacity-60`}
-              >
-                쿠팡 검색
-                <ArrowUpRight className="size-[17px]" />
-              </a>
+            <div className="mt-4 w-full">
+              <input
+                className={`${inputClass} !h-14 min-h-14 rounded-2xl px-4`}
+                value={directQuery}
+                onChange={(event) => setDirectQuery(event.target.value)}
+                placeholder="예: 올리타리아 트러플 오일 250ml"
+              />
+              <div className="mt-3 flex min-h-[72px] items-center rounded-2xl bg-white px-4 py-3 text-xs leading-5 text-slate-600">
+                {directQuery.trim()
+                  ? "검색 결과에서 실제 구매할 상품을 선택해 구매목록에 저장할 수 있습니다."
+                  : "상품명을 입력하면 네이버와 쿠팡에서 검색할 수 있습니다. 예: 트러플오일, 모짜렐라 치즈 1kg"}
+              </div>
+              <div className="grid w-full grid-cols-1 gap-3 pt-4 sm:grid-cols-[minmax(0,1fr)_210px]">
+                <button
+                  type="submit"
+                  className={`${buttonClass} !h-14 min-h-14 w-full rounded-2xl leading-none whitespace-nowrap`}
+                  disabled={searching || !directQuery.trim()}
+                >
+                  {searching ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Search className="size-4" />
+                  )}
+                  네이버에서 상품 검색
+                </button>
+                <a
+                  href={
+                    directQuery.trim()
+                      ? `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery.trim())}`
+                      : undefined
+                  }
+                  target={directQuery.trim() ? "_blank" : undefined}
+                  rel={directQuery.trim() ? "noreferrer" : undefined}
+                  aria-disabled={!directQuery.trim()}
+                  tabIndex={directQuery.trim() ? 0 : -1}
+                  onClick={(event) => {
+                    if (!directQuery.trim()) event.preventDefault();
+                  }}
+                  className={`${secondaryButtonClass} !h-14 min-h-14 w-full rounded-2xl px-[18px] leading-none whitespace-nowrap aria-disabled:cursor-not-allowed aria-disabled:opacity-60`}
+                >
+                  쿠팡에서 상품 검색
+                  <ArrowUpRight className="size-[17px]" />
+                </a>
+              </div>
             </div>
           </form>
-
-          <section className="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
-            <h3 className="text-base font-black text-slate-950">
-              등록된 상품 비교하기
-            </h3>
-            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">
-              품목 관리에 저장된 상품을 선택해 최근 단가와 가격 후보를
-              비교합니다.
-            </p>
-            <select
-              className={`${inputClass} mt-4 !h-14 min-h-14 rounded-2xl px-4`}
-              value={itemId}
-              onChange={(event) => {
-                const nextItemId = event.target.value;
-                const nextItem = activeItems.find(
-                  (item) => item.id === nextItemId
-                );
-                setItemId(nextItemId);
-                setSort(
-                  defaultPriceSort(
-                    nextItem?.name || "",
-                    nextItem?.category || ""
-                  )
-                );
-                setCandidates([]);
-                setSearchedKeywords([]);
-                setSearchedDirectQuery("");
-                setComparedItemId(null);
-                setSearchError(null);
-                setNotice(null);
-              }}
-            >
-              <option value="">비교할 등록 품목 선택</option>
-              {activeItems.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.category}
-                </option>
-              ))}
-            </select>
-            <div className="mt-3 flex min-h-[72px] flex-col justify-center rounded-2xl bg-white px-4 py-3 text-xs leading-5 text-slate-600">
-              <p>
-                최근 구매 단가:{" "}
-                <strong>
-                  {selectedRecentUnitPrice === null
-                    ? "기록 없음"
-                    : money(selectedRecentUnitPrice)}
-                </strong>
-              </p>
-              {itemId && (
-                <p className="mt-1 truncate text-slate-500">
-                  등록 검색어:{" "}
-                  {selectedSearchKeywords.length > 0
-                    ? selectedSearchKeywords.join(", ")
-                    : "설정 없음"}
-                </p>
-              )}
-            </div>
-            <div className="mt-auto pt-4">
-              <button
-                className={`${buttonClass} !h-14 min-h-14 w-full rounded-2xl leading-none whitespace-nowrap`}
-                onClick={() => void search("item")}
-                disabled={searching || !itemId}
-              >
-                {searching ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Search className="size-4" />
-                )}
-                등록 상품 가격 비교
-              </button>
-            </div>
-          </section>
         </div>
 
         <p className="mt-4 text-xs leading-5 text-slate-500">
@@ -4284,9 +4327,8 @@ function PriceCompareView({
           </summary>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
             <span>
-              네이버 검색 결과에 없는 상품은 구매 링크를 직접 추가할 수
-              있습니다. 배민상회는 로그인·회원가·쿠폰·배송 조건을 직접
-              확인해 주세요.
+              검색 결과에 없는 상품은 직접 링크로 새 구매목록에 저장할 수
+              있습니다.
             </span>
             <a
               href={BAEMIN_MART_BASE_URL}
@@ -4299,8 +4341,12 @@ function PriceCompareView({
             </a>
           </div>
           <form
-            onSubmit={saveCoupangCandidate}
-            className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4"
+            onSubmit={saveManualLinkCandidate}
+            className={`mt-4 grid grid-cols-1 gap-3 xl:items-end ${
+              manualShippingStatus === "PAID"
+                ? "xl:grid-cols-[200px_minmax(260px,1fr)_130px_160px_120px_140px_170px]"
+                : "xl:grid-cols-[200px_minmax(260px,1fr)_130px_160px_140px_170px]"
+            }`}
           >
             <input
               className={inputClass}
@@ -4308,94 +4354,83 @@ function PriceCompareView({
               placeholder="상품명"
               required
             />
-            <select
-              className={inputClass}
-              name="shippingStatus"
-              defaultValue="UNKNOWN"
-            >
-              <option value="UNKNOWN">배송비 확인 필요</option>
-              <option value="PAID">유료배송</option>
-              <option value="FREE">무료배송</option>
-            </select>
             <input
               className={inputClass}
               name="productUrl"
               type="url"
               placeholder="상품 링크"
               required
+              onChange={(event) => {
+                const detected = detectManualSource(event.target.value);
+                if (detected) setManualSource(detected);
+                setManualSaveError(null);
+              }}
             />
-            <select className={inputClass} name="source" defaultValue="COUPANG">
-              <option value="COUPANG">쿠팡</option>
+            <select
+              className={inputClass}
+              name="source"
+              value={manualSource}
+              onChange={(event) => {
+                setManualSource(
+                  event.target.value as
+                    | "NAVER"
+                    | "COUPANG"
+                    | "BAEMIN_MART"
+                    | "ETC"
+                );
+                setManualSaveError(null);
+              }}
+            >
               <option value="NAVER">네이버</option>
-              <option value="ORDERHERO">오더히어로</option>
+              <option value="COUPANG">쿠팡</option>
               <option value="BAEMIN_MART">배민상회</option>
-              <option value="MANUAL">직접 추가</option>
               <option value="ETC">기타</option>
             </select>
-            <input
+            <select
               className={inputClass}
-              name="mallName"
-              placeholder="구매처명 (선택)"
-            />
+              name="shippingStatus"
+              value={manualShippingStatus}
+              onChange={(event) => {
+                setManualShippingStatus(
+                  event.target.value as "UNKNOWN" | "FREE" | "PAID"
+                );
+                setManualSaveError(null);
+              }}
+            >
+              <option value="UNKNOWN">배송비 확인 필요</option>
+              <option value="FREE">배송비 포함</option>
+              <option value="PAID">배송비 직접 입력</option>
+            </select>
             <input
               className={inputClass}
               name="itemPrice"
               type="number"
-              min="0"
-              placeholder="상품 총액 (미확인 시 비움)"
-            />
-            <input
-              className={inputClass}
-              name="shippingFee"
-              type="number"
-              min="0"
-              defaultValue="0"
-              placeholder="배송비"
+              min="1"
+              placeholder="상품총액"
               required
             />
-            <input
-              className={inputClass}
-              name="shippingUnitCount"
-              type="number"
-              min="1"
-              defaultValue="1"
-              placeholder="배송비 부과 기준 수량"
-              required
-            />
-            <input
-              className={inputClass}
-              name="quantityPerPack"
-              type="number"
-              min="1"
-              placeholder="묶음 수량 (자동)"
-            />
-            <input
-              className={inputClass}
-              name="volumePerUnit"
-              type="number"
-              min="0"
-              step="0.1"
-              placeholder="개당 용량 (자동 파싱)"
-            />
-            <select className={inputClass} name="volumeUnit" defaultValue="">
-              <option value="">용량 단위 자동</option>
-              <option value="ml">ml</option>
-              <option value="g">g</option>
-              <option value="매">매</option>
-            </select>
-            <select className={inputClass} name="packageUnit" defaultValue="">
-              <option value="">포장 단위 자동</option>
-              {["개", "병", "팩", "박스", "봉", "캔", "롤", "통", "세트"].map(
-                (unit) => (
-                  <option key={unit} value={unit}>
-                    {unit}
-                  </option>
-                )
-              )}
-            </select>
-            <button className={buttonClass} disabled={saving}>
-              구매목록에 저장
+            {manualShippingStatus === "PAID" && (
+              <input
+                className={inputClass}
+                name="shippingFee"
+                type="number"
+                min="0"
+                placeholder="배송비 금액"
+                required
+              />
+            )}
+            <button
+              className={`${buttonClass} w-full whitespace-nowrap`}
+              disabled={saving}
+            >
+              {saving && <Loader2 className="size-4 animate-spin" />}
+              새 구매목록에 저장
             </button>
+            {manualSaveError && (
+              <p className="text-xs font-semibold text-red-600 xl:col-span-full">
+                {manualSaveError}
+              </p>
+            )}
           </form>
         </details>
       </Panel>
@@ -4403,9 +4438,11 @@ function PriceCompareView({
       {candidates.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div>
-            <p className="text-sm font-black text-slate-900">조회 결과</p>
+            <p className="text-sm font-black text-slate-900">
+              네이버 검색 결과
+            </p>
             <p className="mt-0.5 text-xs text-slate-500">
-              {candidates.length}개 가격 후보를 비교합니다.
+              {candidates.length}개 상품 후보를 확인합니다.
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -4438,153 +4475,11 @@ function PriceCompareView({
         </div>
       )}
 
-      {candidates.length > 0 && comparedItem && (
-        <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-          <div>
-            <h2 className="text-base font-black text-slate-950">
-              현재 구매목록 등록상품
-            </h2>
-            <p className="mt-1 text-xs text-slate-600">
-              현재 저장된 구매 기준입니다. 아래 새 가격 후보와 비교해
-              보세요.
-            </p>
-          </div>
-
-          {currentPurchaseCandidate ? (
-            <article className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
-              <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)] gap-3 lg:grid-cols-[72px_minmax(0,1fr)_minmax(280px,auto)] lg:items-center">
-                <ProductImage
-                  src={currentPurchaseCandidate.imageUrl}
-                  alt={`${currentPurchaseCandidate.title} 상품 이미지`}
-                />
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <h3 className="font-black text-slate-950">
-                      {currentPurchaseCandidate.item.name}
-                    </h3>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                      {currentPurchaseCandidate.item.category}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${sourceBadgeClass(currentPurchaseCandidate.source)}`}
-                    >
-                      {sourceLabel(currentPurchaseCandidate.source)}
-                    </span>
-                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
-                      최근 등록 상품
-                    </span>
-                    {currentPurchaseCandidate.shippingStatus === "FREE" && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        무료배송
-                      </span>
-                    )}
-                    {currentPurchaseCandidate.shippingStatus === "PAID" && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        유료배송
-                      </span>
-                    )}
-                    {currentPurchaseCandidate.shippingStatus === "UNKNOWN" && (
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                        배송비 확인 필요
-                      </span>
-                    )}
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        currentPurchaseCandidate.optionPriceChecked
-                          ? "bg-slate-200 text-slate-700"
-                          : "border border-slate-200 bg-slate-50 text-slate-500"
-                      }`}
-                    >
-                      {currentPurchaseCandidate.optionPriceChecked
-                        ? "옵션가 확인 완료"
-                        : "옵션가 확인 필요"}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 break-words text-sm font-semibold leading-5 text-slate-800">
-                    {currentPurchaseCandidate.title}
-                  </p>
-                  {currentPurchaseCandidate.optionMemo && (
-                    <p className="mt-1 text-xs font-semibold text-slate-600">
-                      구매 옵션: {currentPurchaseCandidate.optionMemo}
-                    </p>
-                  )}
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    {currentPurchaseCandidate.mallName ||
-                      sourceLabel(currentPurchaseCandidate.source)}
-                  </p>
-                </div>
-
-                <div className="col-span-2 min-w-0 lg:col-span-1 lg:text-right">
-                  <p className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs leading-5 text-slate-600 lg:justify-end">
-                    <span>
-                      상품가{" "}
-                      <strong className="text-slate-950">
-                        {money(currentPurchaseCandidate.productPrice)}
-                      </strong>
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      {currentPurchaseCandidate.shippingStatus === "UNKNOWN"
-                        ? "배송비 미확인"
-                        : `배송비 포함 ${money(
-                            currentPurchaseCandidate.totalPriceWithShipping ||
-                              currentPurchaseCandidate.totalPrice
-                          )}`}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      {currentPurchaseCandidate.packageUnit || "개"}당{" "}
-                      <strong className="text-slate-950">
-                        {money(currentPurchaseCandidate.unitPrice)}
-                      </strong>
-                      {currentPurchaseCandidate.shippingStatus === "UNKNOWN"
-                        ? " (배송비 제외)"
-                        : ""}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      구성{" "}
-                      {formatSavedComposition({
-                        quantity: currentPurchaseCandidate.quantityPerPack,
-                        unitAmount: currentPurchaseCandidate.volumePerUnit,
-                        unitType: currentPurchaseCandidate.volumeUnit,
-                        packageUnit: currentPurchaseCandidate.packageUnit,
-                      })}
-                    </span>
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2 lg:justify-end">
-                    <a
-                      href={currentPurchaseCandidate.productUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`${primaryLinkClass} h-9 rounded-xl px-3 text-xs`}
-                    >
-                      구매 링크 열기
-                      <ArrowUpRight className="size-3.5" />
-                    </a>
-                  </div>
-                  <p className="mt-2 truncate text-xs font-bold text-slate-500">
-                    업데이트{" "}
-                    <span className="text-blue-600">
-                      {currentPurchaseCandidate.savedBy}
-                    </span>{" "}
-                    · {dateTime(currentPurchaseCandidate.checkedAt)}
-                  </p>
-                </div>
-              </div>
-            </article>
-          ) : (
-            <p className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-              아직 구매목록에 저장된 상품이 없습니다. 아래 후보를
-              구매목록에 저장하면 다음 비교 기준으로 사용할 수 있습니다.
-            </p>
-          )}
-        </section>
-      )}
-
       {candidates.length > 0 && (
         <div className="mt-5">
-          <h2 className="text-base font-black text-slate-950">새 가격 후보</h2>
+          <h2 className="text-base font-black text-slate-950">
+            네이버 상품 후보
+          </h2>
           <p className="mt-1 text-xs text-slate-500">
             네이버 검색 결과에서 찾은 상품 후보입니다.
           </p>
@@ -4595,12 +4490,7 @@ function PriceCompareView({
         {sortedCandidates.map(({ candidate, metrics, originalIndex }) => {
           const needsManualPrice =
             candidate.source === "BAEMIN_MART" && candidate.itemPrice <= 0;
-          const diff =
-            recentUnitPrice === null ||
-            candidate.shippingStatus === "UNKNOWN" ||
-            needsManualPrice
-              ? null
-              : ((metrics.unitPrice - recentUnitPrice) / recentUnitPrice) * 100;
+          const diff = null;
           const isRecommended =
             recommended?.originalIndex === originalIndex;
           const recommendationReason = isRecommended
@@ -4608,9 +4498,7 @@ function PriceCompareView({
                 metrics,
                 sort,
                 recentUnitPrice,
-                candidate.isDirectSearch
-                  ? []
-                  : selectedItem?.requiredKeywords ?? []
+                []
               )
             : null;
           return (
@@ -4905,8 +4793,7 @@ function PriceCompareView({
       </div>
       {candidates.length === 0 && !searching && (
         <Panel className="mt-4 text-center text-sm text-slate-500">
-          품목을 선택하거나 직접 검색어를 입력한 뒤 가격 후보 조회를 실행해
-          주세요.
+          검색어를 입력한 뒤 가격 후보 조회를 실행해 주세요.
         </Panel>
       )}
       {pendingSave && (

@@ -15,7 +15,7 @@ import { useState } from "react";
 const NAV_ITEMS = [
   {
     href: "/operations/neworder/price-compare",
-    label: "가격비교",
+    label: "상품등록",
     icon: PackageSearch,
   },
   {

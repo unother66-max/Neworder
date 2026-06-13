@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeStringArray } from "@/lib/neworder/item-keywords";
+import {
+  normalizeShippingFeeMode,
+  type ShippingFeeMode,
+} from "@/lib/neworder/price-analysis";
 
 function defaultMallName(source: string): string {
   if (source === "NAVER") return "네이버";
@@ -20,8 +24,10 @@ function normalizePriceCandidate<
     quantityPerPack: number;
     bundleQuantity: number;
     shippingUnitCount: number;
+    shippingFeeMode: string | null;
     shippingFee: number;
     shippingStatus: "FREE" | "PAID" | "UNKNOWN";
+    shippingNote: string | null;
     effectiveShippingFee: number;
     totalPrice: number;
     totalPriceWithShipping: number;
@@ -38,6 +44,23 @@ function normalizePriceCandidate<
   const bundleQuantity =
     candidate.bundleQuantity || candidate.quantityPerPack || 1;
   const shippingUnitCount = candidate.shippingUnitCount || 1;
+  const storedShippingFeeMode = normalizeShippingFeeMode(
+    candidate.shippingFeeMode
+  );
+  const shippingFeeMode: ShippingFeeMode =
+    storedShippingFeeMode
+      ? storedShippingFeeMode
+      : candidate.shippingStatus === "FREE"
+        ? "INCLUDED"
+        : candidate.shippingStatus === "UNKNOWN"
+          ? "UNKNOWN"
+          : candidate.shippingNote ===
+                "사용자가 배송비를 직접 입력했습니다." &&
+              shippingUnitCount === bundleQuantity
+            ? "ORDER_ONCE"
+            : shippingUnitCount > 1
+              ? "PER_N_ITEMS"
+              : "ORDER_ONCE";
   const effectiveShippingFee =
     candidate.shippingStatus === "PAID"
       ? candidate.effectiveShippingFee || candidate.shippingFee
@@ -54,6 +77,7 @@ function normalizePriceCandidate<
     productPrice,
     bundleQuantity,
     shippingUnitCount,
+    shippingFeeMode,
     effectiveShippingFee,
     totalPriceWithShipping,
   };

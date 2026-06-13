@@ -18,12 +18,31 @@ export type PriceMetrics = ParsedProductSpec & {
 };
 
 export type ShippingStatus = "FREE" | "PAID" | "UNKNOWN";
+export type ShippingFeeMode =
+  | "INCLUDED"
+  | "UNKNOWN"
+  | "ORDER_ONCE"
+  | "PER_ITEM"
+  | "PER_N_ITEMS";
+
+export function normalizeShippingFeeMode(
+  value: unknown
+): ShippingFeeMode | null {
+  return value === "INCLUDED" ||
+    value === "UNKNOWN" ||
+    value === "ORDER_ONCE" ||
+    value === "PER_ITEM" ||
+    value === "PER_N_ITEMS"
+    ? value
+    : null;
+}
 
 export type PriceCandidateLike = {
   title: string;
   itemPrice: number;
   shippingFee: number;
   shippingUnitCount?: number;
+  shippingFeeMode?: ShippingFeeMode | null;
   shippingStatus?: ShippingStatus;
   shippingNeedsConfirmation?: boolean;
   quantityPerPack?: number;
@@ -125,11 +144,17 @@ export function calculatePriceMetrics(
         ? "PAID"
         : "FREE");
   const effectiveShippingFee =
-    shippingStatus === "PAID" && shippingFee > 0
-      ? shippingUnitCount > 1
-        ? shippingFee * Math.ceil(unitCount / shippingUnitCount)
-        : shippingFee
-      : 0;
+    shippingStatus !== "PAID" || shippingFee <= 0
+      ? 0
+      : candidate.shippingFeeMode === "PER_ITEM"
+        ? shippingFee * unitCount
+        : candidate.shippingFeeMode === "PER_N_ITEMS"
+          ? shippingFee * Math.ceil(unitCount / shippingUnitCount)
+          : candidate.shippingFeeMode === "ORDER_ONCE"
+            ? shippingFee
+            : shippingUnitCount > 1
+              ? shippingFee * Math.ceil(unitCount / shippingUnitCount)
+              : shippingFee;
   const totalPrice = productPrice + effectiveShippingFee;
   const totalVolume =
     volumePerUnit && volumeUnit ? volumePerUnit * unitCount : null;
