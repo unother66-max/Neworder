@@ -21,6 +21,7 @@ import {
 import {
   FormEvent,
   Fragment,
+  MouseEvent,
   useCallback,
   useEffect,
   useState,
@@ -39,6 +40,7 @@ import {
   normalizeStringArray,
   parseLines,
 } from "@/lib/neworder/item-keywords";
+import { buildAndroidCoupangIntentUrl } from "@/lib/neworder/purchase-link";
 import { BAEMIN_MART_BASE_URL } from "@/lib/neworder/sellers";
 
 type View =
@@ -1120,6 +1122,40 @@ function normalizePurchaseSearch(value: string) {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, "");
 }
 
+function handleOpenPurchaseLink(
+  event: MouseEvent<HTMLAnchorElement>,
+  productUrl: string
+) {
+  const intentUrl = buildAndroidCoupangIntentUrl(
+    productUrl,
+    window.navigator.userAgent
+  );
+  if (!intentUrl) return;
+
+  event.preventDefault();
+
+  let fallbackTimer: number | null = null;
+  const cleanup = () => {
+    if (fallbackTimer != null) {
+      window.clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("pagehide", cleanup);
+  };
+  const handleVisibilityChange = () => {
+    if (document.hidden) cleanup();
+  };
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  window.addEventListener("pagehide", cleanup, { once: true });
+  fallbackTimer = window.setTimeout(() => {
+    cleanup();
+    window.location.href = productUrl;
+  }, 1000);
+  window.location.href = intentUrl;
+}
+
 function PurchaseListView({
   data,
   saving,
@@ -1865,6 +1901,9 @@ function PurchaseListView({
                       href={candidate.productUrl}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={(event) =>
+                        handleOpenPurchaseLink(event, candidate.productUrl)
+                      }
                       className={`${primaryLinkClass} h-8 rounded-lg px-3 text-xs`}
                     >
                       구매 링크 열기 <ArrowUpRight className="size-3.5" />
