@@ -1,3 +1,5 @@
+import { fetchAllSearchPlacesCheckPlaceRankStyleDetailed } from "./naver-map-all-search";
+
 type ReviewSnapshot = {
   totalReviewCount: number | null;
   visitorReviewCount: number | null;
@@ -27,15 +29,7 @@ function extractPublicPlaceId(placeUrl?: string | null) {
   return matched?.[1] ?? "";
 }
 
-function buildReviewUrls(publicPlaceId: string) {
-  return {
-    mobileHomeUrl: `https://m.place.naver.com/restaurant/${publicPlaceId}/home`,
-    mobileVisitorReviewUrl: `https://m.place.naver.com/restaurant/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
-    pcEntryUrl: `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
-  };
-}
-
-function parseKoreanNumber(value: string | number | null | undefined) {
+function parseKoreanNumber(value: unknown) {
   if (value === null || value === undefined) return null;
 
   if (typeof value === "number") {
@@ -142,21 +136,21 @@ function pickBestNumber(
   for (const pattern of preferredKeyPatterns) {
     for (const item of matches) {
       if (pattern.test(item.key)) {
-        const parsed = parseKoreanNumber(item.value as any);
+        const parsed = parseKoreanNumber(item.value);
         if (parsed !== null) return parsed;
       }
     }
   }
 
   for (const item of matches) {
-    const parsed = parseKoreanNumber(item.value as any);
+    const parsed = parseKoreanNumber(item.value);
     if (parsed !== null) return parsed;
   }
 
   return null;
 }
 
-function extractCountsFromJsonObject(json: any) {
+function extractCountsFromJsonObject(json: unknown) {
   if (!json) {
     return {
       visitorReviewCount: null,
@@ -267,6 +261,52 @@ function extractSaveCountFromRawHtml(html: string) {
   return null;
 }
 
+export function extractReviewCountsFromRawHtml(html: string) {
+  const extract = (patterns: RegExp[]) => {
+    for (const pattern of patterns) {
+      const matched = html.match(pattern);
+      if (matched?.[1]) {
+        const parsed = parseKoreanNumber(matched[1]);
+        if (parsed !== null) return parsed;
+      }
+    }
+    return null;
+  };
+
+  return {
+    visitorReviewCount: extract([
+      /"visitorReviewCount"\s*:\s*"?([0-9][0-9,]*(?:\.\d+)?(?:만|천)?\+?)"?/i,
+      /"placeReviewCount"\s*:\s*"?([0-9][0-9,]*(?:\.\d+)?(?:만|천)?\+?)"?/i,
+    ]),
+    blogReviewCount: extract([
+      /"blogReviewCount"\s*:\s*"?([0-9][0-9,]*(?:\.\d+)?(?:만|천)?\+?)"?/i,
+      /"blogCafeReviewCount"\s*:\s*"?([0-9][0-9,]*(?:\.\d+)?(?:만|천)?\+?)"?/i,
+    ]),
+  };
+}
+
+type ParsedTypeResult = {
+  type: "restaurant" | "place";
+  pageMetricCount: number;
+  visitorReviewCount: number | null;
+  blogReviewCount: number | null;
+  saveCount: number | null;
+  keywordList: string[];
+};
+
+export function chooseBestPlaceTypeResult<T extends ParsedTypeResult>(
+  results: T[]
+) {
+  const score = (result: T) =>
+    result.pageMetricCount * 10 +
+    Number(result.visitorReviewCount !== null) * 4 +
+    Number(result.blogReviewCount !== null) * 4 +
+    Number(result.saveCount !== null) * 2 +
+    Number(result.keywordList.length > 0);
+
+  return [...results].sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
 const GET_SAVECOUNT_QUERY = `
 query getRestaurants(
   $restaurantListInput: RestaurantListInput,
@@ -315,9 +355,10 @@ fragment RestaurantBusinessItems on RestaurantListSummary {
 }
 `;
 
-async function fetchSaveCountFromGraphql(
+async function fetchCountsFromGraphql(
   keyword: string,
   targetName: string,
+  publicPlaceId: string,
   x?: string | null,
   y?: string | null
 ) {
@@ -380,20 +421,34 @@ async function fetchSaveCountFromGraphql(
       return null;
     }
 
-    const json = await res.json();
+    const json = (await res.json()) as Array<{
+      data?: {
+        restaurants?: {
+          items?: Array<{
+            id?: unknown;
+            name?: unknown;
+            visitorReviewCount?: unknown;
+            blogCafeReviewCount?: unknown;
+            saveCount?: unknown;
+          }>;
+        };
+      };
+    }>;
     const items = json?.[0]?.data?.restaurants?.items || [];
     const normalizedTarget = normalizeText(targetName);
 
     const found =
-      items.find((item: any) => normalizeText(item?.name || "") === normalizedTarget) ||
-      items.find((item: any) => normalizeText(item?.name || "").includes(normalizedTarget)) ||
-      items.find((item: any) => normalizedTarget.includes(normalizeText(item?.name || "")));
+      items.find((item) => String(item?.id || "") === publicPlaceId) ||
+      items.find((item) => normalizeText(String(item?.name || "")) === normalizedTarget) ||
+      items.find((item) => normalizeText(String(item?.name || "")).includes(normalizedTarget)) ||
+      items.find((item) => normalizedTarget.includes(normalizeText(String(item?.name || ""))));
 
     if (!found) {
       console.log("[save graphql not found]", {
         keyword,
         targetName,
-        sample: items.slice(0, 10).map((item: any) => ({
+        sample: items.slice(0, 10).map((item) => ({
+          id: item?.id,
           name: item?.name,
           saveCount: item?.saveCount,
         })),
@@ -401,9 +456,47 @@ async function fetchSaveCountFromGraphql(
       return null;
     }
 
-    return parseKoreanNumber(found?.saveCount);
+    return {
+      visitorReviewCount: parseKoreanNumber(found?.visitorReviewCount),
+      blogReviewCount: parseKoreanNumber(found?.blogCafeReviewCount),
+      saveCount: parseKoreanNumber(found?.saveCount),
+    };
   } catch (error) {
     console.log("[save graphql error]", error);
+    return null;
+  }
+}
+
+async function fetchCountsFromAllSearch(
+  keyword: string,
+  publicPlaceId: string,
+  x?: string | null,
+  y?: string | null
+) {
+  if (!keyword) return null;
+
+  try {
+    const result = await fetchAllSearchPlacesCheckPlaceRankStyleDetailed(
+      keyword,
+      { x: x || undefined, y: y || undefined }
+    );
+    if (!result.ok) return null;
+
+    const found = result.places.find(
+      (place) => String(place.id) === publicPlaceId
+    );
+    if (!found) return null;
+
+    return {
+      visitorReviewCount: parseKoreanNumber(found.placeReviewCount),
+      blogReviewCount: parseKoreanNumber(found.reviewCount),
+    };
+  } catch (error) {
+    console.warn("[review allSearch fallback failed]", {
+      keyword,
+      publicPlaceId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -433,6 +526,20 @@ export async function getNaverPlaceReviewSnapshot(
       /\/restaurant\//.test(placeUrl) ? "restaurant" : "place";
     const tryTypes: Array<"restaurant" | "place"> =
       hintType === "restaurant" ? ["restaurant", "place"] : ["place", "restaurant"];
+    const [graphqlCounts, allSearchCounts] = await Promise.all([
+      placeName
+        ? fetchCountsFromGraphql(
+            placeName,
+            placeName,
+            publicPlaceId,
+            x,
+            y
+          )
+        : null,
+      placeName
+        ? fetchCountsFromAllSearch(placeName, publicPlaceId, x, y)
+        : null,
+    ]);
 
     const parseForType = async (type: "restaurant" | "place") => {
       const mobileHomeUrl = `https://m.place.naver.com/${type}/${publicPlaceId}/home`;
@@ -462,31 +569,46 @@ export async function getNaverPlaceReviewSnapshot(
       const homeJsonParsed = extractCountsFromJsonObject(homeJson);
       const visitorJsonParsed = extractCountsFromJsonObject(visitorJson);
       const pcJsonParsed = extractCountsFromJsonObject(pcJson);
+      const homeRawParsed = extractReviewCountsFromRawHtml(homeHtml);
+      const visitorRawParsed = extractReviewCountsFromRawHtml(visitorHtml);
+      const pcRawParsed = extractReviewCountsFromRawHtml(pcHtml);
 
-      const visitorReviewCount =
+      const visitorReviewCountFromPage =
         homeJsonParsed.visitorReviewCount ??
         visitorJsonParsed.visitorReviewCount ??
         pcJsonParsed.visitorReviewCount ??
+        homeRawParsed.visitorReviewCount ??
+        visitorRawParsed.visitorReviewCount ??
+        pcRawParsed.visitorReviewCount ??
         extractCountByLabel(visitorHtml, ["방문자 리뷰", "방문자리뷰"]) ??
         extractCountByLabel(homeHtml, ["방문자 리뷰", "방문자리뷰"]) ??
         extractCountByLabel(pcHtml, ["방문자 리뷰", "방문자리뷰"]) ??
         null;
+      const visitorReviewCount =
+        visitorReviewCountFromPage ??
+        graphqlCounts?.visitorReviewCount ??
+        allSearchCounts?.visitorReviewCount ??
+        null;
 
-      const blogReviewCount =
+      const blogReviewCountFromPage =
         homeJsonParsed.blogReviewCount ??
         visitorJsonParsed.blogReviewCount ??
         pcJsonParsed.blogReviewCount ??
+        homeRawParsed.blogReviewCount ??
+        visitorRawParsed.blogReviewCount ??
+        pcRawParsed.blogReviewCount ??
         extractCountByLabel(visitorHtml, ["블로그 리뷰", "블로그리뷰"]) ??
         extractCountByLabel(homeHtml, ["블로그 리뷰", "블로그리뷰"]) ??
         extractCountByLabel(pcHtml, ["블로그 리뷰", "블로그리뷰"]) ??
         null;
-
-      const saveCountFromGraphql = placeName
-        ? await fetchSaveCountFromGraphql(placeName, placeName, x, y)
-        : null;
+      const blogReviewCount =
+        blogReviewCountFromPage ??
+        graphqlCounts?.blogReviewCount ??
+        allSearchCounts?.blogReviewCount ??
+        null;
 
       const saveCount =
-        saveCountFromGraphql ??
+        graphqlCounts?.saveCount ??
         homeJsonParsed.saveCount ??
         visitorJsonParsed.saveCount ??
         pcJsonParsed.saveCount ??
@@ -506,6 +628,9 @@ export async function getNaverPlaceReviewSnapshot(
       return {
         type,
         keywordList,
+        pageMetricCount:
+          Number(visitorReviewCountFromPage !== null) +
+          Number(blogReviewCountFromPage !== null),
         totalReviewCount,
         visitorReviewCount,
         blogReviewCount,
@@ -513,22 +638,8 @@ export async function getNaverPlaceReviewSnapshot(
       };
     };
 
-    let parsed:
-      | (Awaited<ReturnType<typeof parseForType>> & { saveCount: number | null })
-      | null = null;
-
-    for (const type of tryTypes) {
-      const r = await parseForType(type);
-      if (
-        r.visitorReviewCount !== null ||
-        r.blogReviewCount !== null ||
-        r.saveCount !== null
-      ) {
-        parsed = r;
-        break;
-      }
-      if (!parsed) parsed = r;
-    }
+    const parsedResults = await Promise.all(tryTypes.map(parseForType));
+    const parsed = chooseBestPlaceTypeResult(parsedResults);
 
     console.log("[snapshot raw input]", input);
     console.log("[review snapshot parsed]", {
@@ -536,7 +647,14 @@ export async function getNaverPlaceReviewSnapshot(
       placeName,
       x,
       y,
+      hintType,
       chosenType: parsed?.type,
+      triedTypes: parsedResults.map((result) => ({
+        type: result.type,
+        visitorReviewCount: result.visitorReviewCount,
+        blogReviewCount: result.blogReviewCount,
+        saveCount: result.saveCount,
+      })),
       visitorReviewCount: parsed?.visitorReviewCount ?? null,
       blogReviewCount: parsed?.blogReviewCount ?? null,
       saveCount: parsed?.saveCount ?? null,

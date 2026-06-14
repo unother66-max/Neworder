@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
+import { resolvePlaceReviewSnapshot } from "@/lib/place-review-snapshot-fallback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,15 +65,20 @@ export async function POST(req: Request) {
       y: place.y ? String(place.y) : "",
     });
 
-    if (
-      snapshot.visitorReviewCount === null &&
-      snapshot.blogReviewCount === null &&
-      snapshot.saveCountText === null
-    ) {
+    const latest = place.reviewHistory[0];
+    const resolvedSnapshot = resolvePlaceReviewSnapshot(snapshot, latest);
+
+    if (!resolvedSnapshot) {
       return NextResponse.json(
         {
           ok: false,
-          message: `리뷰 파싱 실패: ${place.name}`,
+          message: `리뷰 파싱 실패: ${place.name}. 보존할 기존 스냅샷도 없습니다.`,
+          reason: "REVIEW_SNAPSHOT_UNAVAILABLE",
+          parsed: {
+            visitorReviewCount: snapshot.visitorReviewCount,
+            blogReviewCount: snapshot.blogReviewCount,
+            saveCount: snapshot.saveCountText,
+          },
         },
         { status: 422 }
       );
@@ -114,12 +120,26 @@ export async function POST(req: Request) {
       });
     }
 
-    const visitorReviewCount = snapshot.visitorReviewCount ?? 0;
-    const blogReviewCount = snapshot.blogReviewCount ?? 0;
-    const totalReviewCount = visitorReviewCount + blogReviewCount;
-    const saveCount = snapshot.saveCountText ?? "0";
+    const {
+      visitorReviewCount,
+      blogReviewCount,
+      totalReviewCount,
+      saveCount,
+      retainedFields,
+    } = resolvedSnapshot;
 
-    const latest = place.reviewHistory[0];
+    if (retainedFields.length > 0) {
+      console.warn("[place-review-track] keep previous parsed fields", {
+        placeId,
+        placeName: place.name,
+        retainedFields,
+        parsed: {
+          visitorReviewCount: snapshot.visitorReviewCount,
+          blogReviewCount: snapshot.blogReviewCount,
+          saveCount: snapshot.saveCountText,
+        },
+      });
+    }
 
     // 🔥 핵심 수정 (여기)
     const keywords =
@@ -139,6 +159,7 @@ export async function POST(req: Request) {
       blogReviewCount,
       saveCount,
       keywords,
+      retainedFields,
     });
 
     // 🔥 하루 1개 (중복 제거)
@@ -186,6 +207,7 @@ export async function POST(req: Request) {
         blogReviewCount,
         saveCount,
         keywords,
+        retainedFields,
       },
     });
   } catch (error) {

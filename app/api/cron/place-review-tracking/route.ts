@@ -3,6 +3,7 @@ import { createAdminAlert } from "@/lib/admin-alert";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
+import { resolvePlaceReviewSnapshot } from "@/lib/place-review-snapshot-fallback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,17 +97,16 @@ export async function GET(req: Request) {
           y: place.y ? String(place.y) : "",
         });
 
-        if (
-          snapshot.visitorReviewCount === null &&
-          snapshot.blogReviewCount === null &&
-          snapshot.saveCountText === null
-        ) {
+        const latest = place.reviewHistory[0];
+        const resolvedSnapshot = resolvePlaceReviewSnapshot(snapshot, latest);
+
+        if (!resolvedSnapshot) {
           results.push({
             placeId: place.id,
             name: place.name,
             saved: false,
             date: trackedDate,
-            reason: "리뷰 파싱 실패",
+            reason: "리뷰 파싱 실패 및 기존 스냅샷 없음",
           });
           void createAdminAlert({
             type: "cron",
@@ -116,13 +116,12 @@ export async function GET(req: Request) {
             meta: {
               placeId: place.id,
               cron: "place-review-tracking",
-              reason: "리뷰 파싱 실패",
+              reason: "리뷰 파싱 실패 및 기존 스냅샷 없음",
             },
           });
           continue;
         }
 
-        const latest = place.reviewHistory[0];
         const keywords =
           snapshot.keywordList && snapshot.keywordList.length > 0
             ? snapshot.keywordList
@@ -130,10 +129,26 @@ export async function GET(req: Request) {
               ? latest.keywords
               : ["맛집", "분위기", "데이트", "가성비", "친절"];
 
-        const visitorReviewCount = snapshot.visitorReviewCount ?? 0;
-        const blogReviewCount = snapshot.blogReviewCount ?? 0;
-        const totalReviewCount = visitorReviewCount + blogReviewCount;
-        const saveCount = snapshot.saveCountText ?? "0";
+        const {
+          visitorReviewCount,
+          blogReviewCount,
+          totalReviewCount,
+          saveCount,
+          retainedFields,
+        } = resolvedSnapshot;
+
+        if (retainedFields.length > 0) {
+          console.warn("[place-review-tracking] keep previous parsed fields", {
+            placeId: place.id,
+            placeName: place.name,
+            retainedFields,
+            parsed: {
+              visitorReviewCount: snapshot.visitorReviewCount,
+              blogReviewCount: snapshot.blogReviewCount,
+              saveCount: snapshot.saveCountText,
+            },
+          });
+        }
 
         const volume = await getPlaceNameSearchVolume(place.name);
         const volTotal =
