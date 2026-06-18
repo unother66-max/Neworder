@@ -74,6 +74,35 @@ function isLegacyAuthPath(path: string): boolean {
   return false;
 }
 
+function isInternalPagePath(path: string): boolean {
+  return [
+    "/admin",
+    "/blog-analysis",
+    "/community",
+    "/dashboard",
+    "/kakao-analysis",
+    "/kakao-ranking",
+    "/login",
+    "/mypage",
+    "/operations",
+    "/place-analysis",
+    "/place-review",
+    "/place-review-register",
+    "/profile",
+  ].some((prefix) => path === prefix || path.startsWith(`${prefix}/`)) ||
+    path.startsWith("/place/") ||
+    path.startsWith("/kakao-place/") ||
+    path.startsWith("/smartstore/");
+}
+
+function nextResponse(path: string) {
+  const response = NextResponse.next();
+  if (isInternalPagePath(path)) {
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  }
+  return response;
+}
+
 function redirectLogin(req: NextRequest) {
   const u = new URL("/login", req.url);
   u.searchParams.set(
@@ -83,8 +112,20 @@ function redirectLogin(req: NextRequest) {
   return NextResponse.redirect(u);
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = (forwardedHost || req.headers.get("host") || "").split(":")[0];
+  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const protocol = forwardedProto || req.nextUrl.protocol.replace(":", "");
+
+  if (
+    host === "www.postlabs.co.kr" ||
+    (host === "postlabs.co.kr" && protocol === "http")
+  ) {
+    const canonicalUrl = new URL(req.nextUrl.pathname + req.nextUrl.search, "https://postlabs.co.kr");
+    return NextResponse.redirect(canonicalUrl, 301);
+  }
 
   if (isNewOrderOperationsApiPath(path)) {
     if (!secret) {
@@ -94,14 +135,14 @@ export async function middleware(req: NextRequest) {
     if (!token) {
       return newOrderLoginRequiredResponse(path);
     }
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (isNewOrderOperationsPath(path)) {
     if (!secret) return redirectLogin(req);
     const token = await getToken({ req, secret });
     if (!token) return redirectLogin(req);
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (isSmartstoreAuthRequiredApiPath(path)) {
@@ -112,7 +153,7 @@ export async function middleware(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ ok: false, error: LOGIN_REQUIRED_API_ERROR }, { status: 401 });
     }
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (path.startsWith("/api/blog-analysis") || isSmartstoreAdminOnlyApiPath(path)) {
@@ -133,14 +174,14 @@ export async function middleware(req: NextRequest) {
         { status: 403 }
       );
     }
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (isSmartstoreAuthRequiredPath(path)) {
     if (!secret) return redirectLogin(req);
     const token = await getToken({ req, secret });
     if (!token) return redirectLogin(req);
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (isSmartstoreAdminOnlyPath(path)) {
@@ -150,7 +191,7 @@ export async function middleware(req: NextRequest) {
     if (!token || !isAdminEmail(email)) {
       return NextResponse.redirect(new URL("/smartstore", req.url));
     }
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (path.startsWith("/admin")) {
@@ -162,7 +203,7 @@ export async function middleware(req: NextRequest) {
     if (!isAdminEmail(email)) {
       return NextResponse.redirect(new URL("/", req.url));
     }
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (isBlogAnalysisPath(path)) {
@@ -173,17 +214,17 @@ export async function middleware(req: NextRequest) {
     if (!isAdminEmail(email)) {
       return NextResponse.redirect(new URL("/", req.url));
     }
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
   if (isLegacyAuthPath(path)) {
     if (!secret) return redirectLogin(req);
     const token = await getToken({ req, secret });
     if (!token) return redirectLogin(req);
-    return NextResponse.next();
+    return nextResponse(path);
   }
 
-  return NextResponse.next();
+  return nextResponse(path);
 }
 
 export const config = {
