@@ -9,6 +9,7 @@ type PublicSeoContentProps = {
   description: string;
   features: string[];
   faqs: FaqItem[];
+  headingLevel?: "h1" | "h2";
 };
 
 export default function PublicSeoContent({
@@ -17,7 +18,9 @@ export default function PublicSeoContent({
   description,
   features,
   faqs,
+  headingLevel = "h1",
 }: PublicSeoContentProps) {
+  const Heading = headingLevel;
   const faqJsonLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -37,9 +40,9 @@ export default function PublicSeoContent({
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
           {eyebrow}
         </p>
-        <h1 className="mt-3 text-3xl font-black tracking-[-0.035em] md:text-5xl">
+        <Heading className="mt-3 text-3xl font-black tracking-[-0.035em] md:text-5xl">
           {title}
-        </h1>
+        </Heading>
         <p className="mt-5 max-w-3xl text-base leading-8 text-slate-600 md:text-lg">
           {description}
         </p>

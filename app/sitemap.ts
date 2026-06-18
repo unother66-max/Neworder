@@ -9,6 +9,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/place", priority: 0.9 },
     { path: "/smartstore", priority: 0.9 },
     { path: "/kakao-place", priority: 0.9 },
+    { path: "/smartstore/product-ranking-analyze", priority: 0.85 },
+    { path: "/smartstore/keyword-analyze", priority: 0.85 },
+    { path: "/place-analysis", priority: 0.85 },
+    { path: "/place-review", priority: 0.85 },
+    { path: "/kakao-ranking", priority: 0.85 },
+    { path: "/kakao-analysis", priority: 0.85 },
   ];
 
   return routes.map((route) => ({

@@ -321,7 +321,7 @@ export default function KakaoRankingPage() {
             <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">지역 순위 추적</h1>
+                  <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">지역 순위 추적</h2>
                   <span className="rounded-full bg-[#eff6ff] px-2 py-0.5 text-[10px] font-bold text-[#2563eb] md:py-1 md:text-[11px]">KAKAO</span>
                 </div>
                 <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">카카오맵에서 제공하는 지역별 인기 순위를 기준으로 분석된 데이터입니다.</p>

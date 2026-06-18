@@ -276,9 +276,9 @@ export default function KakaoAnalysisPage() {
             <div className="flex flex-col gap-2.5 md:gap-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
                     카카오맵 순위 분석
-                  </h1>
+                  </h2>
                   <span className="rounded-full bg-[#eff6ff] px-2 py-0.5 text-[10px] font-bold text-[#2563eb] md:py-1 md:text-[11px]">
                     KAKAO
                   </span>

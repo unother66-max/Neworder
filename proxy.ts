@@ -74,7 +74,23 @@ function isLegacyAuthPath(path: string): boolean {
   return false;
 }
 
+const PUBLIC_INDEX_PATHS = new Set([
+  "/",
+  "/top-blog",
+  "/place",
+  "/smartstore",
+  "/kakao-place",
+  "/smartstore/product-ranking-analyze",
+  "/smartstore/keyword-analyze",
+  "/place-analysis",
+  "/place-review",
+  "/kakao-ranking",
+  "/kakao-analysis",
+]);
+
 function isInternalPagePath(path: string): boolean {
+  if (PUBLIC_INDEX_PATHS.has(path)) return false;
+
   return [
     "/admin",
     "/blog-analysis",
