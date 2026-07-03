@@ -69,6 +69,10 @@ export type PcmapRestaurantsGraphqlPageDiagnostic = {
   contentType: string;
   parsedCount: number;
   total: number;
+  hasGraphqlErrors?: boolean;
+  topLevelKeys?: string[];
+  dataKeys?: string[];
+  responsePathCandidates?: string[];
   debugReason: string | null;
 };
 
@@ -130,6 +134,22 @@ function mapItem(value: unknown): PcmapRestaurantGraphqlItem | null {
   };
 }
 
+function safeGraphqlError(errors: unknown[]): string {
+  const first = errors.find(isRecord);
+  if (!first) return "GRAPHQL_ERRORS";
+  const type = stringField(
+    first.extensions && isRecord(first.extensions)
+      ? first.extensions.code
+      : first.status
+  ).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
+  const message = stringField(first.message)
+    .replace(/https?:\/\/\S+/gi, "[URL]")
+    .replace(/[A-Za-z0-9._=-]{24,}/g, "[REDACTED]")
+    .replace(/\s+/g, " ")
+    .slice(0, 240);
+  return ["GRAPHQL_ERRORS", type, message].filter(Boolean).join(":");
+}
+
 function buildPayload(params: {
   keyword: string;
   x: string;
@@ -159,9 +179,19 @@ function parseResponse(json: unknown): {
   items: PcmapRestaurantGraphqlItem[];
   total: number;
   debugReason: string | null;
+  hasGraphqlErrors: boolean;
+  topLevelKeys: string[];
+  dataKeys: string[];
 } {
   const root = Array.isArray(json) ? json[0] : json;
-  if (!isRecord(root)) return { items: [], total: 0, debugReason: "INVALID_JSON_ROOT" };
+  if (!isRecord(root)) return {
+    items: [],
+    total: 0,
+    debugReason: "INVALID_JSON_ROOT",
+    hasGraphqlErrors: false,
+    topLevelKeys: [],
+    dataKeys: [],
+  };
   const errors = Array.isArray(root.errors) ? root.errors : [];
   const data = isRecord(root.data) ? root.data : null;
   const restaurants = data && isRecord(data.restaurants) ? data.restaurants : null;
@@ -173,7 +203,10 @@ function parseResponse(json: unknown): {
     return {
       items: [],
       total: 0,
-      debugReason: errors.length > 0 ? "GRAPHQL_ERRORS" : "BUSINESSES_PATH_NOT_FOUND",
+      debugReason: errors.length > 0 ? safeGraphqlError(errors) : "BUSINESSES_PATH_NOT_FOUND",
+      hasGraphqlErrors: errors.length > 0,
+      topLevelKeys: Object.keys(root).slice(0, 20),
+      dataKeys: data ? Object.keys(data).slice(0, 20) : [],
     };
   }
   const rawItems = Array.isArray(businesses.items) ? businesses.items : [];
@@ -183,6 +216,9 @@ function parseResponse(json: unknown): {
     debugReason: rawItems.length > 0 && rawItems.map(mapItem).every((item) => !item)
       ? "ITEMS_PARSE_FAILED"
       : null,
+    hasGraphqlErrors: errors.length > 0,
+    topLevelKeys: Object.keys(root).slice(0, 20),
+    dataKeys: data ? Object.keys(data).slice(0, 20) : [],
   };
 }
 
@@ -271,6 +307,7 @@ export async function fetchPcmapRestaurantsGraphqlDiagnostic(
   const accumulated: PcmapRestaurantGraphqlItem[] = [];
   const pages: PcmapRestaurantsGraphqlPageDiagnostic[] = [];
   let total = 0;
+  let naturalEnd = false;
 
   const restaurantListUrl = new URL("https://pcmap.place.naver.com/restaurant/list");
   restaurantListUrl.search = new URLSearchParams({ query: keyword, x, y }).toString();
@@ -348,7 +385,18 @@ export async function fetchPcmapRestaurantsGraphqlDiagnostic(
         response.ok && parsed.debugReason === null
           ? null
           : parsed.debugReason ?? `HTTP_${response.status}`,
+      hasGraphqlErrors: parsed.hasGraphqlErrors,
+      topLevelKeys: parsed.topLevelKeys,
+      dataKeys: parsed.dataKeys,
+      responsePathCandidates: [
+        "data.restaurants.businesses.items",
+        "data.placeList.businesses.items",
+        "data.places.items",
+      ],
     });
+    if (parsed.items.length === 0 || parsed.debugReason) {
+      console.warn("[getRestaurantsPcmap parsedCount 0]", pages.at(-1));
+    }
     if (!response.ok || parsed.debugReason) break;
 
     accumulated.push(...parsed.items);
@@ -369,12 +417,17 @@ export async function fetchPcmapRestaurantsGraphqlDiagnostic(
         });
       }
     }
-    if (parsed.items.length < display) break;
+    if (parsed.items.length < display || (total > 0 && accumulated.length >= total)) {
+      naturalEnd = true;
+      break;
+    }
     if (pageIndex < requestedStarts.length - 1) await delayBetweenPages();
   }
 
-  const allPagesCompleted = pages.length === requestedStarts.length &&
-    pages.every((page) => page.status === 200 && page.debugReason === null);
+  const allPagesCompleted = naturalEnd || (
+    pages.length === requestedStarts.length &&
+    pages.every((page) => page.status === 200 && page.debugReason === null)
+  );
   return diagnosticResult({
     status: allPagesCompleted ? "OUT_OF_RANGE_280" : "PARTIAL_FAILED",
     requestedStarts,

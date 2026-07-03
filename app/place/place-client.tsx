@@ -1373,6 +1373,7 @@ useEffect(() => {
               body: JSON.stringify({
                 keyword: item.keyword,
                 targetName: target.name,
+                placeCategory: target.category,
                 placeId: target.placeId,
                 x: target.x,
                 y: target.y,

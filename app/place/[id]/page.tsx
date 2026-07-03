@@ -274,6 +274,7 @@ export default function PlaceDetailPage() {
               body: JSON.stringify({
                 keyword: keyword.keyword,
                 targetName: place.name,
+                placeCategory: place.category,
                 x: place.x,
                 y: place.y,
                 placeKeywordId: keyword.id,

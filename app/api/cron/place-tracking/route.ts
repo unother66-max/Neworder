@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
           body: JSON.stringify({
             keyword: keyword.keyword,
             targetName: keyword.place.name,
+            placeCategory: keyword.place.category,
           }),
           cache: "no-store",
         });

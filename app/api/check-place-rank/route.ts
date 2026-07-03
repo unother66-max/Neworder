@@ -12,6 +12,7 @@ import {
   fetchAllSearchPlacesForIntentKeyword,
 } from "@/lib/naver-map-all-search";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
+import { fetchPcmapPlaceListGraphql } from "@/lib/pcmap-place-list-graphql";
 import { fetchPcmapRestaurantsGraphqlDiagnostic } from "@/lib/pcmap-restaurants-graphql-diagnostic";
 
 export const runtime = "nodejs";
@@ -35,6 +36,19 @@ function normalizeText(value: unknown) {
     .replace(/앤/g, "and")
     .replace(/[()[\]{}'"`.,·•\-_/]/g, "")
     .trim();
+}
+
+function shouldUseRestaurantGraphql(params: {
+  keyword: string;
+  category?: string;
+}): boolean {
+  const text = `${params.keyword} ${params.category ?? ""}`.toLowerCase();
+  if (
+    /(필라테스|바레|헬스|피트니스|요가|학원|아카데미|미용|뷰티|네일|병원|의원|약국|치과|fitness|pilates|barre|academy|beauty|hospital)/i.test(text)
+  ) {
+    return false;
+  }
+  return /(맛집|음식|식당|레스토랑|카페|커피|피자|치킨|고기|한식|양식|중식|일식|분식|술집|와인|브런치|restaurant|cafe|coffee|food|pizza)/i.test(text);
 }
 
 function mapPcmapItemsToCheckPlaceRankList(
@@ -85,6 +99,7 @@ export async function POST(req: Request) {
       });
     }
     const targetName = String(body.targetName || "").trim();
+    const placeCategory = String(body.placeCategory || body.category || "").trim();
     const browserAllSearchJson = body?.browserAllSearchJson ?? null;
     const x = body.x ? String(body.x) : "";
     const y = body.y ? String(body.y) : "";
@@ -117,6 +132,7 @@ export async function POST(req: Request) {
     let usedSource:
       | "browser-allSearch"
       | "pcmap-graphql"
+      | "pcmap-place-graphql"
       | "allSearch" = "pcmap-graphql";
     let autoOk = false;
     let failureCode:
@@ -135,20 +151,40 @@ export async function POST(req: Request) {
       | "PCMAP_HTTP_405" = "PARTIAL_FAILED";
     let checkedCount = 0;
 
+    const useRestaurantGraphql = shouldUseRestaurantGraphql({
+      keyword: actualKeyword,
+      category: placeCategory,
+    });
+    usedSource = useRestaurantGraphql
+      ? "pcmap-graphql"
+      : "pcmap-place-graphql";
+
     // pcmap GraphQL을 HTML 선요청 없이 1페이지부터 직접 조회한다.
     try {
-      const graphqlResult = await timedNaverFetch(() =>
-        fetchPcmapRestaurantsGraphqlDiagnostic({
-          keyword: actualKeyword,
-          targetName,
-          x: x || undefined,
-          y: y || undefined,
-          start: 1,
-          display: 70,
-          maxPages: 4,
-          fallbackToHtml: false,
-        })
-      );
+      const graphqlResult = useRestaurantGraphql
+        ? await timedNaverFetch(() =>
+            fetchPcmapRestaurantsGraphqlDiagnostic({
+              keyword: actualKeyword,
+              targetName,
+              x: x || undefined,
+              y: y || undefined,
+              start: 1,
+              display: 70,
+              maxPages: 4,
+              fallbackToHtml: false,
+            })
+          )
+        : await timedNaverFetch(() =>
+            fetchPcmapPlaceListGraphql({
+              keyword: actualKeyword,
+              targetName,
+              x: x || undefined,
+              y: y || undefined,
+              start: 1,
+              display: 70,
+              maxPages: 4,
+            })
+          );
       fullList = mapPcmapItemsToCheckPlaceRankList(
         graphqlResult.items,
         SEARCH_CAP
@@ -171,6 +207,8 @@ export async function POST(req: Request) {
 
       console.log("[check-place-rank pcmap GraphQL 280]", {
         htmlPreflight: false,
+        graphqlMode: useRestaurantGraphql ? "restaurant" : "place",
+        operationName: graphqlResult.operationName,
         requestedStarts: graphqlResult.requestedStarts,
         completedPages: graphqlResult.completedPages,
         graphqlParsed: graphqlResult.parsedCount,
@@ -369,7 +407,7 @@ export async function POST(req: Request) {
       failureCode = null;
       failureMessage = null;
     } else if (
-      usedSource === "pcmap-graphql" &&
+      (usedSource === "pcmap-graphql" || usedSource === "pcmap-place-graphql") &&
       fullList.length > 0 &&
       resultStatus !== "OUT_OF_RANGE_280" &&
       resultStatus !== "PARTIAL_FAILED"
