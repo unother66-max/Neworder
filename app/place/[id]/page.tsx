@@ -125,6 +125,7 @@ function getDateKey(value: string) {
 
 function parseRankStringToNumber(rank?: string) {
   if (!rank || rank === "-" || rank === "오류") return null;
+  if (rank.includes("위 밖") || rank.includes("조회 차단")) return null;
   const matched = String(rank).match(/\d+/);
   if (!matched) return null;
   const num = Number(matched[0]);
@@ -299,6 +300,7 @@ export default function PlaceDetailPage() {
                 mobile: keyword.mobileVolume,
                 pc: keyword.pcVolume,
                 currentRank: "오류",
+                canSaveRank: false,
               };
             }
 
@@ -317,10 +319,16 @@ export default function PlaceDetailPage() {
                 mobile: keyword.mobileVolume,
                 pc: keyword.pcVolume,
                 currentRank: "오류",
+                canSaveRank: false,
               };
             }
 
-            if (keyword.id && data?.rank && data.rank !== "-") {
+            if (
+              keyword.id &&
+              data?.canSaveRank === true &&
+              data?.rank &&
+              data.rank !== "-"
+            ) {
               await fetch("/api/place-rank-history-save", {
                 method: "POST",
                 headers: {
@@ -353,7 +361,11 @@ export default function PlaceDetailPage() {
                 data?.pc === "-"
                   ? keyword.pcVolume
                   : Number(String(data.pc).replace(/,/g, "")),
-              currentRank: (data?.rank as string | undefined) ?? "-",
+              currentRank:
+                (data?.displayRank as string | undefined) ??
+                (data?.rank as string | undefined) ??
+                "-",
+              canSaveRank: data?.canSaveRank === true,
             };
 
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -382,6 +394,7 @@ export default function PlaceDetailPage() {
             if (!found) return keyword;
 
             const nextRankNumber =
+              found.canSaveRank === true &&
               found.currentRank &&
               found.currentRank !== "-" &&
               found.currentRank !== "오류"
@@ -424,6 +437,7 @@ export default function PlaceDetailPage() {
             ...keywordResults
               .filter(
                 (item) =>
+                  item.canSaveRank === true &&
                   item.currentRank &&
                   item.currentRank !== "-" &&
                   item.currentRank !== "오류"

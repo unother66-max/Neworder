@@ -1,8 +1,10 @@
 /**
  * 플레이스 순위(/api/check-place-rank) 키워드 단위 동시 실행 개수.
- * 429·NCAPTCHA·CE_EMPTY_TOKEN 등이 늘면 2로 낮춰 보세요.
+ * 405·429 등 차단 응답이 늘면 1로 낮춰 보세요.
  */
-export const PLACE_RANK_KEYWORD_CHECK_CONCURRENCY = 3;
+// 네이버 pcmap은 같은 IP의 짧은 병렬 burst에 405를 반환하는 경우가 있다.
+// 각 키워드 내부 페이지는 직렬로 유지하고, 키워드만 최대 2개까지 병렬 조회한다.
+export const PLACE_RANK_KEYWORD_CHECK_CONCURRENCY = 2;
 
 export async function mapWithConcurrencyLimit<T, R>(
   items: readonly T[],
@@ -39,6 +41,7 @@ export function logPlaceRankKeywordBlockingResponse(params: {
     typeof params.failureCode === "string" ? params.failureCode : null;
   const blocked =
     params.httpStatus === 429 ||
+    fc === "PCMAP_HTTP_405" ||
     fc === "NCAPTCHA" ||
     fc === "CE_EMPTY_TOKEN";
   if (!blocked) return;

@@ -12,11 +12,7 @@ import {
   fetchAllSearchPlacesForIntentKeyword,
 } from "@/lib/naver-map-all-search";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
-import { fetchBestPcmapBusinessesBatchJson } from "@/lib/pcmap-businesses-batch-fetch";
-import {
-  mergePcmapGraphqlBatch,
-  parseNaverReviewCountField,
-} from "@/lib/merge-pcmap-businesses-batch";
+import { fetchPcmapRestaurantsGraphqlDiagnostic } from "@/lib/pcmap-restaurants-graphql-diagnostic";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,25 +22,6 @@ export const maxDuration = 120;
 const RANK_SCAN_LIMIT = 280;
 const DISPLAY = RANK_SCAN_LIMIT;
 const SEARCH_CAP = RANK_SCAN_LIMIT;
-const PCMAP_FETCH_TIMEOUT_MS = 18_000;
-
-function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  timeoutMessage: string
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(timeoutMessage));
-    }, timeoutMs);
-  });
-
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    if (timer) clearTimeout(timer);
-  }) as Promise<T>;
-}
 
 function normalizeText(value: unknown) {
   if (value == null) return "";
@@ -60,22 +37,6 @@ function normalizeText(value: unknown) {
     .trim();
 }
 
-function pickImageUrl(item: Record<string, unknown>): string {
-  if (!item || typeof item !== "object") return "";
-  const candidates = [
-    item["imageUrl"],
-    item["thumbnail"],
-    item["thumUrl"],
-    item["image"],
-  ];
-  for (const c of candidates) {
-    if (c == null) continue;
-    const s = typeof c === "string" ? c.trim() : String(c).trim();
-    if (s && s !== "undefined" && s !== "null") return s;
-  }
-  return "";
-}
-
 function mapPcmapItemsToCheckPlaceRankList(
   items: unknown[],
   display: number
@@ -88,13 +49,9 @@ function mapPcmapItemsToCheckPlaceRankList(
         ? (raw as Record<string, unknown>)
         : {};
 
-    const visitor = parseNaverReviewCountField(it["visitorReviewCount"]);
-    const blog = parseNaverReviewCountField(it["blogCafeReviewCount"]);
-    const totalRaw = parseNaverReviewCountField(it["totalReviewCount"]);
-    const total =
-      typeof totalRaw === "number" && totalRaw > 0
-        ? totalRaw
-        : visitor + blog;
+    const visitor = Number(it["visitorReviewCount"] ?? 0) || 0;
+    const blog = Number(it["blogCafeReviewCount"] ?? 0) || 0;
+    const total = visitor + blog;
 
     return {
       rank: index + 1,
@@ -104,19 +61,10 @@ function mapPcmapItemsToCheckPlaceRankList(
       address: String(
         it["roadAddress"] ?? it["address"] ?? it["fullAddress"] ?? ""
       ).trim(),
-      imageUrl: pickImageUrl(it),
+      imageUrl: "",
       review: { visitor, blog, total },
     };
   });
-}
-
-function mapRawAllSearchJsonToCheckPlaceRankList(
-  rawJson: unknown,
-  display: number
-): CheckPlaceRankListItem[] {
-  const rows = extractPlacesFromAllSearchJson(rawJson);
-  if (!Array.isArray(rows) || rows.length === 0) return [];
-  return mapAllSearchRowsToCheckPlaceRankList(rows, display);
 }
 
 export async function POST(req: Request) {
@@ -166,15 +114,88 @@ export async function POST(req: Request) {
     const shouldPreferAllSearch = isIntentMixedKeyword(actualKeyword);
 
     let fullList: CheckPlaceRankListItem[] = [];
-    let usedSource: "browser-allSearch" | "pcmap-graphql" | "allSearch" =
-      "pcmap-graphql";
+    let usedSource:
+      | "browser-allSearch"
+      | "pcmap-graphql"
+      | "allSearch" = "pcmap-graphql";
     let autoOk = false;
-    let failureCode: AllSearchCheckPlaceFailureCode | null = null;
+    let failureCode:
+      | AllSearchCheckPlaceFailureCode
+      | "PCMAP_HTTP_405"
+      | "PCMAP_GRAPHQL_FAILED"
+      | null = null;
     let failureMessage: string | null = null;
+    // 운영 순위조회에서는 allSearch를 사용하지 않는다.
+    const skipAllSearchFallback = true;
+    let resultStatus:
+      | "FOUND"
+      | "OUT_OF_RANGE_280"
+      | "PARTIAL_FAILED"
+      | "NEED_DEEP_CHECK"
+      | "PCMAP_HTTP_405" = "PARTIAL_FAILED";
+    let checkedCount = 0;
 
-    // 1) 브라우저에서 직접 가져온 allSearch JSON이 있으면 그걸 최우선 사용
+    // pcmap GraphQL을 HTML 선요청 없이 1페이지부터 직접 조회한다.
+    try {
+      const graphqlResult = await timedNaverFetch(() =>
+        fetchPcmapRestaurantsGraphqlDiagnostic({
+          keyword: actualKeyword,
+          targetName,
+          x: x || undefined,
+          y: y || undefined,
+          start: 1,
+          display: 70,
+          maxPages: 4,
+          fallbackToHtml: false,
+        })
+      );
+      fullList = mapPcmapItemsToCheckPlaceRankList(
+        graphqlResult.items,
+        SEARCH_CAP
+      );
+      checkedCount = fullList.length;
+
+      if (graphqlResult.status === "FOUND") {
+        resultStatus = "FOUND";
+        failureCode = null;
+        failureMessage = null;
+      } else if (graphqlResult.status === "OUT_OF_RANGE_280") {
+        resultStatus = "OUT_OF_RANGE_280";
+        failureCode = null;
+        failureMessage = "280위 밖";
+      } else {
+        resultStatus = "PARTIAL_FAILED";
+        failureCode = "PCMAP_GRAPHQL_FAILED";
+        failureMessage = "일부 순위 조회 실패 / 마지막 저장 순위 유지";
+      }
+
+      console.log("[check-place-rank pcmap GraphQL 280]", {
+        htmlPreflight: false,
+        requestedStarts: graphqlResult.requestedStarts,
+        completedPages: graphqlResult.completedPages,
+        graphqlParsed: graphqlResult.parsedCount,
+        checkedCount,
+        targetRank: graphqlResult.rank,
+        resultStatus,
+        debugReason: graphqlResult.debugReason,
+      });
+    } catch (error) {
+      resultStatus = "PARTIAL_FAILED";
+      failureCode = "PCMAP_GRAPHQL_FAILED";
+      failureMessage = "현재 조회 차단됨 / 마지막 저장 순위 유지";
+      console.warn("[check-place-rank pcmap GraphQL 280] 예외", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // 브라우저 allSearch JSON은 명시적인 development 진단에서만 사용한다.
     // 추천형 키워드: 광고/섹션 헤더도 stub으로 위치 보존 → rank 압축 방지
-    if (browserAllSearchJson) {
+    if (
+      fullList.length === 0 &&
+      browserAllSearchJson &&
+      process.env.NODE_ENV !== "production" &&
+      body?.useBrowserAllSearchDiagnostic === true
+    ) {
       if (shouldPreferAllSearch) {
         logBrowserAllSearchMixedOrderAnalysis(
           actualKeyword,
@@ -208,54 +229,12 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2) pcmap-graphql: 추천형·일반 공통 기본 경로 (운영에서 allSearch 선시도 없음 → NCAPTCHA/CE_EMPTY_TOKEN 감소)
-    if (fullList.length === 0) {
-      if (shouldPreferAllSearch) {
-        console.log(
-          "[check-place-rank] 추천형: 서버 allSearch 선시도 생략 → pcmap-graphql 우선"
-        );
-      }
-      usedSource = "pcmap-graphql";
-
-      try {
-        const { batch, mode } = await timedNaverFetch(() =>
-          withTimeout(
-            fetchBestPcmapBusinessesBatchJson(actualKeyword, targetName),
-            PCMAP_FETCH_TIMEOUT_MS,
-            `[check-place-rank pcmap] timeout ${PCMAP_FETCH_TIMEOUT_MS}ms`
-          )
-        );
-
-        if (batch) {
-          const merged = mergePcmapGraphqlBatch(batch);
-
-          const mapped = mapPcmapItemsToCheckPlaceRankList(
-            merged.items,
-            SEARCH_CAP
-          );
-
-          if (mapped.length > 0) {
-            fullList = mapped;
-
-            console.log("[check-place-rank pcmap]", {
-              mode,
-              mergedCount: merged.items.length,
-              parsed: mapped.length,
-              gqlErrors: merged.graphqlErrors,
-              intentMixedKeyword: shouldPreferAllSearch,
-            });
-          }
-        }
-      } catch (e) {
-        console.warn(
-          "[check-place-rank pcmap] 실패/timeout -> allSearch fallback",
-          e
-        );
-      }
-    }
-
     // 3) 서버 allSearch fallback — pcmap 실패(또는 결과 0) 시에만 호출
-    if (fullList.length === 0 && shouldPreferAllSearch) {
+    if (
+      fullList.length === 0 &&
+      shouldPreferAllSearch &&
+      !skipAllSearchFallback
+    ) {
       fallbackUsed = true;
       usedSource = "allSearch";
       console.warn(
@@ -328,7 +307,11 @@ export async function POST(req: Request) {
       }
     }
 
-    if (fullList.length === 0 && !shouldPreferAllSearch) {
+    if (
+      fullList.length === 0 &&
+      !shouldPreferAllSearch &&
+      !skipAllSearchFallback
+    ) {
       fallbackUsed = true;
       usedSource = "allSearch";
       const auto = await timedNaverFetch(() =>
@@ -338,6 +321,14 @@ export async function POST(req: Request) {
         })
       );
       autoOk = auto.ok;
+      if (!auto.ok) {
+        failureCode = auto.failureCode;
+        failureMessage =
+          auto.failureCode === "NCAPTCHA" ||
+          auto.failureCode === "CE_EMPTY_TOKEN"
+            ? "네이버 보안 응답으로 순위 확인 실패"
+            : auto.userMessage;
+      }
       const pack = auto.ok ? auto : null;
       fullList =
         pack && pack.places.length > 0
@@ -372,6 +363,21 @@ export async function POST(req: Request) {
             return idx >= 0 ? String(idx + 1) : "-";
           })()
         : "-";
+
+    if (rank !== "-") {
+      resultStatus = "FOUND";
+      failureCode = null;
+      failureMessage = null;
+    } else if (
+      usedSource === "pcmap-graphql" &&
+      fullList.length > 0 &&
+      resultStatus !== "OUT_OF_RANGE_280" &&
+      resultStatus !== "PARTIAL_FAILED"
+    ) {
+      resultStatus = "NEED_DEEP_CHECK";
+      failureMessage = "추가 확인 필요";
+    }
+    const canSaveRank = resultStatus === "FOUND" && rank !== "-";
 
     // 추천형 키워드는 stub(placeId 없는 위치 보존용 항목)을 display에서 제외
     // rank 계산(findIndex)은 stub 포함 fullList 기준이므로 rank 정확도는 유지됨
@@ -426,7 +432,7 @@ export async function POST(req: Request) {
     // body.relatedVolume = { [keyword]: { mobile, pc, total } } 형태.
     type VolumeEntry = { mobile?: number; pc?: number; total?: number };
     const dbVolume = (body.relatedVolume ?? {}) as Record<string, VolumeEntry>;
-    const skipVolume = body.skipVolume === true;
+    const skipVolume = body.skipVolume === true || !canSaveRank;
 
     const related = await Promise.all(
       relatedCandidates.map(async (k) => {
@@ -454,13 +460,9 @@ export async function POST(req: Request) {
       })
     );
 
-    const blockAlertCodes: AllSearchCheckPlaceFailureCode[] = [
-      "NCAPTCHA",
-      "CE_EMPTY_TOKEN",
-    ];
     if (
       failureCode &&
-      blockAlertCodes.includes(failureCode) &&
+      (failureCode === "NCAPTCHA" || failureCode === "CE_EMPTY_TOKEN") &&
       fullList.length === 0
     ) {
       void createAdminAlert({
@@ -499,6 +501,19 @@ export async function POST(req: Request) {
       related,
       list,
       rank,
+      source: usedSource,
+      resultStatus,
+      parsed: fullList.length,
+      checkedCount,
+      canSaveRank,
+      displayRank:
+        resultStatus === "FOUND"
+          ? `${rank}위`
+          : resultStatus === "OUT_OF_RANGE_280"
+            ? "280위 밖"
+            : resultStatus === "NEED_DEEP_CHECK"
+            ? "추가 확인 필요"
+            : "현재 조회 차단됨 / 마지막 저장 순위 유지",
       failureCode,
       message: failureMessage,
       ...(shouldPreferAllSearch &&

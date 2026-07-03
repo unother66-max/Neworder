@@ -66,7 +66,12 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        if (!rankRes.ok || !rankData?.rank || rankData.rank === "-") {
+        if (
+          !rankRes.ok ||
+          rankData?.canSaveRank !== true ||
+          !rankData?.rank ||
+          rankData.rank === "-"
+        ) {
           console.error("cron rank 조회 실패:", keyword.keyword, rankData);
           failCount++;
           continue;

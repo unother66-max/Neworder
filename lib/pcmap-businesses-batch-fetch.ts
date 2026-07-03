@@ -11,6 +11,57 @@ import {
 } from "@/lib/place-keyword-fallback";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
 
+const PCMAP_REQUEST_GAP_MS = 900;
+
+declare global {
+  var __pcmapRankFetchTail: Promise<void> | undefined;
+  var __pcmapRankLastFinishedAt: number | undefined;
+}
+
+export class PcmapBusinessesBlockedError extends Error {
+  readonly code = "PCMAP_HTTP_405" as const;
+
+  constructor() {
+    super("네이버 pcmap이 HTTP 405로 요청을 거부했습니다.");
+    this.name = "PcmapBusinessesBlockedError";
+  }
+}
+
+class PcmapHttpStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`pcmap HTTP ${status}`);
+  }
+}
+
+async function runSerializedPcmapFetch<T>(task: () => Promise<T>): Promise<T> {
+  const previous = globalThis.__pcmapRankFetchTail ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(() => gate);
+  globalThis.__pcmapRankFetchTail = tail;
+
+  await previous;
+  try {
+    const elapsed = Date.now() - (globalThis.__pcmapRankLastFinishedAt ?? 0);
+    if (elapsed < PCMAP_REQUEST_GAP_MS) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, PCMAP_REQUEST_GAP_MS - elapsed)
+      );
+    }
+    return await task();
+  } finally {
+    globalThis.__pcmapRankLastFinishedAt = Date.now();
+    release();
+    void tail.finally(() => {
+      if (globalThis.__pcmapRankFetchTail === tail) {
+        globalThis.__pcmapRankFetchTail = undefined;
+      }
+    });
+  }
+}
+
 function parseBatchedGraphqlBody(raw: string): unknown[] | null {
   const t = String(raw || "").trimStart();
   if (!t || t.startsWith("<")) return null;
@@ -126,7 +177,9 @@ async function fetchRawBatchOnce(
     for (let attempt = 1; attempt <= maxRetryForRetryableErrors; attempt++) {
       try {
         const batchBody = buildGetPlacesListPagedBatch(q, coords, 1, 30);
-        const placesPayload = batchBody[0] as any;
+        const placesPayload = batchBody[0] as {
+          variables?: { placesInput?: { start?: number } };
+        };
         if (placesPayload?.variables?.placesInput) {
           placesPayload.variables.placesInput.start = start;
         }
@@ -164,6 +217,7 @@ async function fetchRawBatchOnce(
             attempt,
             status: res.status,
           });
+          if (res.status === 405) throw new PcmapHttpStatusError(405);
           return { kind: "failed" };
         }
 
@@ -198,6 +252,7 @@ async function fetchRawBatchOnce(
 
         return { kind: "success", part, count: items.length };
       } catch (error) {
+        if (error instanceof PcmapHttpStatusError) throw error;
         console.warn("[pcmap single page network error]", {
           keyword: q,
           pageIndex,
@@ -274,7 +329,7 @@ async function fetchRawBatchOnce(
  * place-rank-analyze `fetchPlacesListBusinesses`와 동일한 폴백 순서로
  * businesses GraphQL 배치(JSON 배열)를 가져온다.
  */
-export async function fetchBestPcmapBusinessesBatchJson(
+async function fetchBestPcmapBusinessesBatchJsonUnserialized(
   originalKeyword: string,
   targetName?: string
 ): Promise<{ batch: unknown[] | null; mode: string }> {
@@ -283,15 +338,30 @@ export async function fetchBestPcmapBusinessesBatchJson(
 
   const fallback = buildLocationFallbackSearchKeyword(okKeyword);
 
+  let http405Count = 0;
+  const attempt = async (
+    opts: Parameters<typeof fetchRawBatchOnce>[2]
+  ): Promise<unknown[] | null> => {
+    try {
+      return await fetchRawBatchOnce(okKeyword, undefined, opts);
+    } catch (error) {
+      if (error instanceof PcmapHttpStatusError && error.status === 405) {
+        http405Count += 1;
+        return null;
+      }
+      throw error;
+    }
+  };
+
   if (fallback) {
-    const b0 = await fetchRawBatchOnce(okKeyword, undefined, { targetName });
+    const b0 = await attempt({ targetName });
     if (b0 && countBusinessesItemsInBatch(b0) > 0) {
       return { batch: b0, mode: "original" };
     }
     await new Promise((r) => setTimeout(r, 350));
     // 순위추적에서는 원래 키워드를 바꾸면 순위가 달라지므로 fallback+anchor는 사용하지 않음
     await new Promise((r) => setTimeout(r, 420));
-    const m0 = await fetchRawBatchOnce(okKeyword, undefined, {
+    const m0 = await attempt({
       mapReferer: true,
       targetName,
     });
@@ -299,20 +369,31 @@ export async function fetchBestPcmapBusinessesBatchJson(
       return { batch: m0, mode: "original+mapReferer" };
     }
    // 순위추적에서는 원래 키워드를 바꾸면 순위가 달라지므로 fallback+anchor+mapReferer는 사용하지 않음
+    if (http405Count > 0) throw new PcmapBusinessesBlockedError();
     return { batch: null, mode: "empty" };
   }
 
-  const b = await fetchRawBatchOnce(okKeyword, undefined, { targetName });
+  const b = await attempt({ targetName });
   if (b && countBusinessesItemsInBatch(b) > 0) {
     return { batch: b, mode: "single" };
   }
   await new Promise((r) => setTimeout(r, 420));
-  const m = await fetchRawBatchOnce(okKeyword, undefined, {
+  const m = await attempt({
     mapReferer: true,
     targetName,
   });
   if (m && countBusinessesItemsInBatch(m) > 0) {
     return { batch: m, mode: "single+mapReferer" };
   }
+  if (http405Count > 0) throw new PcmapBusinessesBlockedError();
   return { batch: null, mode: "empty" };
+}
+
+export async function fetchBestPcmapBusinessesBatchJson(
+  originalKeyword: string,
+  targetName?: string
+): Promise<{ batch: unknown[] | null; mode: string }> {
+  return runSerializedPcmapFetch(() =>
+    fetchBestPcmapBusinessesBatchJsonUnserialized(originalKeyword, targetName)
+  );
 }

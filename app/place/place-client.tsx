@@ -351,6 +351,13 @@ function getRankMeta(rank?: string | number | null) {
     };
   }
 
+  if (
+    typeof rank === "string" &&
+    (rank.includes("70위 밖") || rank.includes("현재 조회 차단됨"))
+  ) {
+    return { main: rank, sub: "-" };
+  }
+
   if (typeof rank === "number") {
     if (!Number.isFinite(rank) || rank <= 0) {
       return {
@@ -674,6 +681,7 @@ export default function PlacePage() {
   const [mounted, setMounted] = useState(false);
   const [deletingStoreId, setDeletingStoreId] = useState<string | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
+  const [rankCheckMessages, setRankCheckMessages] = useState<Record<string, string>>({});
   const [placeLoading, setPlaceLoading] = useState(false);
 
   const [searchText, setSearchText] = useState("");
@@ -1379,6 +1387,11 @@ useEffect(() => {
 
             const data = await response.json();
             checkPlaceRankMs = performance.now() - checkRankStart;
+            const rankMessageKey = item.placeKeywordId || `${target.name}:${item.keyword}`;
+            setRankCheckMessages((prev) => ({
+              ...prev,
+              [rankMessageKey]: String(data.displayRank ?? data.rank ?? "-"),
+            }));
 
             logPlaceRankKeywordBlockingResponse({
               context: "place rank-check",
@@ -1393,7 +1406,12 @@ useEffect(() => {
               return;
             }
 
-            if (item.placeKeywordId && data.rank && data.rank !== "-") {
+            if (
+              item.placeKeywordId &&
+              data.canSaveRank === true &&
+              data.rank &&
+              data.rank !== "-"
+            ) {
               const historyStart = performance.now();
               try {
                 await fetch("/api/place-rank-history-save", {
@@ -2199,7 +2217,13 @@ useEffect(() => {
                                 </tr>
                               ) : (
                                 store.keywords.map((item, keywordIndex) => {
-                                  const displayRank = item.currentRank ?? item.rank;
+                                  const rankMessageKey =
+                                    item.placeKeywordId ||
+                                    `${store.name}:${item.keyword}`;
+                                  const displayRank =
+                                    rankCheckMessages[rankMessageKey] ??
+                                    item.currentRank ??
+                                    item.rank;
                                   const rankMeta = getRankMeta(displayRank);
                                   const rankChangeUi = getRankChangeUi(item.rankChange);
 
