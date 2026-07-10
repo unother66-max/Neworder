@@ -11,12 +11,18 @@ import {
 describe("buildAllSearchUrlCheckPlaceRankStyle", () => {
   it("검색어 기준 pickBusinessesCoords로 searchCoord·boundary를 만든다", () => {
     const u = buildAllSearchUrlCheckPlaceRankStyle("서울역 필라테스");
-    expect(u).toContain("searchCoord=126.9707;37.5547");
-    expect(u).toContain(
-      "boundary=126.9707;37.5547;126.9707;37.5547"
-    );
-    expect(u).toContain("sscode=svc.mapv5.search");
-    expect(u).not.toContain("token=");
+    const params = new URL(u).searchParams;
+    const boundary = (params.get("boundary") || "").split(";").map(Number);
+
+    expect(params.get("searchCoord")).toBe("126.9707;37.5547");
+    expect(boundary).toHaveLength(4);
+    expect(boundary[0]).toBeCloseTo(126.9507, 6);
+    expect(boundary[1]).toBeCloseTo(37.5347, 6);
+    expect(boundary[2]).toBeCloseTo(126.9907, 6);
+    expect(boundary[3]).toBeCloseTo(37.5747, 6);
+    expect(params.get("displayCount")).toBe("70");
+    expect(params.get("sscode")).toBe("svc.mapv5.search");
+    expect(params.has("token")).toBe(false);
   });
 });
 

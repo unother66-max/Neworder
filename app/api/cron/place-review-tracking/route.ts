@@ -3,7 +3,6 @@ import { createAdminAlert } from "@/lib/admin-alert";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
-import { resolvePlaceReviewSnapshot } from "@/lib/place-review-snapshot-fallback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +61,9 @@ export async function GET(req: Request) {
       saveCount?: string;
       keywords?: string[];
       reason?: string;
+      debugReason?: string;
+      chosenType?: "restaurant" | "place" | null;
+      triedTypes?: Array<"restaurant" | "place">;
     }> = [];
 
     const trackedDate = getKstDateString();
@@ -93,30 +95,45 @@ export async function GET(req: Request) {
         const snapshot = await getNaverPlaceReviewSnapshot({
           placeUrl: String(place.placeUrl || ""),
           placeName: String(place.name || ""),
+          category: place.category ? String(place.category) : "",
           x: place.x ? String(place.x) : "",
           y: place.y ? String(place.y) : "",
+          force: false,
         });
 
         const latest = place.reviewHistory[0];
-        const resolvedSnapshot = resolvePlaceReviewSnapshot(snapshot, latest);
-
-        if (!resolvedSnapshot) {
+        if (
+          !snapshot.ok ||
+          snapshot.visitorReviewCount === null ||
+          snapshot.blogReviewCount === null ||
+          snapshot.saveCountText === null
+        ) {
+          const reason = snapshot.reason ?? "REVIEW_SNAPSHOT_UNAVAILABLE";
+          const debugReason = snapshot.debugReason ?? reason;
           results.push({
             placeId: place.id,
             name: place.name,
             saved: false,
             date: trackedDate,
-            reason: "리뷰 파싱 실패 및 기존 스냅샷 없음",
+            reason,
+            debugReason,
+            chosenType: snapshot.chosenType,
+            triedTypes: snapshot.triedTypes,
           });
           void createAdminAlert({
             type: "cron",
             level: "error",
             title: "리뷰 자동추적 실패",
-            message: `업체명: ${place.name} / 사유: getNaverPlaceReviewSnapshot 파싱 실패(지표 null)`,
+            message: `업체명: ${place.name} / 사유: 최신 리뷰 수집 실패(${reason})`,
             meta: {
               placeId: place.id,
               cron: "place-review-tracking",
-              reason: "리뷰 파싱 실패 및 기존 스냅샷 없음",
+              reason,
+              debugReason,
+              hintType: snapshot.hintType,
+              chosenType: snapshot.chosenType,
+              triedTypes: snapshot.triedTypes,
+              cacheStatus: snapshot.cacheStatus,
             },
           });
           continue;
@@ -129,26 +146,10 @@ export async function GET(req: Request) {
               ? latest.keywords
               : ["맛집", "분위기", "데이트", "가성비", "친절"];
 
-        const {
-          visitorReviewCount,
-          blogReviewCount,
-          totalReviewCount,
-          saveCount,
-          retainedFields,
-        } = resolvedSnapshot;
-
-        if (retainedFields.length > 0) {
-          console.warn("[place-review-tracking] keep previous parsed fields", {
-            placeId: place.id,
-            placeName: place.name,
-            retainedFields,
-            parsed: {
-              visitorReviewCount: snapshot.visitorReviewCount,
-              blogReviewCount: snapshot.blogReviewCount,
-              saveCount: snapshot.saveCountText,
-            },
-          });
-        }
+        const visitorReviewCount = snapshot.visitorReviewCount;
+        const blogReviewCount = snapshot.blogReviewCount;
+        const totalReviewCount = visitorReviewCount + blogReviewCount;
+        const saveCount = snapshot.saveCountText;
 
         const volume = await getPlaceNameSearchVolume(place.name);
         const volTotal =
@@ -225,6 +226,10 @@ export async function GET(req: Request) {
           blogReviewCount,
           saveCount,
           keywords,
+          reason: snapshot.reason ?? undefined,
+          debugReason: snapshot.debugReason ?? undefined,
+          chosenType: snapshot.chosenType,
+          triedTypes: snapshot.triedTypes,
         });
 
         // 네이버 호출/저장 API 레이트리밋 완화용

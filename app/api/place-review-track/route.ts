@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
-import { resolvePlaceReviewSnapshot } from "@/lib/place-review-snapshot-fallback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +19,22 @@ function getKstDateString() {
   const dd = String(kst.getDate()).padStart(2, "0");
 
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function describeSnapshotFailure(reason: string): string {
+  if (reason === "NAVER_BLOCKED_OR_CAPTCHA") {
+    return "네이버 요청 차단 또는 캡차가 감지되었습니다";
+  }
+  if (reason === "NAVER_COOLDOWN") {
+    return "네이버 요청 제한으로 잠시 후 다시 확인이 필요합니다";
+  }
+  if (reason === "REVIEW_METRICS_INCOMPLETE") {
+    return "최신 리뷰 수치 일부를 확인하지 못했습니다";
+  }
+  if (reason === "PUBLIC_PLACE_ID_MISSING") {
+    return "네이버 플레이스 ID를 확인하지 못했습니다";
+  }
+  return "최신 리뷰 데이터를 수집하지 못했습니다";
 }
 
 export async function POST(req: Request) {
@@ -61,19 +76,46 @@ export async function POST(req: Request) {
     const snapshot = await getNaverPlaceReviewSnapshot({
       placeUrl: String(place.placeUrl || ""),
       placeName: String(place.name || ""),
+      category: place.category ? String(place.category) : "",
       x: place.x ? String(place.x) : "",
       y: place.y ? String(place.y) : "",
+      force: true,
     });
 
     const latest = place.reviewHistory[0];
-    const resolvedSnapshot = resolvePlaceReviewSnapshot(snapshot, latest);
-
-    if (!resolvedSnapshot) {
+    if (
+      !snapshot.ok ||
+      snapshot.visitorReviewCount === null ||
+      snapshot.blogReviewCount === null ||
+      snapshot.saveCountText === null
+    ) {
+      const reason = snapshot.reason ?? "REVIEW_SNAPSHOT_UNAVAILABLE";
+      const debugReason = snapshot.debugReason ?? reason;
+      console.warn("[place-review-track] fresh snapshot unavailable", {
+        placeId,
+        placeName: place.name,
+        reason,
+        debugReason,
+        hintType: snapshot.hintType,
+        chosenType: snapshot.chosenType,
+        triedTypes: snapshot.triedTypes,
+        cacheStatus: snapshot.cacheStatus,
+        parsed: {
+          visitorReviewCount: snapshot.visitorReviewCount,
+          blogReviewCount: snapshot.blogReviewCount,
+          saveCount: snapshot.saveCountText,
+        },
+      });
       return NextResponse.json(
         {
           ok: false,
-          message: `리뷰 파싱 실패: ${place.name}. 보존할 기존 스냅샷도 없습니다.`,
-          reason: "REVIEW_SNAPSHOT_UNAVAILABLE",
+          message: `${describeSnapshotFailure(reason)}: ${place.name}. 기존 스냅샷은 변경하지 않았습니다.`,
+          reason,
+          debugReason,
+          hintType: snapshot.hintType,
+          chosenType: snapshot.chosenType,
+          triedTypes: snapshot.triedTypes,
+          cacheStatus: snapshot.cacheStatus,
           parsed: {
             visitorReviewCount: snapshot.visitorReviewCount,
             blogReviewCount: snapshot.blogReviewCount,
@@ -120,26 +162,10 @@ export async function POST(req: Request) {
       });
     }
 
-    const {
-      visitorReviewCount,
-      blogReviewCount,
-      totalReviewCount,
-      saveCount,
-      retainedFields,
-    } = resolvedSnapshot;
-
-    if (retainedFields.length > 0) {
-      console.warn("[place-review-track] keep previous parsed fields", {
-        placeId,
-        placeName: place.name,
-        retainedFields,
-        parsed: {
-          visitorReviewCount: snapshot.visitorReviewCount,
-          blogReviewCount: snapshot.blogReviewCount,
-          saveCount: snapshot.saveCountText,
-        },
-      });
-    }
+    const visitorReviewCount = snapshot.visitorReviewCount;
+    const blogReviewCount = snapshot.blogReviewCount;
+    const totalReviewCount = visitorReviewCount + blogReviewCount;
+    const saveCount = snapshot.saveCountText;
 
     // 🔥 핵심 수정 (여기)
     const keywords =
@@ -159,7 +185,10 @@ export async function POST(req: Request) {
       blogReviewCount,
       saveCount,
       keywords,
-      retainedFields,
+      cacheStatus: snapshot.cacheStatus,
+      chosenType: snapshot.chosenType,
+      triedTypes: snapshot.triedTypes,
+      debugReason: snapshot.debugReason,
     });
 
     // 🔥 하루 1개 (중복 제거)
@@ -199,6 +228,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      reason: snapshot.reason,
+      debugReason: snapshot.debugReason,
+      hintType: snapshot.hintType,
+      chosenType: snapshot.chosenType,
+      triedTypes: snapshot.triedTypes,
       data,
       date: trackedDate,
       parsed: {
@@ -207,7 +241,11 @@ export async function POST(req: Request) {
         blogReviewCount,
         saveCount,
         keywords,
-        retainedFields,
+        retainedFields: [],
+        cacheStatus: snapshot.cacheStatus,
+        chosenType: snapshot.chosenType,
+        triedTypes: snapshot.triedTypes,
+        debugReason: snapshot.debugReason,
       },
     });
   } catch (error) {

@@ -12,13 +12,12 @@ type PreviousReviewSnapshot = {
 
 export function resolvePlaceReviewSnapshot(
   parsed: ParsedReviewSnapshot,
-  previous?: PreviousReviewSnapshot | null
+  _previous?: PreviousReviewSnapshot | null
 ) {
-  const visitorReviewCount =
-    parsed.visitorReviewCount ?? previous?.visitorReviewCount ?? null;
-  const blogReviewCount =
-    parsed.blogReviewCount ?? previous?.blogReviewCount ?? null;
-  const saveCount = parsed.saveCountText ?? previous?.saveCount ?? null;
+  void _previous;
+  const visitorReviewCount = parsed.visitorReviewCount;
+  const blogReviewCount = parsed.blogReviewCount;
+  const saveCount = parsed.saveCountText;
 
   if (
     visitorReviewCount === null ||
@@ -33,10 +32,6 @@ export function resolvePlaceReviewSnapshot(
     blogReviewCount,
     totalReviewCount: visitorReviewCount + blogReviewCount,
     saveCount,
-    retainedFields: [
-      ...(parsed.visitorReviewCount === null ? ["visitorReviewCount"] : []),
-      ...(parsed.blogReviewCount === null ? ["blogReviewCount"] : []),
-      ...(parsed.saveCountText === null ? ["saveCount"] : []),
-    ],
+    retainedFields: [],
   };
 }

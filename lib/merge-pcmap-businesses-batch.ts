@@ -60,8 +60,27 @@ function collectBatchErrors(batch: unknown[]): string[] {
 }
 
 /** map.naver 왼쪽 목록은 DevTools 기준 `places` 우선 — 없을 때만 `businesses` */
+function pickOrganicRoot(data: Record<string, unknown>): {
+  total?: number;
+  items?: unknown[];
+} | null {
+  const places = data.places as
+    | { total?: number; items?: unknown[] }
+    | undefined;
+  const businesses = data.businesses as
+    | { total?: number; items?: unknown[] }
+    | undefined;
+  const placesCount = Array.isArray(places?.items) ? places.items.length : 0;
+  const businessesCount = Array.isArray(businesses?.items)
+    ? businesses.items.length
+    : 0;
 
-
+  if (placesCount > 0) return places!;
+  if (businessesCount > 0) return businesses!;
+  if (places && Array.isArray(places.items)) return places;
+  if (businesses && Array.isArray(businesses.items)) return businesses;
+  return null;
+}
 
 export type MergePcmapBatchResult = {
   items: unknown[];
@@ -107,20 +126,10 @@ export function mergePcmapGraphqlBatch(batch: unknown): MergePcmapBatchResult {
       }
     }
 
-    const roots = [
-      data.places as { total?: number; items?: unknown[] } | undefined,
-      data.businesses as { total?: number; items?: unknown[] } | undefined,
-    ];
-    
-    for (const root of roots) {
-      if (!root || !Array.isArray(root.items)) continue;
-    
-      organicTotal = Math.max(
-        organicTotal,
-        Number(root.total || 0)
-      );
-    
-      for (const it of root.items) {
+    const organicRoot = pickOrganicRoot(data);
+    if (organicRoot && Array.isArray(organicRoot.items)) {
+      organicTotal = Math.max(organicTotal, Number(organicRoot.total || 0));
+      for (const it of organicRoot.items) {
         organicChunks.push(it);
       }
     }

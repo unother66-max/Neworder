@@ -19,7 +19,7 @@ describe("resolvePlaceReviewSnapshot", () => {
     });
   });
 
-  it("retains only failed fields from the latest snapshot", () => {
+  it("rejects partial fresh data instead of copying previous metrics", () => {
     expect(
       resolvePlaceReviewSnapshot(
         {
@@ -33,13 +33,7 @@ describe("resolvePlaceReviewSnapshot", () => {
           saveCount: "450",
         }
       )
-    ).toEqual({
-      visitorReviewCount: 120,
-      blogReviewCount: 30,
-      totalReviewCount: 150,
-      saveCount: "450",
-      retainedFields: ["blogReviewCount", "saveCount"],
-    });
+    ).toBeNull();
   });
 
   it("does not invent zero values without a previous snapshot", () => {
