@@ -1,4 +1,4 @@
-import { fetchPcmapRestaurantListHtmlDiagnostic } from "@/lib/pcmap-restaurant-list-html-fetch";
+import { fetchPcmapRestaurantListHtmlDiagnostic } from "./pcmap-restaurant-list-html-fetch";
 
 const PCMAP_GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
 const DEFAULT_DISPLAY = 70;
@@ -382,9 +382,9 @@ export async function fetchPcmapRestaurantsGraphqlDiagnostic(
       parsedCount: parsed.items.length,
       total: parsed.total,
       debugReason:
-        response.ok && parsed.debugReason === null
-          ? null
-          : parsed.debugReason ?? `HTTP_${response.status}`,
+        !response.ok
+          ? `HTTP_${response.status}`
+          : parsed.debugReason,
       hasGraphqlErrors: parsed.hasGraphqlErrors,
       topLevelKeys: parsed.topLevelKeys,
       dataKeys: parsed.dataKeys,

@@ -12,8 +12,22 @@ import {
   fetchAllSearchPlacesForIntentKeyword,
 } from "@/lib/naver-map-all-search";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
-import { fetchPcmapPlaceListGraphql } from "@/lib/pcmap-place-list-graphql";
-import { fetchPcmapRestaurantsGraphqlDiagnostic } from "@/lib/pcmap-restaurants-graphql-diagnostic";
+import {
+  fetchPcmapPlaceListGraphql,
+  type PcmapPlaceListResult,
+} from "@/lib/pcmap-place-list-graphql";
+import {
+  fetchPcmapRestaurantsGraphqlDiagnostic,
+  type PcmapRestaurantsGraphqlDiagnosticResult,
+} from "@/lib/pcmap-restaurants-graphql-diagnostic";
+import {
+  runPlaceRankQueryCached,
+  type PlaceRankQueryCacheStatus,
+} from "@/lib/place-rank-query-cache";
+import {
+  resolvePlaceRankServerConcurrency,
+  runWithPlaceRankServerConcurrency,
+} from "@/lib/place-rank-server-concurrency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,6 +164,31 @@ export async function POST(req: Request) {
       | "NEED_DEEP_CHECK"
       | "PCMAP_HTTP_405" = "PARTIAL_FAILED";
     let checkedCount = 0;
+    let rankQueryDiagnostics: {
+      requestedStarts: number[];
+      completedPages: number;
+      actualNaverFetchCount: number;
+      elapsedMs: number;
+      source: string;
+      debugReason: string | null;
+      captchaDetected: boolean;
+      cooldownDetected: boolean;
+      emptyResult: boolean;
+      cacheStatus: PlaceRankQueryCacheStatus;
+      serverConcurrency: number;
+    } = {
+      requestedStarts: [],
+      completedPages: 0,
+      actualNaverFetchCount: 0,
+      elapsedMs: 0,
+      source: "none",
+      debugReason: null,
+      captchaDetected: false,
+      cooldownDetected: false,
+      emptyResult: true,
+      cacheStatus: "MISS",
+      serverConcurrency: resolvePlaceRankServerConcurrency(),
+    };
 
     const useRestaurantGraphql = shouldUseRestaurantGraphql({
       keyword: actualKeyword,
@@ -161,30 +200,73 @@ export async function POST(req: Request) {
 
     // pcmap GraphQL을 HTML 선요청 없이 1페이지부터 직접 조회한다.
     try {
-      const graphqlResult = useRestaurantGraphql
-        ? await timedNaverFetch(() =>
-            fetchPcmapRestaurantsGraphqlDiagnostic({
-              keyword: actualKeyword,
-              targetName,
-              x: x || undefined,
-              y: y || undefined,
-              start: 1,
-              display: 70,
-              maxPages: 4,
-              fallbackToHtml: false,
-            })
-          )
-        : await timedNaverFetch(() =>
-            fetchPcmapPlaceListGraphql({
-              keyword: actualKeyword,
-              targetName,
-              x: x || undefined,
-              y: y || undefined,
-              start: 1,
-              display: 70,
-              maxPages: 4,
-            })
-          );
+      const queryStartedAt = Date.now();
+      const serverConcurrency = resolvePlaceRankServerConcurrency();
+      const queryKey = [
+        useRestaurantGraphql ? "restaurant" : "place",
+        actualKeyword,
+        targetName,
+        x,
+        y,
+        "start=1",
+        "display=70",
+        "maxPages=4",
+      ].join("|");
+      const cachedQuery = await runPlaceRankQueryCached<
+        PcmapPlaceListResult | PcmapRestaurantsGraphqlDiagnosticResult
+      >({
+        key: queryKey,
+        loader: () =>
+          runWithPlaceRankServerConcurrency(async () => {
+            if (useRestaurantGraphql) {
+              return await timedNaverFetch(() =>
+                fetchPcmapRestaurantsGraphqlDiagnostic({
+                  keyword: actualKeyword,
+                  targetName,
+                  x: x || undefined,
+                  y: y || undefined,
+                  start: 1,
+                  display: 70,
+                  maxPages: 4,
+                  fallbackToHtml: false,
+                })
+              );
+            }
+            return await timedNaverFetch(() =>
+              fetchPcmapPlaceListGraphql({
+                keyword: actualKeyword,
+                targetName,
+                x: x || undefined,
+                y: y || undefined,
+                start: 1,
+                display: 70,
+                maxPages: 4,
+              })
+            );
+          }, serverConcurrency),
+        shouldCache: (result) =>
+          result.status === "FOUND" || result.status === "OUT_OF_RANGE_280",
+      });
+      const graphqlResult = cachedQuery.value;
+      const queryDebugReason = graphqlResult.debugReason ?? null;
+      rankQueryDiagnostics = {
+        requestedStarts: graphqlResult.requestedStarts,
+        completedPages: graphqlResult.completedPages,
+        actualNaverFetchCount:
+          cachedQuery.cacheStatus === "MISS" ? graphqlResult.pages.length : 0,
+        elapsedMs: Date.now() - queryStartedAt,
+        source: graphqlResult.source,
+        debugReason: queryDebugReason,
+        captchaDetected: /NCAPTCHA|CAPTCHA|CE_/i.test(
+          queryDebugReason ?? ""
+        ),
+        cooldownDetected: /HTTP_429|COOLDOWN/i.test(
+          queryDebugReason ?? ""
+        ),
+        emptyResult: graphqlResult.items.length === 0,
+        cacheStatus: cachedQuery.cacheStatus,
+        serverConcurrency,
+      };
       fullList = mapPcmapItemsToCheckPlaceRankList(
         graphqlResult.items,
         SEARCH_CAP
@@ -216,6 +298,13 @@ export async function POST(req: Request) {
         targetRank: graphqlResult.rank,
         resultStatus,
         debugReason: graphqlResult.debugReason,
+        actualNaverFetchCount: rankQueryDiagnostics.actualNaverFetchCount,
+        elapsedMs: rankQueryDiagnostics.elapsedMs,
+        cacheStatus: rankQueryDiagnostics.cacheStatus,
+        captchaDetected: rankQueryDiagnostics.captchaDetected,
+        cooldownDetected: rankQueryDiagnostics.cooldownDetected,
+        emptyResult: rankQueryDiagnostics.emptyResult,
+        serverConcurrency: rankQueryDiagnostics.serverConcurrency,
       });
     } catch (error) {
       resultStatus = "PARTIAL_FAILED";
@@ -224,6 +313,12 @@ export async function POST(req: Request) {
       console.warn("[check-place-rank pcmap GraphQL 280] 예외", {
         message: error instanceof Error ? error.message : String(error),
       });
+      rankQueryDiagnostics = {
+        ...rankQueryDiagnostics,
+        elapsedMs: Date.now() - perfStartMs,
+        debugReason:
+          error instanceof Error ? error.message : String(error),
+      };
     }
 
     // 브라우저 allSearch JSON은 명시적인 development 진단에서만 사용한다.
@@ -531,6 +626,7 @@ export async function POST(req: Request) {
       fallbackUsed,
       failureCode: failureCode ?? null,
       warningsCount,
+      rankQueryDiagnostics,
     });
 
     return NextResponse.json({
@@ -554,6 +650,7 @@ export async function POST(req: Request) {
             : "현재 조회 차단됨 / 마지막 저장 순위 유지",
       failureCode,
       message: failureMessage,
+      diagnostics: rankQueryDiagnostics,
       ...(shouldPreferAllSearch &&
       fullList.length > 0 &&
       typeof accuracy !== "undefined"
