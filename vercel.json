@@ -34,7 +34,7 @@
     },
     {
       "path": "/api/cron/place-analysis-registered-keywords",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 18 * * *"
     }
   ]
 }
