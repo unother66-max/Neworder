@@ -167,13 +167,14 @@ export async function POST(req: Request) {
     const totalReviewCount = visitorReviewCount + blogReviewCount;
     const saveCount = snapshot.saveCountText;
 
-    // 🔥 핵심 수정 (여기)
+    const registeredKeywordsStatus =
+      snapshot.registeredKeywordsStatus ?? snapshot.keywordListStatus;
+    const freshRegisteredKeywords =
+      snapshot.registeredKeywords ?? snapshot.keywordList;
     const keywords =
-      snapshot.keywordList && snapshot.keywordList.length > 0
-        ? snapshot.keywordList
-        : latest?.keywords && latest.keywords.length > 0
-        ? latest.keywords
-        : ["맛집", "분위기", "데이트", "가성비", "친절"];
+      registeredKeywordsStatus === "AVAILABLE"
+        ? (freshRegisteredKeywords ?? [])
+        : (latest?.keywords ?? []);
 
     const trackedDate = getKstDateString();
 
@@ -185,6 +186,7 @@ export async function POST(req: Request) {
       blogReviewCount,
       saveCount,
       keywords,
+      registeredKeywordsStatus,
       cacheStatus: snapshot.cacheStatus,
       chosenType: snapshot.chosenType,
       triedTypes: snapshot.triedTypes,
@@ -241,6 +243,7 @@ export async function POST(req: Request) {
         blogReviewCount,
         saveCount,
         keywords,
+        registeredKeywordsStatus,
         retainedFields: [],
         cacheStatus: snapshot.cacheStatus,
         chosenType: snapshot.chosenType,

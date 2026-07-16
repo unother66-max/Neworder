@@ -1,4 +1,7 @@
+import { buildPcmapPlaceListRequestBatch } from "./pcmap-place-list-request";
+
 export type NaverPlaceType = "restaurant" | "place";
+export type KeywordCollectionStatus = "AVAILABLE" | "UNAVAILABLE";
 
 export type ReviewSnapshot = {
   ok: boolean;
@@ -13,7 +16,16 @@ export type ReviewSnapshot = {
   visitorReviewCount: number | null;
   blogReviewCount: number | null;
   saveCountText: string | null;
-  keywordList: string[]; // ✅ 추가
+  /** 네이버 업체 정보(/information)의 업체 소개 키워드 */
+  registeredKeywords: string[] | null;
+  registeredKeywordsStatus: KeywordCollectionStatus;
+  /** GraphQL microReview 기반 방문자 리뷰 특징 */
+  reviewFeatureKeywords: string[] | null;
+  reviewFeatureKeywordsStatus: KeywordCollectionStatus;
+  /** @deprecated PlaceReviewHistory 호환용. registeredKeywords와 동일하다. */
+  keywordList: string[] | null;
+  /** @deprecated registeredKeywordsStatus와 동일하다. */
+  keywordListStatus: KeywordCollectionStatus;
 };
 
 export type GetReviewSnapshotInput = {
@@ -26,6 +38,8 @@ export type GetReviewSnapshotInput = {
   x?: string | null;
   y?: string | null;
   force?: boolean;
+  /** false면 리뷰/저장 수는 수집하되 /information 등록 키워드 요청만 생략한다. */
+  collectRegisteredKeywords?: boolean;
 };
 
 const GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
@@ -341,13 +355,134 @@ export function extractReviewCountsFromRawHtml(html: string) {
   };
 }
 
+type KeywordParseResult = {
+  keywords: string[] | null;
+  status: KeywordCollectionStatus;
+};
+
+function normalizeKeywordText(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/^[#\s]+|[#\s]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return [];
+
+  const split = /[,|]/.test(normalized)
+    ? normalized.split(/[,|]/)
+    : [normalized];
+  return split
+    .map((item) => item.replace(/^[#\s]+|[#\s]+$/g, "").trim())
+    .filter((item) => item.length > 0 && item.length <= 80);
+}
+
+function normalizeKeywordValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeKeywordValue(item));
+  }
+  if (typeof value === "string") {
+    return normalizeKeywordText(value);
+  }
+  if (!value || typeof value !== "object") return [];
+
+  const record = value as Record<string, unknown>;
+  for (const key of [
+    "name",
+    "displayName",
+    "keyword",
+    "text",
+    "label",
+    "review",
+    "value",
+  ]) {
+    if (typeof record[key] === "string") {
+      return normalizeKeywordText(record[key]);
+    }
+  }
+  return [];
+}
+
+function uniqueKeywords(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const key = normalizeText(value);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+    if (result.length >= 10) break;
+  }
+  return result;
+}
+
+export function extractReviewFeatureKeywordsFromObject(
+  input: unknown
+): KeywordParseResult {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { keywords: null, status: "UNAVAILABLE" };
+  }
+
+  const record = input as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, "microReview")) {
+    return { keywords: null, status: "UNAVAILABLE" };
+  }
+
+  return {
+    keywords: uniqueKeywords(normalizeKeywordValue(record.microReview)),
+    status: "AVAILABLE",
+  };
+}
+
+/**
+ * /place-review가 기존부터 사용하던 업체 등록 키워드 파서.
+ * `/information` 초기 상태의 `keywordList`만 읽고 microReview는 섞지 않는다.
+ */
+export function extractRegisteredKeywordsFromHtml(
+  html: string
+): KeywordParseResult {
+  // /place-review의 기존 정상 동작과 같은 첫 keywordList 배열을 우선한다.
+  const matched = html.match(
+    /(?:\\"|")keywordList(?:\\"|")\s*:\s*(\[[\s\S]*?\])/i
+  );
+  if (matched?.[1]) {
+    try {
+      const parsed = JSON.parse(matched[1].replace(/\\"/g, '"'));
+      return {
+        keywords: uniqueKeywords(normalizeKeywordValue(parsed)),
+        status: "AVAILABLE",
+      };
+    } catch {
+      return { keywords: null, status: "UNAVAILABLE" };
+    }
+  }
+
+  const nextData = findNextDataJson(html);
+  const matches = collectKeyMatches(nextData, [/^keywordList$/i]);
+  if (matches.length > 0) {
+    return {
+      keywords: uniqueKeywords(normalizeKeywordValue(matches[0]?.value)),
+      status: "AVAILABLE",
+    };
+  }
+  return { keywords: null, status: "UNAVAILABLE" };
+}
+
 export type ParsedTypeResult = {
   type: NaverPlaceType;
   pageMetricCount: number;
   visitorReviewCount: number | null;
   blogReviewCount: number | null;
   saveCount: number | null;
-  keywordList: string[];
+  registeredKeywords: string[] | null;
+  registeredKeywordsStatus: KeywordCollectionStatus;
+  reviewFeatureKeywords: string[] | null;
+  reviewFeatureKeywordsStatus: KeywordCollectionStatus;
+  /** @deprecated registeredKeywords alias */
+  keywordList: string[] | null;
+  /** @deprecated registeredKeywordsStatus alias */
+  keywordListStatus: KeywordCollectionStatus;
   blocked?: boolean;
   debugReason?: string | null;
   requestUrls?: string[];
@@ -362,7 +497,7 @@ export function chooseBestPlaceTypeResult<T extends ParsedTypeResult>(
     Number(result.visitorReviewCount !== null) * 4 +
     Number(result.blogReviewCount !== null) * 4 +
     Number(result.saveCount !== null) * 2 +
-    Number(result.keywordList.length > 0);
+    Number((result.registeredKeywords?.length ?? 0) > 0);
 
   return [...results].sort((a, b) => score(b) - score(a))[0] ?? null;
 }
@@ -458,34 +593,12 @@ export async function runPlaceTypeAttempts(
   };
 }
 
-function buildPlaceListQuery(type: NaverPlaceType): string {
-  const operationName =
-    type === "restaurant" ? "getRestaurantsPcmap" : "getPlacesList";
-  const alias = type === "restaurant" ? "restaurants" : "places";
-  return `
-query ${operationName}($input: PlaceListInput) {
-  ${alias}: placeList(input: $input) {
-    businesses {
-      items {
-        id
-        name
-        visitorReviewCount
-        blogCafeReviewCount
-        saveCount
-        __typename
-      }
-      __typename
-    }
-    __typename
-  }
-}
-`;
-}
-
 type GraphqlCountsResult = {
   visitorReviewCount: number | null;
   blogReviewCount: number | null;
   saveCount: number | null;
+  reviewFeatureKeywords: string[] | null;
+  reviewFeatureKeywordsStatus: KeywordCollectionStatus;
   blocked: boolean;
   debugReason: string | null;
   requestUrl: string;
@@ -507,6 +620,8 @@ async function fetchCountsFromGraphql(
     visitorReviewCount: null,
     blogReviewCount: null,
     saveCount: null,
+    reviewFeatureKeywords: null,
+    reviewFeatureKeywordsStatus: "UNAVAILABLE",
     blocked,
     debugReason,
     requestUrl: GRAPHQL_URL,
@@ -516,24 +631,14 @@ async function fetchCountsFromGraphql(
     const safeX = String(x || "127.0005");
     const safeY = String(y || "37.53455");
 
-    const payload = [
-      {
-        operationName,
-        variables: {
-          input: {
-            businessType: type,
-            deviceType: "pcmap",
-            query: keyword,
-            x: safeX,
-            y: safeY,
-            start: 1,
-            display: 70,
-            isPcmap: true,
-          },
-        },
-        query: buildPlaceListQuery(type),
-      },
-    ];
+    const payload = buildPcmapPlaceListRequestBatch({
+      businessType: type,
+      keyword,
+      x: safeX,
+      y: safeY,
+      start: 1,
+      display: 70,
+    });
 
     const referer = `https://pcmap.place.naver.com/${type}/list?query=${encodeURIComponent(
       keyword
@@ -619,10 +724,15 @@ async function fetchCountsFromGraphql(
       return empty(`${type}:GRAPHQL_TARGET_NOT_FOUND`);
     }
 
+    const reviewFeatureKeywords =
+      extractReviewFeatureKeywordsFromObject(found);
+
     return {
       visitorReviewCount: parseKoreanNumber(found?.visitorReviewCount),
       blogReviewCount: parseKoreanNumber(found?.blogCafeReviewCount),
       saveCount: parseKoreanNumber(found?.saveCount),
+      reviewFeatureKeywords: reviewFeatureKeywords.keywords,
+      reviewFeatureKeywordsStatus: reviewFeatureKeywords.status,
       blocked: false,
       debugReason: null,
       requestUrl: GRAPHQL_URL,
@@ -658,6 +768,7 @@ async function fetchTypeAttempt(
   input: GetReviewSnapshotInput,
   publicPlaceId: string
 ): Promise<ParsedTypeResult> {
+  const collectRegisteredKeywords = input.collectRegisteredKeywords !== false;
   const placeName = String(input.placeName || "");
   const graphql = await fetchCountsFromGraphql(
     type,
@@ -671,21 +782,12 @@ async function fetchTypeAttempt(
   let visitorReviewCount = graphql.visitorReviewCount;
   let blogReviewCount = graphql.blogReviewCount;
   let saveCount = graphql.saveCount;
-  let keywordList: string[] = [];
+  let registeredKeywords: string[] | null = null;
+  let registeredKeywordsStatus: KeywordCollectionStatus = "UNAVAILABLE";
+  const reviewFeatureKeywords = graphql.reviewFeatureKeywords;
+  const reviewFeatureKeywordsStatus = graphql.reviewFeatureKeywordsStatus;
   let pageMetricCount = 0;
   const debugReasons = graphql.debugReason ? [graphql.debugReason] : [];
-
-  if (
-    type === "place" &&
-    saveCount === null &&
-    visitorReviewCount !== null &&
-    blogReviewCount !== null
-  ) {
-    // 일반 place 응답에는 음식점과 달리 저장수 필드가 제공되지 않는다.
-    // 기존 일반 place 파서와 동일하게 0으로 정규화하되 진단에는 근거를 남긴다.
-    saveCount = 0;
-    debugReasons.push("place:SAVE_COUNT_UNAVAILABLE_NORMALIZED_TO_ZERO");
-  }
 
   const finish = (blocked = false): ParsedTypeResult => {
     const complete = hasCompleteMetrics({
@@ -694,7 +796,12 @@ async function fetchTypeAttempt(
       visitorReviewCount,
       blogReviewCount,
       saveCount,
-      keywordList,
+      registeredKeywords,
+      registeredKeywordsStatus,
+      reviewFeatureKeywords,
+      reviewFeatureKeywordsStatus,
+      keywordList: registeredKeywords,
+      keywordListStatus: registeredKeywordsStatus,
     });
     return {
       type,
@@ -702,7 +809,12 @@ async function fetchTypeAttempt(
       visitorReviewCount,
       blogReviewCount,
       saveCount,
-      keywordList,
+      registeredKeywords,
+      registeredKeywordsStatus,
+      reviewFeatureKeywords,
+      reviewFeatureKeywordsStatus,
+      keywordList: registeredKeywords,
+      keywordListStatus: registeredKeywordsStatus,
       blocked,
       debugReason:
         debugReasons.join("|") ||
@@ -712,18 +824,35 @@ async function fetchTypeAttempt(
     };
   };
 
-  if (graphql.blocked || hasCompleteMetrics(finish())) {
+  const graphqlMetricsComplete = hasCompleteMetrics(finish());
+  if (graphql.blocked) {
     return finish(graphql.blocked);
   }
+  if (graphqlMetricsComplete && !collectRegisteredKeywords) {
+    return finish();
+  }
 
-  const urls = [
-    `https://m.place.naver.com/${type}/${publicPlaceId}/home`,
-    `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
-    `https://pcmap.place.naver.com/${type}/${publicPlaceId}/information`,
-    `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
-  ];
+  const informationUrl =
+    `https://pcmap.place.naver.com/${type}/${publicPlaceId}/information`;
+  const urls = graphqlMetricsComplete
+    ? [informationUrl]
+    : collectRegisteredKeywords
+      ? [
+          `https://m.place.naver.com/${type}/${publicPlaceId}/home`,
+          `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
+          informationUrl,
+          `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
+        ]
+      : [
+          `https://m.place.naver.com/${type}/${publicPlaceId}/home`,
+          `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
+          `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
+        ];
 
+  let registeredKeywordRequestAttempted = false;
   for (const url of urls) {
+    const isInformationRequest = url.includes("/information");
+    if (isInformationRequest) registeredKeywordRequestAttempted = true;
     const response = await fetchHtml(url);
     requestUrls.push(response.finalUrl);
     if (response.blocked) {
@@ -732,6 +861,7 @@ async function fetchTypeAttempt(
     }
     if (!response.ok) {
       debugReasons.push(`${type}:HTML_HTTP_${response.status}`);
+      if (isInformationRequest && hasCompleteMetrics(finish())) return finish();
       continue;
     }
 
@@ -747,16 +877,27 @@ async function fetchTypeAttempt(
     if (saveCount === null && metrics.saveCount !== null) {
       saveCount = metrics.saveCount;
     }
-    if (url.includes("/information")) {
-      const keywordMatch = response.html.match(/"keywordList":\[(.*?)\]/);
-      keywordList = keywordMatch
-        ? keywordMatch[1]
-            .split(",")
-            .map((keyword) => keyword.replace(/"/g, "").trim())
-            .filter(Boolean)
-        : [];
+    if (isInformationRequest) {
+      const parsedRegisteredKeywords =
+        extractRegisteredKeywordsFromHtml(response.html);
+      registeredKeywords = parsedRegisteredKeywords.keywords;
+      registeredKeywordsStatus = parsedRegisteredKeywords.status;
+      if (parsedRegisteredKeywords.status === "UNAVAILABLE") {
+        debugReasons.push(`${type}:REGISTERED_KEYWORDS_UNAVAILABLE`);
+      }
     }
-    if (hasCompleteMetrics(finish())) return finish();
+    if (
+      hasCompleteMetrics(finish()) &&
+      (!collectRegisteredKeywords ||
+        registeredKeywordsStatus === "AVAILABLE" ||
+        registeredKeywordRequestAttempted)
+    ) {
+      return finish();
+    }
+  }
+
+  if (saveCount === null) {
+    debugReasons.push(`${type}:SAVE_COUNT_UNAVAILABLE`);
   }
 
   return finish();
@@ -788,7 +929,12 @@ async function fetchSnapshotCore(
         visitorReviewCount: null,
         blogReviewCount: null,
         saveCountText: null,
-        keywordList: [],
+        registeredKeywords: null,
+        registeredKeywordsStatus: "UNAVAILABLE",
+        reviewFeatureKeywords: null,
+        reviewFeatureKeywordsStatus: "UNAVAILABLE",
+        keywordList: null,
+        keywordListStatus: "UNAVAILABLE",
       };
     }
 
@@ -838,10 +984,20 @@ async function fetchSnapshotCore(
         visitorReviewCount: result.visitorReviewCount,
         blogReviewCount: result.blogReviewCount,
         saveCount: result.saveCount,
+        registeredKeywords: result.registeredKeywords,
+        registeredKeywordsStatus: result.registeredKeywordsStatus,
+        reviewFeatureKeywords: result.reviewFeatureKeywords,
+        reviewFeatureKeywordsStatus: result.reviewFeatureKeywordsStatus,
       })),
       visitorReviewCount: parsed?.visitorReviewCount ?? null,
       blogReviewCount: parsed?.blogReviewCount ?? null,
       saveCount: parsed?.saveCount ?? null,
+      registeredKeywords: parsed?.registeredKeywords ?? null,
+      registeredKeywordsStatus:
+        parsed?.registeredKeywordsStatus ?? "UNAVAILABLE",
+      reviewFeatureKeywords: parsed?.reviewFeatureKeywords ?? null,
+      reviewFeatureKeywordsStatus:
+        parsed?.reviewFeatureKeywordsStatus ?? "UNAVAILABLE",
       reason,
       debugReason,
     });
@@ -865,7 +1021,15 @@ async function fetchSnapshotCore(
       visitorReviewCount: parsed?.visitorReviewCount ?? null,
       blogReviewCount: parsed?.blogReviewCount ?? null,
       saveCountText: parsed?.saveCount != null ? String(parsed.saveCount) : null,
-      keywordList: parsed?.keywordList ?? [],
+      registeredKeywords: parsed?.registeredKeywords ?? null,
+      registeredKeywordsStatus:
+        parsed?.registeredKeywordsStatus ?? "UNAVAILABLE",
+      reviewFeatureKeywords: parsed?.reviewFeatureKeywords ?? null,
+      reviewFeatureKeywordsStatus:
+        parsed?.reviewFeatureKeywordsStatus ?? "UNAVAILABLE",
+      keywordList: parsed?.registeredKeywords ?? null,
+      keywordListStatus:
+        parsed?.registeredKeywordsStatus ?? "UNAVAILABLE",
     };
 
     } catch (error) {
@@ -884,7 +1048,12 @@ async function fetchSnapshotCore(
     visitorReviewCount: null,
     blogReviewCount: null,
     saveCountText: null,
-    keywordList: [],
+    registeredKeywords: null,
+    registeredKeywordsStatus: "UNAVAILABLE",
+    reviewFeatureKeywords: null,
+    reviewFeatureKeywordsStatus: "UNAVAILABLE",
+    keywordList: null,
+    keywordListStatus: "UNAVAILABLE",
   };
 }
 }
@@ -895,6 +1064,9 @@ export async function getNaverPlaceReviewSnapshot(
   const normalized: GetReviewSnapshotInput =
     typeof input === "string" ? { placeUrl: input } : input;
   const force = normalized.force === true;
+  // 등록 키워드 수집 여부로 key를 나누면 같은 업체의 GraphQL metric 요청이
+  // 중복된다. /place-analysis가 DB lease로 keyword refresh 소유자를 정하므로
+  // 동일 업체 스냅샷은 기존처럼 하나의 in-flight 요청을 공유한다.
   const key = [
     normalized.placeUrl,
     normalized.placeName ?? "",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mergePcmapGraphqlBatch,
+  parseNullableNaverReviewCountField,
   parseNaverReviewCountField,
 } from "./merge-pcmap-businesses-batch";
 
@@ -13,6 +14,14 @@ describe("parseNaverReviewCountField", () => {
     expect(parseNaverReviewCountField(159)).toBe(159);
     expect(parseNaverReviewCountField(null)).toBe(0);
     expect(parseNaverReviewCountField("")).toBe(0);
+  });
+
+  it("실제 0과 수집 불가를 구분", () => {
+    expect(parseNullableNaverReviewCountField(0)).toBe(0);
+    expect(parseNullableNaverReviewCountField("0")).toBe(0);
+    expect(parseNullableNaverReviewCountField(null)).toBeNull();
+    expect(parseNullableNaverReviewCountField(undefined)).toBeNull();
+    expect(parseNullableNaverReviewCountField("")).toBeNull();
   });
 });
 
@@ -110,5 +119,85 @@ describe("mergePcmapGraphqlBatch", () => {
     const rows = items as { id: string; isPromotedAd?: boolean }[];
     expect(rows[0].id).toBe("999");
     expect(rows[1].id).toBe("111");
+  });
+
+  it("PlaceListInput의 중첩 businesses 응답을 오가닉 목록으로 병합", () => {
+    const batch = [
+      {
+        data: {
+          places: {
+            businesses: {
+              total: 24,
+              items: [
+                {
+                  id: "restaurant-1",
+                  name: "뉴오더클럽 한남",
+                  businessCategory: "restaurant",
+                },
+              ],
+            },
+          },
+        },
+      },
+    ];
+
+    const { items, total } = mergePcmapGraphqlBatch(batch);
+    const rows = items as Array<{
+      id: string;
+      name: string;
+      businessCategory: string;
+    }>;
+
+    expect(rows).toEqual([
+      {
+        id: "restaurant-1",
+        name: "뉴오더클럽 한남",
+        businessCategory: "restaurant",
+      },
+    ]);
+    expect(total).toBe(24);
+  });
+
+  it("charAt GraphQL 오류를 숨기지 않고 진단에 유지", () => {
+    const message =
+      "Cannot read properties of undefined (reading 'charAt')";
+    const result = mergePcmapGraphqlBatch([
+      {
+        errors: [{ message }],
+        data: {
+          places: {
+            businesses: { total: 0, items: [] },
+          },
+        },
+      },
+    ]);
+
+    expect(result.graphqlErrors).toEqual([message]);
+  });
+
+  it("광고 total이 오가닉 검색 total을 덮어쓰지 않음", () => {
+    const result = mergePcmapGraphqlBatch([
+      {
+        data: {
+          places: {
+            businesses: {
+              total: 37,
+              items: [{ id: "organic-1", name: "정확한 지역 결과" }],
+            },
+          },
+        },
+      },
+      {
+        data: {
+          adBusinesses: {
+            total: 911430,
+            items: [{ id: "ad-1", name: "광고 결과" }],
+          },
+        },
+      },
+    ]);
+
+    expect(result.total).toBe(37);
+    expect(result.items).toHaveLength(2);
   });
 });

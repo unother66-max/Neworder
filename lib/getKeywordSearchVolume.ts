@@ -285,12 +285,21 @@ export function keywordVolumeResultFromPersistentCacheRow(row: KeywordSearchVolu
 }
 
 function rowToKeywordVolumeResult(row: KeywordSearchVolumeCacheRow): KeywordVolumeResult {
-  const raw = row.raw as { keywordList?: KeywordToolItem[]; matchedKeyword?: string } | null | undefined;
+  const raw = row.raw as
+    | {
+        keywordList?: KeywordToolItem[];
+        matchedKeyword?: string;
+        reason?: KeywordVolumeResult["reason"];
+      }
+    | null
+    | undefined;
   const keywordList = Array.isArray(raw?.keywordList)
     ? raw.keywordList!.slice(0, 120)
     : undefined;
   const total = Math.max(0, Math.floor(Number(row.totalVolume)));
-  const persistentlyConfirmedZero = total <= 0 && row.belowThreshold;
+  const persistentlyConfirmedZero =
+    total <= 0 && row.belowThreshold && Boolean(raw?.matchedKeyword);
+  const legacyUnknownZero = total <= 0 && !persistentlyConfirmedZero;
   const matchedRaw =
     typeof raw?.matchedKeyword === "string" && raw.matchedKeyword.trim()
       ? raw.matchedKeyword.trim()
@@ -299,7 +308,8 @@ function rowToKeywordVolumeResult(row: KeywordSearchVolumeCacheRow): KeywordVolu
     mobile: row.monthlyMobileQcCnt ?? 0,
     pc: row.monthlyPcQcCnt ?? 0,
     total,
-    ok: true,
+    ok: !legacyUnknownZero,
+    reason: legacyUnknownZero ? (raw?.reason ?? "not-found") : undefined,
     matchedKeyword: matchedRaw,
     keywordList,
     persistentlyConfirmedZero,
@@ -378,10 +388,13 @@ async function persistKeywordVolumeCache(params: {
       ? ({
           keywordList: params.keywordList.slice(0, 120),
           matchedKeyword: params.matchedKeyword ?? undefined,
+          reason: params.reason,
         } as object)
       : params.matchedKeyword
-        ? ({ matchedKeyword: params.matchedKeyword } as object)
-        : undefined;
+        ? ({ matchedKeyword: params.matchedKeyword, reason: params.reason } as object)
+        : params.reason
+          ? ({ reason: params.reason } as object)
+          : undefined;
 
   return upsertKeywordVolumeCacheRow({
     displayKeyword: params.displayKeyword,
@@ -496,6 +509,7 @@ async function fetchKeywordSearchVolumeUncached(
       pc: pcP.num,
       total,
       ok: total > 0,
+      persistentlyConfirmedZero: total <= 0,
       matchedKeyword: chosen.relKeyword,
       keywordList: (chosenKeywordList ?? []).slice(0, 120),
     };
@@ -592,9 +606,7 @@ export async function getKeywordSearchVolume(
     }
 
     const shouldPersist =
-      value.reason !== "exception" &&
-      value.reason !== "empty" &&
-      value.reason !== "skipped-budget";
+      value.ok === true || value.persistentlyConfirmedZero === true;
 
     if (shouldPersist) {
       try {

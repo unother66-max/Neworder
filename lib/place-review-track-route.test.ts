@@ -96,7 +96,12 @@ describe("place-review-track POST", () => {
       visitorReviewCount: null,
       blogReviewCount: null,
       saveCountText: null,
+      registeredKeywords: null,
+      registeredKeywordsStatus: "UNAVAILABLE",
+      reviewFeatureKeywords: null,
+      reviewFeatureKeywordsStatus: "UNAVAILABLE",
       keywordList: [],
+      keywordListStatus: "UNAVAILABLE",
     });
 
     const response = await POST(
@@ -159,7 +164,15 @@ describe("place-review-track POST", () => {
       visitorReviewCount: 110,
       blogReviewCount: 25,
       saveCountText: "320",
-      keywordList: ["운동"],
+      registeredKeywords: [
+        "서울역개인필라테스",
+        "숙대입구그룹필라테스",
+      ],
+      registeredKeywordsStatus: "AVAILABLE",
+      reviewFeatureKeywords: ["시설이 깨끗해요"],
+      reviewFeatureKeywordsStatus: "AVAILABLE",
+      keywordList: ["서울역개인필라테스", "숙대입구그룹필라테스"],
+      keywordListStatus: "AVAILABLE",
     });
 
     const response = await POST(
@@ -186,6 +199,7 @@ describe("place-review-track POST", () => {
           blogReviewCount: 25,
           totalReviewCount: 135,
           saveCount: "320",
+          keywords: ["서울역개인필라테스", "숙대입구그룹필라테스"],
         }),
       })
     );
@@ -207,7 +221,12 @@ describe("place-review-track POST", () => {
       visitorReviewCount: 125,
       blogReviewCount: 31,
       saveCountText: "410",
-      keywordList: ["필라테스"],
+      registeredKeywords: [],
+      registeredKeywordsStatus: "AVAILABLE",
+      reviewFeatureKeywords: ["친절해요"],
+      reviewFeatureKeywordsStatus: "AVAILABLE",
+      keywordList: [],
+      keywordListStatus: "AVAILABLE",
     });
 
     const response = await POST(
@@ -227,7 +246,45 @@ describe("place-review-track POST", () => {
           blogReviewCount: 31,
           totalReviewCount: 156,
           saveCount: "410",
+          keywords: [],
         }),
+      })
+    );
+  });
+
+  it("keeps the previous registered keywords when collection is unavailable", async () => {
+    mocks.getSnapshot.mockResolvedValue({
+      ok: true,
+      reason: null,
+      debugReason: "place:REGISTERED_KEYWORDS_UNAVAILABLE",
+      hintType: "place",
+      chosenType: "place",
+      triedTypes: ["place"],
+      requestUrls: ["https://pcmap-api.place.naver.com/graphql"],
+      cacheStatus: "FORCE_BYPASS",
+      visitorReviewCount: 126,
+      blogReviewCount: 32,
+      saveCountText: "411",
+      registeredKeywords: null,
+      registeredKeywordsStatus: "UNAVAILABLE",
+      reviewFeatureKeywords: ["친절해요"],
+      reviewFeatureKeywordsStatus: "AVAILABLE",
+      keywordList: null,
+      keywordListStatus: "UNAVAILABLE",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/place-review-track", {
+        method: "POST",
+        body: JSON.stringify({ placeId: "place-1" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.historyUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ keywords: ["필라테스"] }),
+        create: expect.objectContaining({ keywords: ["필라테스"] }),
       })
     );
   });

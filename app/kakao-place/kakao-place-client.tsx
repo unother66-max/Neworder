@@ -107,6 +107,7 @@ export default function KakaoPlacePage() {
   const [mounted, setMounted] = useState(false);
   const [stores, setStores] = useState<KakaoPlaceStore[]>([]);
   const [storeLoading, setStoreLoading] = useState(false);
+  const [storeError, setStoreError] = useState("");
   const [searchText, setSearchText] = useState("");
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -200,12 +201,28 @@ export default function KakaoPlacePage() {
 
   const fetchStores = useCallback(async () => {
     setStoreLoading(true);
+    setStoreError("");
     try {
       const res = await fetch("/api/kakao-keyword-place-list", { cache: "no-store", credentials: "include" });
-      const data = await res.json();
-      if (data.ok) setStores(data.places ?? []);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(
+          typeof data?.message === "string" && data.message.trim()
+            ? data.message
+            : "카카오맵 매장 목록을 불러오지 못했습니다."
+        );
+      }
+      if (!Array.isArray(data.places)) {
+        throw new Error("카카오맵 매장 목록 응답 형식이 올바르지 않습니다.");
+      }
+      setStores(data.places);
     } catch (e) {
       console.warn("[kakao-place] fetchStores error:", e);
+      setStoreError(
+        e instanceof Error
+          ? e.message
+          : "카카오맵 매장 목록을 불러오지 못했습니다."
+      );
     } finally {
       setStoreLoading(false);
     }
@@ -543,7 +560,11 @@ export default function KakaoPlacePage() {
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
-                  {storeLoading ? "📍 매장 목록 불러오는 중..." : "📍 카카오맵 순위 추적 중"}
+                  {storeLoading
+                    ? "📍 매장 목록 불러오는 중..."
+                    : storeError
+                      ? "⚠️ 매장 목록을 불러오지 못했습니다."
+                      : "📍 카카오맵 순위 추적 중"}
                 </p>
               </div>
               <div className="text-[10px] leading-4 text-[#6b7280] md:text-[11px] md:text-[#9ca3af]">
@@ -556,6 +577,18 @@ export default function KakaoPlacePage() {
           <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
             {storeLoading ? (
               <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-4 py-10 text-center text-[13px] text-[#9ca3af] md:rounded-[22px] md:px-6 md:py-14 md:text-[14px]">불러오는 중...</div>
+            ) : storeError ? (
+              <div className="rounded-[18px] border border-red-200 bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+                <p className="text-[15px] font-bold text-red-600 md:text-[18px]">매장 목록을 불러오지 못했어요</p>
+                <p className="mt-2 text-[12px] text-[#6b7280] md:text-[14px]">{storeError}</p>
+                <button
+                  type="button"
+                  onClick={() => void fetchStores()}
+                  className="mt-4 rounded-[10px] bg-[#333333] px-4 py-2 text-[12px] font-bold text-white transition hover:bg-[#2563EB] md:text-[13px]"
+                >
+                  다시 시도
+                </button>
+              </div>
             ) : filteredStores.length === 0 ? (
               <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
                 <p className="text-[15px] font-bold text-[#111827] md:text-[18px]">아직 등록된 매장이 없어요</p>

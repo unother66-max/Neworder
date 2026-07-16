@@ -13,6 +13,20 @@ export function parseNaverReviewCountField(v: unknown): number {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
+export function parseNullableNaverReviewCountField(
+  value: unknown
+): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  if (typeof value === "number" && !Number.isFinite(value)) return null;
+
+  const normalized = String(value).replace(/,/g, "").trim();
+  if (!normalized || !/^\d+(?:\.\d+)?$/.test(normalized)) return null;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : null;
+}
+
 /** GraphQL errors[].message — string일 때만 trim 등 문자열 연산 (내부 charAt 등 안전) */
 function toTrimmedGraphqlErrorMessage(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -46,13 +60,6 @@ function collectBatchErrors(batch: unknown[]): string[] {
 
       const msg = toTrimmedGraphqlErrorMessage(msgRaw);
       if (!msg) continue;
-      // 네이버 PC맵 GraphQL 일부 응답에 포함되는 서버측 메시지(우리 스택 아님) — Vercel 로그·gqlErrors 노이즈만 줄임
-      if (
-        msg.includes("Cannot read properties of undefined") &&
-        msg.includes("charAt")
-      ) {
-        continue;
-      }
       out.push(msg);
     }
   }
@@ -64,9 +71,24 @@ function pickOrganicRoot(data: Record<string, unknown>): {
   total?: number;
   items?: unknown[];
 } | null {
-  const places = data.places as
-    | { total?: number; items?: unknown[] }
+  const placesContainer = data.places as
+    | {
+        total?: number;
+        items?: unknown[];
+        businesses?: { total?: number; items?: unknown[] };
+      }
     | undefined;
+  const placeListContainer = data.placeList as
+    | { businesses?: { total?: number; items?: unknown[] } }
+    | undefined;
+  const restaurantsContainer = data.restaurants as
+    | { businesses?: { total?: number; items?: unknown[] } }
+    | undefined;
+  const places =
+    placesContainer?.businesses ??
+    placeListContainer?.businesses ??
+    restaurantsContainer?.businesses ??
+    placesContainer;
   const businesses = data.businesses as
     | { total?: number; items?: unknown[] }
     | undefined;
@@ -154,7 +176,12 @@ export function mergePcmapGraphqlBatch(batch: unknown): MergePcmapBatchResult {
   });
 
   const items = [...adItems, ...organicFiltered];
-  const total = Math.max(organicTotal, adTotal, items.length);
+  // 광고 total은 검색 전체 건수가 아니라 광고 인벤토리/전국 값일 수 있다.
+  // 오가닉 목록이 있으면 해당 쿼리의 오가닉 total만 신뢰한다.
+  const total =
+    organicTotal > 0
+      ? Math.max(organicTotal, organicFiltered.length)
+      : Math.max(adTotal, items.length);
 
   const graphqlErrors = gqlErrors.filter(
     (m) => typeof m === "string" && toTrimmedGraphqlErrorMessage(m).length > 0

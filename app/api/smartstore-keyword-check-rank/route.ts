@@ -4,7 +4,6 @@ import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
   findProductRankViaNaverShopOpenApi,
-  isNaverOpenApiConfiguredForShopping,
 } from "@/lib/naver-openapi-shopping-rank";
 import {
   findProductRankViaNaverShoppingNextData,
@@ -16,10 +15,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  let kwForFailure: { keyword: string; product: { id: string } } | null = null;
   try {
-    const session = (await getServerSession(authOptions as any)) as any;
-    const userId = session?.user?.id;
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
     if (!userId) return NextResponse.json({ error: "로그인 필요" }, { status: 401 });
 
     const body = await req.json();
@@ -33,8 +31,6 @@ export async function POST(req: Request) {
     if (!kw || kw.product.userId !== userId) {
       return NextResponse.json({ error: "권한 없음" }, { status: 404 });
     }
-    kwForFailure = { keyword: kw.keyword, product: { id: kw.product.id } };
-
     let result;
     let rankSource: "PLUS_STORE_ORGANIC_NS_PORTAL" | "search/all";
 
@@ -45,6 +41,7 @@ export async function POST(req: Request) {
           keyword: kw.keyword,
           targetProductId: kw.product.productId as string,
           targetProductUrl: kw.product.productUrl as string | null,
+          targetProductName: kw.product.name,
           pageSize: 40,
         });
       } catch (e) {
@@ -67,11 +64,16 @@ export async function POST(req: Request) {
       });
     }
 
+    const diagnostics =
+      "diagnostics" in result ? result.diagnostics : null;
     console.log("[smartstore-keyword-check-rank]", {
       rankSource,
       keyword: kw.keyword,
+      productName: kw.product.name,
       productUrl: kw.product.productUrl,
-      productId: kw.product.productId,
+      storedProductId: kw.product.productId,
+      storedChannelProductId: diagnostics?.storedChannelProductId ?? null,
+      storedMallProductId: diagnostics?.storedMallProductId ?? null,
       matchedRank: result?.rank ?? null,
       matchedName:
         "matchedName" in (result as Record<string, unknown>) &&
@@ -113,48 +115,79 @@ export async function POST(req: Request) {
         typeof (result as Record<string, unknown>).matchedProductNo === "string"
           ? ((result as Record<string, unknown>).matchedProductNo as string)
           : null,
+      matchedChannelProductId: diagnostics?.matchedChannelProductId ?? null,
+      matchedMallProductId: diagnostics?.matchedMallProductId ?? null,
+      productType:
+        kw.product.space === "PLUS_STORE" ? "plus-store" : "naver-price",
+      ranking: result.rank,
+      page: result.pageNum,
+      indexInPage: result.position,
+      searchApiSource: diagnostics?.searchApiSource ?? rankSource,
+      totalFetchedCount:
+        diagnostics?.totalFetchedCount ??
+        ("scannedCount" in result ? result.scannedCount : null),
+      dedupedCount: diagnostics?.dedupedCount ?? null,
+      isMatched: result.rank != null,
+      reason:
+        diagnostics?.reason ?? (result.rank != null ? "FOUND" : "NOT_FOUND"),
+      debugReason: diagnostics?.debugReason ?? null,
     });
 
-    await prisma.smartstoreRankHistory.create({
-      data: {
-        productId: kw.product.id,
+    let history;
+    try {
+      history = await prisma.smartstoreRankHistory.create({
+        data: {
+          productId: kw.product.id,
+          keyword: kw.keyword,
+          rank: result.rank,
+          pageNum: result.pageNum ?? null,
+          position: result.position ?? null,
+          rankLabel: result.rankLabel,
+        },
+      });
+    } catch (historyError) {
+      console.error("[smartstore-keyword-check-rank:history-save-failed]", {
         keyword: kw.keyword,
-        rank: result.rank,
-        pageNum: result.pageNum ?? null,
-        position: result.position ?? null,
-        rankLabel: result.rankLabel,
-      },
-    });
+        productId: kw.product.id,
+        reason: "HISTORY_SAVE_FAILED",
+        debugReason:
+          historyError instanceof Error ? historyError.message : String(historyError),
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: "HISTORY_SAVE_FAILED",
+          debugReason: "순위 조회는 완료됐지만 히스토리 저장에 실패했습니다.",
+        },
+        { status: 500 }
+      );
+    }
 
-    return NextResponse.json({ ok: true, ...result, rankSource });
+    return NextResponse.json({
+      ok: true,
+      saved: true,
+      historyId: history.id,
+      reason: diagnostics?.reason ?? (result.rank != null ? "FOUND" : "NOT_FOUND"),
+      debugReason: diagnostics?.debugReason ?? null,
+      ...result,
+      rankSource,
+    });
   } catch (e) {
     if (e instanceof NaverShoppingNextDataHttpError) {
-      if (kwForFailure?.product.id && kwForFailure.keyword) {
-        try {
-          await prisma.smartstoreRankHistory.create({
-            data: {
-              productId: kwForFailure.product.id,
-              keyword: kwForFailure.keyword,
-              rank: null,
-              pageNum: null,
-              position: null,
-              rankLabel: "조회 실패",
-            },
-          });
-        } catch (historyError) {
-          console.error("[smartstore-keyword-check-rank:history-save-failed]", historyError);
-        }
-      }
-
       console.error("[smartstore-keyword-check-rank:plus-store-failed]", {
         rankSource: "PLUS_STORE_ORGANIC_NS_PORTAL",
         parserSource: "ns-portal.shopping.naver.com/api/v2/shopping-paged-slot",
         requestUrl: e.requestUrl,
         responseStatus: e.status,
-        responsePreview: e.responsePreview,
+        reason: e.reason,
       });
       return NextResponse.json(
-        { error: "플러스스토어 순위 조회 실패 (광고 제외 기준 API 실패)" },
+        {
+          ok: false,
+          error: "플러스스토어 순위 조회 실패 (기존 순위 유지)",
+          reason: e.reason,
+          debugReason: `NS_PORTAL_${e.reason}:HTTP_${e.status}`,
+        },
         { status: 502 }
       );
     }
@@ -165,6 +198,14 @@ export async function POST(req: Request) {
         { status: 429 }
       );
     }
-    return NextResponse.json({ error: "조회 실패" }, { status: 502 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "조회 실패",
+        reason: "RANK_CHECK_FAILED",
+        debugReason: e instanceof Error ? e.message : String(e),
+      },
+      { status: 502 }
+    );
   }
 }

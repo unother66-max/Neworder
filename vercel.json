@@ -27,6 +27,14 @@
     {
       "path": "/api/cron/blog-rank-snapshot",
       "schedule": "0 19 * * 0"
+    },
+    {
+      "path": "/api/cron/smartstore-plus-rank-tracking",
+      "schedule": "15 19 * * *"
+    },
+    {
+      "path": "/api/cron/place-analysis-registered-keywords",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

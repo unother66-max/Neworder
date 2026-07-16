@@ -43,8 +43,8 @@ function formatKoDateTime(d: Date): string {
 
 export async function GET(req: Request) {
   try {
-    const session = (await getServerSession(authOptions as any)) as any;
-    const userId = session?.user?.id as string | undefined;
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
     if (!userId) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
@@ -145,17 +145,16 @@ export async function GET(req: Request) {
         };
       });
 
-      const ts: number[] = [p.updatedAt.getTime()];
-      for (const k of p.keywords) {
-        ts.push(k.updatedAt.getTime());
-      }
+      const ts: number[] = [];
       for (const kw of keywords) {
         if (kw.latestRankAt) {
           ts.push(new Date(kw.latestRankAt).getTime());
         }
       }
-      const maxTs = Math.max(...ts);
-      const latestUpdatedAt = formatKoDateTime(new Date(maxTs));
+      // 순위 추적 화면의 "최근 업데이트"는 상품 메타/키워드 수정 시간이 아니라
+      // 실제 순위 히스토리가 저장된 시각만 표시한다.
+      const latestUpdatedAt =
+        ts.length > 0 ? formatKoDateTime(new Date(Math.max(...ts))) : null;
 
       const thumb = p.thumbnailLink?.trim() || p.imageUrl?.trim() || null;
 

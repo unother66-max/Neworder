@@ -139,12 +139,14 @@ export async function GET(req: Request) {
           continue;
         }
 
+        const registeredKeywordsStatus =
+          snapshot.registeredKeywordsStatus ?? snapshot.keywordListStatus;
+        const freshRegisteredKeywords =
+          snapshot.registeredKeywords ?? snapshot.keywordList;
         const keywords =
-          snapshot.keywordList && snapshot.keywordList.length > 0
-            ? snapshot.keywordList
-            : latest?.keywords && latest.keywords.length > 0
-              ? latest.keywords
-              : ["맛집", "분위기", "데이트", "가성비", "친절"];
+          registeredKeywordsStatus === "AVAILABLE"
+            ? (freshRegisteredKeywords ?? [])
+            : (latest?.keywords ?? []);
 
         const visitorReviewCount = snapshot.visitorReviewCount;
         const blogReviewCount = snapshot.blogReviewCount;

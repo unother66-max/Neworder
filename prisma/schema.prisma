@@ -226,31 +226,42 @@ model Place {
 }
 
 model PlaceKeyword {
-  id           String   @id @default(cuid())
-  placeId      String
-  keyword      String
-  mobileVolume Int?
-  pcVolume     Int?
-  totalVolume  Int?
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  isTracking   Boolean  @default(false)
-  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  id                String   @id @default(cuid())
+  placeId           String
+  keyword           String
+  mobileVolume      Int?
+  pcVolume          Int?
+  totalVolume       Int?
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  isTracking        Boolean  @default(false)
+  volumeStatus      String?
+  volumeDebugReason String?  @db.Text
+  place             Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@unique([placeId, keyword])
   @@index([placeId])
 }
 
 model RankHistory {
-  id        String   @id @default(cuid())
-  placeId   String
-  keyword   String
-  rank      Int
-  createdAt DateTime @default(now())
-  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  placeId      String
+  keyword      String
+  rank         Int
+  source       String?
+  resultStatus String?
+  rankLabel    String?
+  checkedCount Int?
+  pageNum      Int?
+  position     Int?
+  matchedId    String?
+  debugReason  String?  @db.Text
+  createdAt    DateTime @default(now())
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@index([placeId])
+  @@index([placeId, keyword, source, createdAt])
 }
 
 model KakaoRankHistory {
@@ -287,6 +298,36 @@ model PlaceReviewHistory {
   @@unique([placeId, trackedDate])
   @@index([placeId])
   @@index([trackedDate])
+}
+
+/// 플레이스 분석용 경량 업체 등록 키워드 캐시.
+/// 정식 추적 매장 생성 없이 네이버 publicPlaceId별 마지막 성공값과 cooldown만 보관한다.
+model PlaceRegisteredKeywordCache {
+  id                  String    @id @default(cuid())
+  publicPlaceId       String    @unique
+  keywords            String[]  @default([])
+  hasSuccessfulValue  Boolean   @default(false)
+  source              String?
+  collectedAt         DateTime?
+  lastAttemptAt       DateTime?
+  cooldownUntil       DateTime?
+  refreshLeaseUntil   DateTime?
+  lastFailureCode     String?   @db.Text
+  /// 정식 Place 등록 없이 서버 수집 큐가 재시도할 때 필요한 최소 힌트만 보관한다.
+  placeName           String?
+  category            String?
+  businessType        String?
+  x                   String?
+  y                   String?
+  queueStatus         String    @default("IDLE")
+  queuedAt            DateTime?
+  processingStartedAt DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([cooldownUntil])
+  @@index([collectedAt])
+  @@index([queueStatus, queuedAt])
 }
 
 model SmartstoreProduct {

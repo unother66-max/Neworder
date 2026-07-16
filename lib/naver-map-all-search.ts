@@ -31,6 +31,7 @@ export type MapAllSearchPlaceRow = {
   id: string;
   name: string;
   category: string;
+  businessCategory?: string;
   roadAddress: string;
   address: string;
   x: string;
@@ -49,6 +50,7 @@ export type NaverMapAllSearchPlaceListItem = {
   name?: string;
   category?: string[];
   categoryPath?: string[];
+  businessCategory?: string;
   roadAddress?: string;
   address?: string;
   x?: string;
@@ -755,6 +757,7 @@ export function mapAllSearchListItemToRow(
     id,
     name,
     category: cat,
+    businessCategory: String(item.businessCategory ?? "").trim() || undefined,
     roadAddress: String(item.roadAddress ?? "").trim(),
     address: String(item.address ?? "").trim(),
     x: String(item.x ?? "").trim(),

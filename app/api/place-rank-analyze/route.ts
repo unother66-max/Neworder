@@ -1,8 +1,27 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/auth";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
-import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
+import { prisma } from "@/lib/prisma";
 import {
-  buildLocationFallbackSearchKeyword,
+  hasFreshRegisteredKeywordCache,
+  isRegisteredKeywordBlockReason,
+  isRegisteredKeywordCooldownActive,
+  loadRegisteredKeywordCacheState,
+  mapWithConcurrency,
+  type RegisteredKeywordCacheEntry,
+} from "@/lib/place-registered-keyword-cache";
+import {
+  enqueueRegisteredKeywordCollectionTargets,
+  processRegisteredKeywordQueue,
+  type RegisteredKeywordQueueTarget,
+} from "@/lib/place-registered-keyword-queue";
+import {
+  extractReviewFeatureKeywordsFromObject,
+  getNaverPlaceReviewSnapshot,
+  type KeywordCollectionStatus,
+} from "@/lib/getNaverPlaceReviewSnapshot";
+import {
   expandLocationAddressHints,
   normalizePlaceSearchKeywordTypos,
 } from "@/lib/place-keyword-fallback";
@@ -13,10 +32,8 @@ import {
   NAVER_PCMAP_GRAPHQL_URL,
   buildGetPlacesListFetchHeaders,
   buildGetPlacesListFetchHeadersForServer,
-  buildGetPlacesListPagedBatch,
   pickBusinessesCoords,
   pickPlaceRankGeoRadiiKm,
-  resolveBusinessesCoords,
 } from "@/lib/naver-map-businesses-shared";
 import { fetchAllSearchPlacesAutoDetailed } from "@/lib/naver-map-all-search-auto";
 import {
@@ -25,8 +42,9 @@ import {
 } from "@/lib/naver-map-all-search";
 import {
   mergePcmapGraphqlBatch,
-  parseNaverReviewCountField,
+  parseNullableNaverReviewCountField,
 } from "@/lib/merge-pcmap-businesses-batch";
+import { buildPcmapPlaceListRequestPayload } from "@/lib/pcmap-place-list-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +57,7 @@ const RESTAURANT_DISPLAY = 30;
 const LIST_CAP = 30;
 /** map GraphQL 배치·allSearch 등 네이버가 한 페이지에 내려주는 건수에 맞춤 (display≈70) */
 const LIST_CAP_CLIENT_TRUSTED = 70;
+const PLACE_ANALYSIS_REVIEW_CONCURRENCY = 2;
 
 function normalizeText(value: string) {
   return String(value || "")
@@ -496,51 +515,6 @@ function refineItemsForPlaceRankAnalyze(
   return items.slice(0, maxCount);
 }
 
-const GET_RESTAURANTS_QUERY = `
-query getRestaurants(
-  $restaurantListInput: RestaurantListInput,
-  $restaurantListFilterInput: RestaurantListFilterInput,
-  $reverseGeocodingInput: ReverseGeocodingInput,
-  $useReverseGeocode: Boolean = false
-) {
-  restaurants: restaurantList(input: $restaurantListInput) {
-    items {
-      id
-      name
-      category
-      businessCategory
-      imageUrl
-      x
-      y
-      address
-      roadAddress
-      totalReviewCount
-      visitorReviewCount
-      blogCafeReviewCount
-      saveCount
-      __typename
-    }
-    total
-    __typename
-  }
-  filters: restaurantListFilter(input: $restaurantListFilterInput) {
-    filters {
-      index
-      name
-      displayName
-      value
-      __typename
-    }
-    __typename
-  }
-  reverseGeocodingAddr(input: $reverseGeocodingInput) @include(if: $useReverseGeocode) {
-    rcode
-    region
-    __typename
-  }
-}
-`;
-
 type GraphqlItem = {
   id?: string;
   name?: string;
@@ -558,11 +532,111 @@ type GraphqlItem = {
   visitorReviewCount?: string | number | null;
   blogCafeReviewCount?: string | number | null;
   totalReviewCount?: string | number | null;
-  saveCount?: string | number;
+  saveCount?: string | number | null;
+  microReview?: unknown;
   /** pcmap 배치의 PlaceAdSummary */
   isPromotedAd?: boolean;
   adId?: string;
 };
+
+function extractNaverPlaceId(value: unknown): string {
+  const raw = String(value ?? "");
+  return (
+    raw.match(/\/(?:restaurant|place)\/(\d+)/i)?.[1] ??
+    raw.match(/\/entry\/place\/(\d+)/i)?.[1] ??
+    ""
+  );
+}
+
+type RegisteredKeywordHistoryFallback = {
+  keywords: string[];
+  collectedAt: Date;
+};
+
+async function loadPlaceAnalysisUserId(): Promise<string> {
+  try {
+    const session = (await getServerSession(authOptions)) as
+      | { user?: { id?: string | null } }
+      | null;
+    return String(session?.user?.id ?? "").trim();
+  } catch (error) {
+    // 분석 자체는 공개/비로그인 상태에서도 기존처럼 동작한다. 세션을 읽지
+    // 못하면 브라우저 캐시 저장 티켓과 사용자 전용 history만 비활성화한다.
+    console.warn("[place-rank-analyze session]", {
+      reason: error instanceof Error ? error.name : "UNKNOWN",
+    });
+    return "";
+  }
+}
+
+async function loadRegisteredKeywordHistoryByPlaceId(userId: string) {
+  const byPlaceId = new Map<string, RegisteredKeywordHistoryFallback>();
+  if (!userId) return byPlaceId;
+  try {
+    const places = await prisma.place.findMany({
+      where: { userId, type: "review" },
+      select: {
+        placeUrl: true,
+        reviewHistory: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { keywords: true, updatedAt: true },
+        },
+      },
+    });
+    for (const place of places) {
+      const placeId = extractNaverPlaceId(place.placeUrl);
+      const latest = place.reviewHistory[0];
+      if (!placeId || !latest) continue;
+      // 과거 PlaceReviewHistory는 미수집 실패도 []로 남을 수 있어 빈 배열의
+      // AVAILABLE 여부를 판별할 수 없다. 비어 있지 않은 성공 이력만 seed하고,
+      // 실제 빈 값은 새 캐시의 hasSuccessfulValue=true + []로만 보존한다.
+      const keywords = latest.keywords
+        .map((keyword) => String(keyword).trim())
+        .filter(Boolean);
+      if (keywords.length === 0) continue;
+      byPlaceId.set(placeId, {
+        keywords,
+        collectedAt: latest.updatedAt,
+      });
+    }
+  } catch (error) {
+    console.warn("[place-rank-analyze registered keyword history]", {
+      reason: error instanceof Error ? error.name : "UNKNOWN",
+    });
+  }
+  return byPlaceId;
+}
+
+async function tryRegisteredKeywordCache<T>(
+  action: string,
+  work: () => Promise<T>
+): Promise<T | null> {
+  try {
+    return await work();
+  } catch (error) {
+    console.warn("[place-rank-analyze registered keyword cache]", {
+      action,
+      reason: error instanceof Error ? error.name : "UNKNOWN",
+    });
+    return null;
+  }
+}
+
+function shouldOpenReviewSnapshotCircuit(params: {
+  reason: string;
+  requestUrls?: string[];
+  collectedRegisteredKeywords: boolean;
+}) {
+  const lastUrl = params.requestUrls?.at(-1) ?? "";
+  const informationOnlyBlock =
+    params.collectedRegisteredKeywords &&
+    /HTML_(?:NCAPTCHA|COOLDOWN|BLOCKED_HTTP_403|HTTP_429)/i.test(
+      params.reason
+    ) &&
+    /\/information(?:[/?#]|$)/i.test(lastUrl);
+  return !informationOnlyBlock;
+}
 
 function isMapAllSearchPlaceRow(v: unknown): v is MapAllSearchPlaceRow {
   if (!v || typeof v !== "object") return false;
@@ -585,6 +659,7 @@ function graphqlItemsFromMapAllSearchPlaces(rows: unknown[]): GraphqlItem[] {
       id: String(r.id).trim(),
       name: String(r.name).trim(),
       category: String(r.category ?? "").trim(),
+      businessCategory: String(r.businessCategory ?? "").trim(),
       imageUrl: String(r.thumUrl ?? "").trim(),
       x: String(r.x ?? "").trim(),
       y: String(r.y ?? "").trim(),
@@ -653,7 +728,7 @@ async function loadItemsFromCheckPlaceStyleAllSearch(
   };
 }
 
-function parseBatchedGraphqlBody(raw: string): any[] | null {
+function parseBatchedGraphqlBody(raw: string): unknown[] | null {
   const t = String(raw || "").trimStart();
   if (!t || t.startsWith("<")) return null;
   try {
@@ -664,52 +739,86 @@ function parseBatchedGraphqlBody(raw: string): any[] | null {
   }
 }
 
-function collectBatchErrors(batch: any[]): string[] {
+function collectBatchErrors(batch: unknown[]): string[] {
   const out: string[] = [];
   for (const item of batch) {
-    if (!Array.isArray(item?.errors)) continue;
-    for (const err of item.errors) {
-      const m = err?.message;
+    if (!item || typeof item !== "object") continue;
+    const errors = (item as { errors?: unknown }).errors;
+    if (!Array.isArray(errors)) continue;
+    for (const err of errors) {
+      const m =
+        err && typeof err === "object"
+          ? (err as { message?: unknown }).message
+          : null;
       if (typeof m === "string" && m.trim()) out.push(m.trim());
     }
   }
   return out;
 }
 
+function safeGraphqlError(value: unknown): string | null {
+  const raw = String(value ?? "").replace(/\s+/g, " ").trim();
+  const message = (/^[A-Z0-9_]+(?::[^\s]*)?$/.test(raw)
+    ? raw
+    : raw
+    .replace(/https?:\/\/\S+/gi, "[URL]")
+    .replace(/[A-Za-z0-9._=-]{24,}/g, "[REDACTED]")
+  ).slice(0, 240);
+  return message || null;
+}
+
 type FetchBusinessesResult = {
   items: GraphqlItem[];
   total: number;
   graphqlErrors: string[];
+  fallbackUsed: boolean;
+  primaryError: string | null;
+  queryUsed: string;
 };
 
-function businessesResultFromBatch(batch: any[]): FetchBusinessesResult {
+function businessesResultFromBatch(
+  batch: unknown[],
+  queryUsed: string
+): FetchBusinessesResult {
   const merged = mergePcmapGraphqlBatch(batch);
   const items = merged.items as GraphqlItem[];
+  const graphqlErrors = Array.from(
+    new Set([...collectBatchErrors(batch), ...merged.graphqlErrors])
+  );
   console.log("[place-rank-analyze batch merge]", {
     mergedCount: items.length,
     total: merged.total,
-    gqlErrorCount: merged.graphqlErrors.length,
+    gqlErrorCount: graphqlErrors.length,
   });
   return {
     items,
     total: merged.total,
-    graphqlErrors: merged.graphqlErrors,
+    graphqlErrors,
+    fallbackUsed: false,
+    primaryError: safeGraphqlError(graphqlErrors[0]),
+    queryUsed,
   };
 }
 
 async function fetchPlacesListBusinessesOnce(
   keyword: string,
-  coordAnchorKeyword?: string,
   opts?: { mapReferer?: boolean; pageCount?: number }
 ): Promise<FetchBusinessesResult> {
-  const coords = resolveBusinessesCoords(keyword, coordAnchorKeyword);
+  const coords = pickBusinessesCoords(keyword);
   const mapReferer = Boolean(opts?.mapReferer);
   const pageCount = mapReferer
     ? 1
     : Math.max(1, opts?.pageCount ?? BUSINESSES_GRAPHQL_PAGE_COUNT);
-  const batchBody = mapReferer
-    ? buildGetPlacesListPagedBatch(keyword, coords, 1)
-    : buildGetPlacesListPagedBatch(keyword, coords, pageCount);
+  const batchBody = Array.from({ length: pageCount }, (_, index) =>
+    buildPcmapPlaceListRequestPayload({
+      businessType: "place",
+      keyword,
+      x: coords.x,
+      y: coords.y,
+      start: 1 + index * LIST_CAP,
+      display: LIST_CAP,
+    })
+  );
   const bodyStr = JSON.stringify(batchBody);
   const headers = mapReferer
     ? buildGetPlacesListFetchHeaders(keyword)
@@ -717,7 +826,6 @@ async function fetchPlacesListBusinessesOnce(
 
   console.log("[place-rank-analyze businesses request]", {
     keyword,
-    coordAnchorKeyword: coordAnchorKeyword ?? null,
     coords,
     url: NAVER_PCMAP_GRAPHQL_URL,
     headers: {
@@ -756,7 +864,14 @@ async function fetchPlacesListBusinessesOnce(
       status: res.status,
       rawPreview: raw.slice(0, 4000),
     });
-    return { items: [], total: 0, graphqlErrors: [] };
+    return {
+      items: [],
+      total: 0,
+      graphqlErrors: [`HTTP_${res.status}_NON_JSON`],
+      fallbackUsed: false,
+      primaryError: `HTTP_${res.status}_NON_JSON`,
+      queryUsed: keyword,
+    };
   }
 
   const gqlErrors = collectBatchErrors(batch);
@@ -771,8 +886,14 @@ async function fetchPlacesListBusinessesOnce(
   const rawPreview =
     raw.length > 6000 ? `${raw.slice(0, 6000)}…(truncated,len=${raw.length})` : raw;
 
-  const d0 = json?.[0]?.data as Record<string, unknown> | undefined;
-  const plRoot = d0?.places as { total?: number; items?: unknown[] } | undefined;
+  const firstPart = (json[0] ?? null) as
+    | { data?: Record<string, unknown>; errors?: unknown }
+    | null;
+  const d0 = firstPart?.data;
+  const placesContainer = d0?.places as
+    | { businesses?: { total?: number; items?: unknown[] } }
+    | undefined;
+  const plRoot = placesContainer?.businesses;
   const bizRoot = d0?.businesses as { total?: number; items?: unknown[] } | undefined;
   const organic = plRoot?.items?.length ? plRoot : bizRoot;
   console.log("[place-rank-analyze businesses raw]", {
@@ -780,163 +901,57 @@ async function fetchPlacesListBusinessesOnce(
     httpStatus: res.status,
     rawPreview,
     batchFirstStringified: JSON.stringify(json[0] ?? null).slice(0, 8000),
-    dataKeys: Object.keys(json?.[0]?.data || {}),
+    dataKeys: Object.keys(d0 || {}),
     placesItems: Array.isArray(plRoot?.items) ? plRoot!.items!.length : -1,
     businessesItems: Array.isArray(bizRoot?.items) ? bizRoot!.items!.length : -1,
     total: organic?.total,
     itemsLength: Array.isArray(organic?.items) ? organic!.items!.length : -1,
     firstItem: organic?.items?.[0] ?? null,
-    batchErrors: json?.[0]?.errors ?? null,
+    batchErrors: firstPart?.errors ?? null,
   });
 
-  return businessesResultFromBatch(batch);
+  return businessesResultFromBatch(batch, keyword);
 }
 
 async function fetchPlacesListBusinesses(
   originalKeyword: string
 ): Promise<FetchBusinessesResult> {
-  const tryMapReferer = async (
-    keyword: string,
-    coordAnchorKeyword?: string
-  ): Promise<FetchBusinessesResult | null> => {
+  const tryMapReferer = async (): Promise<FetchBusinessesResult | null> => {
     await new Promise((r) => setTimeout(r, 420));
-    const m = await fetchPlacesListBusinessesOnce(
-      keyword,
-      coordAnchorKeyword,
-      { mapReferer: true }
-    );
+    const m = await fetchPlacesListBusinessesOnce(originalKeyword, {
+      mapReferer: true,
+    });
     return m.items.length > 0 ? m : null;
   };
-
-  const fallback = buildLocationFallbackSearchKeyword(originalKeyword);
-
-  /**
-   * 지역+업종(서울역 필라테스 등)은 map.naver 검색과 맞추려면 **원문 쿼리**를 먼저 써야 한다.
-   * 업종-only(필라테스)만 먼저 쓰면 인기 체인(마포·신촌 등)이 앞에 오는 등 순위가 달라진다.
-   * 원문이 0건일 때만 업종-only + 앵커 좌표로 폴백.
-   */
-  if (fallback) {
-    console.log("[place-rank-analyze fallback]", {
-      original: originalKeyword,
-      fallback,
-      mode: "original-first",
-    });
-
-    const fromOriginal = await fetchPlacesListBusinessesOnce(originalKeyword);
-    if (fromOriginal.items.length > 0) {
-      return fromOriginal;
-    }
-
-    await new Promise((r) => setTimeout(r, 350));
-
-    const fromFallback = await fetchPlacesListBusinessesOnce(
-      fallback,
-      originalKeyword
-    );
-    const mergedErrors = Array.from(
-      new Set([...fromOriginal.graphqlErrors, ...fromFallback.graphqlErrors])
-    );
-
-    if (fromFallback.items.length > 0) {
-      return {
-        items: fromFallback.items,
-        total: fromFallback.total,
-        graphqlErrors: mergedErrors,
-      };
-    }
-
-    const mapOr = await tryMapReferer(originalKeyword);
-    if (mapOr) {
-      return {
-        items: mapOr.items,
-        total: mapOr.total,
-        graphqlErrors: Array.from(
-          new Set([...mergedErrors, ...mapOr.graphqlErrors])
-        ),
-      };
-    }
-    const mapFb = await tryMapReferer(fallback, originalKeyword);
-    if (mapFb) {
-      return {
-        items: mapFb.items,
-        total: mapFb.total,
-        graphqlErrors: Array.from(
-          new Set([...mergedErrors, ...mapFb.graphqlErrors])
-        ),
-      };
-    }
-
-    console.warn("[place-rank-analyze businesses server empty]", {
-      keyword: originalKeyword,
-      triedFallbackKeyword: true,
-      hint: "브라우저 세션으로 map.naver.com에서 받은 배열을 body.businessesGraphqlBatch로 넘기거나, 별도 프록시/자동화를 검토하세요.",
-    });
-
-    return {
-      items: [],
-      total: 0,
-      graphqlErrors: mergedErrors,
-    };
-  }
 
   const only = await fetchPlacesListBusinessesOnce(originalKeyword);
   if (only.items.length > 0) {
     return only;
   }
 
-  const mapOnly = await tryMapReferer(originalKeyword);
+  const mapOnly = await tryMapReferer();
   if (mapOnly) {
+    const errors = Array.from(
+      new Set([...only.graphqlErrors, ...mapOnly.graphqlErrors])
+    );
     return {
       items: mapOnly.items,
       total: mapOnly.total,
-      graphqlErrors: Array.from(
-        new Set([...only.graphqlErrors, ...mapOnly.graphqlErrors])
-      ),
+      graphqlErrors: errors,
+      fallbackUsed: true,
+      primaryError:
+        only.primaryError ?? safeGraphqlError(errors[0]) ?? "PRIMARY_EMPTY",
+      queryUsed: originalKeyword,
     };
   }
 
   console.warn("[place-rank-analyze businesses server empty]", {
     keyword: originalKeyword,
     triedFallbackKeyword: false,
+    originalKeywordPreserved: true,
     hint: "브라우저 세션으로 map.naver.com에서 받은 배열을 body.businessesGraphqlBatch로 넘기거나, 별도 프록시/자동화를 검토하세요.",
   });
   return only;
-}
-
-function buildRestaurantListPayload(
-  keyword: string,
-  coords: { x: string; y: string },
-  start: number = 1
-) {
-  return [
-    {
-      operationName: "getRestaurants",
-      variables: {
-        useReverseGeocode: true,
-        restaurantListInput: {
-          query: keyword,
-          x: coords.x,
-          y: coords.y,
-          start,
-          display: RESTAURANT_DISPLAY,
-          deviceType: "pcmap",
-          isPcmap: true,
-        },
-        restaurantListFilterInput: {
-          x: coords.x,
-          y: coords.y,
-          display: RESTAURANT_DISPLAY,
-          start,
-          query: keyword,
-        },
-        reverseGeocodingInput: {
-          x: coords.x,
-          y: coords.y,
-        },
-      },
-      query: GET_RESTAURANTS_QUERY,
-    },
-  ];
 }
 
 type FetchRestaurantsResult = {
@@ -964,8 +979,18 @@ async function fetchRestaurantListPage(
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
       "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      "X-Wtm-NCaptcha-Token": "NCAPTCHA_FALLBACK_NO_OBJECT",
     },
-    body: JSON.stringify(buildRestaurantListPayload(keyword, coords, start)),
+    body: JSON.stringify([
+      buildPcmapPlaceListRequestPayload({
+        businessType: "restaurant",
+        keyword,
+        x: coords.x,
+        y: coords.y,
+        start,
+        display: RESTAURANT_DISPLAY,
+      }),
+    ]),
     cache: "no-store",
   });
 
@@ -991,22 +1016,28 @@ async function fetchRestaurantListPage(
     });
   }
 
-  const root = batch[0]?.data?.restaurants;
-  const items = Array.isArray(root?.items) ? root.items : [];
+  const firstPart = (batch[0] ?? null) as
+    | {
+        data?: {
+          restaurants?: {
+            businesses?: { total?: unknown; items?: unknown[] };
+          };
+        };
+      }
+    | null;
+  const root = firstPart?.data?.restaurants?.businesses;
+  const items = Array.isArray(root?.items)
+    ? (root.items as GraphqlItem[])
+    : [];
   const total = Number(root?.total || 0);
 
   return { items, total, graphqlErrors: gqlErrors };
 }
 
-/**
- * @param coordSourceKeyword — 검색어와 다른 좌표를 쓸 때(예: 쿼리는 "필라테스", 중심은 "압구정 필라테스")
- */
 async function fetchRestaurantList(
-  keyword: string,
-  coordSourceKeyword?: string
+  keyword: string
 ): Promise<FetchRestaurantsResult> {
-  const centerKw = String(coordSourceKeyword || keyword || "").trim() || keyword;
-  const coords = pickBusinessesCoords(centerKw);
+  const coords = pickBusinessesCoords(keyword);
 
   const [a, b] = await Promise.all([
     fetchRestaurantListPage(keyword, coords, 1),
@@ -1034,62 +1065,6 @@ async function fetchRestaurantList(
   };
 }
 
-/**
- * "서울역 필라테스"처럼 지역+업종은 restaurantList가 0인 경우가 많고,
- * 업종만(필라테스)은 같은 API에서 건수가 나오는 경우가 있어 businesses와 동일하게 fallback-first.
- * 맛집 키워드 경로(food → restaurant 먼저)에는 사용하지 않음.
- */
-async function fetchRestaurantListWithLocationFallback(
-  originalKeyword: string
-): Promise<FetchRestaurantsResult> {
-  const fallback = buildLocationFallbackSearchKeyword(originalKeyword);
-  if (!fallback) {
-    return fetchRestaurantList(originalKeyword);
-  }
-
-  console.log("[place-rank-analyze restaurant merge-queries]", {
-    original: originalKeyword,
-    fallback,
-  });
-
-  const [fromOriginal, fromFallback] = await Promise.all([
-    fetchRestaurantList(originalKeyword),
-    fetchRestaurantList(fallback, originalKeyword),
-  ]);
-
-  const byId = new Map<string, GraphqlItem>();
-  for (const it of fromOriginal.items) {
-    const id = String(it.id ?? "").trim();
-    if (id) byId.set(id, it);
-  }
-  for (const it of fromFallback.items) {
-    const id = String(it.id ?? "").trim();
-    if (id && !byId.has(id)) byId.set(id, it);
-  }
-
-  const merged = Array.from(byId.values());
-  const mergedErrors = Array.from(
-    new Set([...fromOriginal.graphqlErrors, ...fromFallback.graphqlErrors])
-  );
-
-  console.log("[place-rank-analyze restaurant merge]", {
-    original: originalKeyword,
-    nOriginal: fromOriginal.items.length,
-    nFallback: fromFallback.items.length,
-    nMerged: merged.length,
-  });
-
-  return {
-    items: merged,
-    total: Math.max(
-      fromOriginal.total,
-      fromFallback.total,
-      merged.length
-    ),
-    graphqlErrors: mergedErrors,
-  };
-}
-
 function pickGraphqlItemImageUrl(item: GraphqlItem): string {
   const r = item as Record<string, unknown>;
   const parts = [
@@ -1106,26 +1081,43 @@ function pickGraphqlItemImageUrl(item: GraphqlItem): string {
 }
 
 function mapItemToListRow(item: GraphqlItem, index: number) {
-  const visitor = parseNaverReviewCountField(item.visitorReviewCount);
-  const blog = parseNaverReviewCountField(item.blogCafeReviewCount);
-  const totalFromApi = parseNaverReviewCountField(item.totalReviewCount);
-  const total = totalFromApi || visitor + blog;
+  const visitor = parseNullableNaverReviewCountField(item.visitorReviewCount);
+  const blog = parseNullableNaverReviewCountField(item.blogCafeReviewCount);
+  const totalFromApi = parseNullableNaverReviewCountField(
+    item.totalReviewCount
+  );
+  const save = parseNullableNaverReviewCountField(item.saveCount);
+  const total =
+    totalFromApi ??
+    (visitor !== null && blog !== null ? visitor + blog : null);
+  const category = String(item.category ?? "").trim();
+  const businessCategory = String(item.businessCategory ?? "").trim();
+  const reviewFeatureKeywords =
+    extractReviewFeatureKeywordsFromObject(item);
 
   return {
     rank: index + 1,
     placeId: String(item.id ?? ""),
     name: String(item.name ?? ""),
-    category: String(item.category || item.businessCategory || "").trim(),
+    category: category || businessCategory,
+    businessCategory,
     address: String(
       item.roadAddress || item.address || item.fullAddress || ""
     ).trim(),
     imageUrl: pickGraphqlItemImageUrl(item),
     isPromotedAd: Boolean(item.isPromotedAd),
+    registeredKeywords: null as string[] | null,
+    registeredKeywordsStatus: "UNAVAILABLE" as KeywordCollectionStatus,
+    reviewFeatureKeywords: reviewFeatureKeywords.keywords,
+    reviewFeatureKeywordsStatus: reviewFeatureKeywords.status,
     review: {
       visitor,
       blog,
       total,
-      save: item.saveCount ?? "0",
+      save,
+      visitorStatus: visitor === null ? "UNAVAILABLE" : "AVAILABLE",
+      blogStatus: blog === null ? "UNAVAILABLE" : "AVAILABLE",
+      saveStatus: save === null ? "UNAVAILABLE" : "AVAILABLE",
     },
     _coords: {
       x: item.x != null ? String(item.x) : "",
@@ -1241,10 +1233,22 @@ export async function POST(req: Request) {
       );
     }
 
+    const analysisUserId = await loadPlaceAnalysisUserId();
+
     let items: GraphqlItem[] = [];
     let apiTotal = 0;
     let source: "businesses" | "restaurant" | "mapAllSearch" = "businesses";
     let graphqlErrors: string[] = [];
+    let fallbackUsed = false;
+    let primaryError: string | null = null;
+    let earlierAttemptFailed = false;
+    const noteFailedAttempt = (reason: unknown) => {
+      earlierAttemptFailed = true;
+      primaryError ??= safeGraphqlError(reason) ?? "PRIMARY_EMPTY";
+    };
+    const noteSelectedResult = () => {
+      if (earlierAttemptFailed) fallbackUsed = true;
+    };
 
     const diagnostics: {
       failureCode?: string;
@@ -1266,24 +1270,48 @@ export async function POST(req: Request) {
       body.businessesGraphqlBatch.length > 0
         ? body.businessesGraphqlBatch
         : null;
+    const clientBatchKeyword = String(
+      body.businessesGraphqlKeyword ?? ""
+    ).trim();
 
     let usedMapAllSearchPlaces = false;
     let usedClientBusinessesBatch = false;
 
     /** pcmap GraphQL 배치가 지도 왼쪽 목록과 일치 — allSearch(별도 랭킹)보다 우선 */
-    if (clientBatch && !isIntentMixedKeyword(keyword)) {
+    if (
+      clientBatch &&
+      !isIntentMixedKeyword(keyword) &&
+      clientBatchKeyword === keyword
+    ) {
       console.log("[place-rank-analyze businesses client-batch]", {
         keyword,
         batchLength: clientBatch.length,
       });
-      const bc = businessesResultFromBatch(clientBatch);
+      const bc = businessesResultFromBatch(clientBatch, clientBatchKeyword);
       graphqlErrors.push(...bc.graphqlErrors);
       if (bc.items.length > 0) {
         items = bc.items;
         apiTotal = bc.total;
         source = "businesses";
         usedClientBusinessesBatch = true;
+        primaryError ??= bc.primaryError;
+        noteSelectedResult();
+      } else {
+        noteFailedAttempt(bc.primaryError ?? "CLIENT_BATCH_EMPTY");
       }
+    } else if (clientBatch && !isIntentMixedKeyword(keyword)) {
+      noteFailedAttempt(
+        clientBatchKeyword
+          ? `CLIENT_BATCH_QUERY_MISMATCH:${clientBatchKeyword}`
+          : "CLIENT_BATCH_QUERY_UNVERIFIED"
+      );
+      diagnostics.hints.push(
+        "브라우저 GraphQL 응답의 검색어가 원문과 일치하는지 확인할 수 없어 해당 batch를 사용하지 않았습니다."
+      );
+      console.warn("[place-rank-analyze client batch rejected]", {
+        requestedKeyword: keyword,
+        clientBatchKeyword: clientBatchKeyword || null,
+      });
     }
 
     if ((!usedClientBusinessesBatch || isIntentMixedKeyword(keyword)) && mapAllRaw) {
@@ -1293,6 +1321,7 @@ export async function POST(req: Request) {
         apiTotal = Number(body.mapAllSearchTotalCount ?? converted.length);
         source = "mapAllSearch";
         usedMapAllSearchPlaces = true;
+        noteSelectedResult();
         console.log("[place-rank-analyze mapAllSearch]", {
           keyword,
           rowCount: mapAllRaw.length,
@@ -1313,6 +1342,7 @@ export async function POST(req: Request) {
           apiTotal = fromAll.total;
           source = "mapAllSearch";
           usedMapAllSearchPlaces = true;
+          noteSelectedResult();
     
           console.log("[place-rank-analyze intentMixed allSearch first]", {
             keyword,
@@ -1321,6 +1351,9 @@ export async function POST(req: Request) {
           });
         } else {
           serverTokenlessAllSearchFailed = true;
+          noteFailedAttempt(
+            `ALLSEARCH_${fromAll.failureCode}`
+          );
           diagnostics.failureCode = mapAllSearchFailureToDiagnosticsCode(
             fromAll.failureCode
           );
@@ -1333,6 +1366,13 @@ export async function POST(req: Request) {
             items = b.items;
             apiTotal = b.total;
             source = "businesses";
+            if (b.fallbackUsed) {
+              fallbackUsed = true;
+              primaryError ??= b.primaryError;
+            }
+            noteSelectedResult();
+          } else {
+            noteFailedAttempt(b.primaryError ?? "GET_PLACES_LIST_EMPTY");
           }
         }
       } else if (food) {
@@ -1346,11 +1386,24 @@ export async function POST(req: Request) {
           items = r.items;
           apiTotal = r.total;
           source = "restaurant";
+          noteSelectedResult();
         } else if (b.items.length > 0) {
+          noteFailedAttempt(
+            safeGraphqlError(r.graphqlErrors[0]) ?? "GET_RESTAURANTS_PCMAP_EMPTY"
+          );
           items = b.items;
           apiTotal = b.total;
           source = "businesses";
+          if (b.fallbackUsed) {
+            primaryError ??= b.primaryError;
+          }
+          noteSelectedResult();
         } else {
+          noteFailedAttempt(
+            safeGraphqlError(r.graphqlErrors[0]) ??
+              b.primaryError ??
+              "PCMAP_PRIMARY_EMPTY"
+          );
           serverPcmapGraphqlEmpty = true;
           const fromAll = await loadItemsFromCheckPlaceStyleAllSearch(keyword);
           if (fromAll.ok) {
@@ -1358,6 +1411,7 @@ export async function POST(req: Request) {
             apiTotal = fromAll.total;
             source = "mapAllSearch";
             usedMapAllSearchPlaces = true;
+            noteSelectedResult();
           } else {
             serverTokenlessAllSearchFailed = true;
             if (!diagnostics.hints.some((h) => h.includes("PC맵"))) {
@@ -1381,7 +1435,13 @@ export async function POST(req: Request) {
           items = b.items;
           apiTotal = b.total;
           source = "businesses";
+          if (b.fallbackUsed) {
+            fallbackUsed = true;
+            primaryError ??= b.primaryError;
+          }
+          noteSelectedResult();
         } else {
+          noteFailedAttempt(b.primaryError ?? "GET_PLACES_LIST_EMPTY");
           serverPcmapGraphqlEmpty = true;
           const fromAll = await loadItemsFromCheckPlaceStyleAllSearch(keyword);
           if (fromAll.ok) {
@@ -1389,6 +1449,7 @@ export async function POST(req: Request) {
             apiTotal = fromAll.total;
             source = "mapAllSearch";
             usedMapAllSearchPlaces = true;
+            noteSelectedResult();
           } else {
             serverTokenlessAllSearchFailed = true;
             if (!diagnostics.hints.some((h) => h.includes("PC맵"))) {
@@ -1410,11 +1471,12 @@ export async function POST(req: Request) {
                 );
               }
             } else {
-              const r = await fetchRestaurantListWithLocationFallback(keyword);
+              const r = await fetchRestaurantList(keyword);
               graphqlErrors.push(...r.graphqlErrors);
               items = r.items;
               apiTotal = r.total;
               source = "restaurant";
+              if (r.items.length > 0) noteSelectedResult();
             }
           }
         }
@@ -1466,61 +1528,198 @@ export async function POST(req: Request) {
     );
     const capped = regionFiltered;
     const baseRows = capped.map((item, index) => mapItemToListRow(item, index));
+    const cacheLoadAt = new Date();
+    const publicPlaceIds = baseRows
+      .map((row) => String(row.placeId || "").trim())
+      .filter(Boolean);
+    const [registeredKeywordHistoryByPlaceId, loadedCacheState] =
+      await Promise.all([
+        loadRegisteredKeywordHistoryByPlaceId(analysisUserId),
+        tryRegisteredKeywordCache("load", () =>
+          loadRegisteredKeywordCacheState(publicPlaceIds, cacheLoadAt)
+        ),
+      ]);
+    const registeredKeywordCacheByPlaceId =
+      loadedCacheState?.byPlaceId ??
+      new Map<string, RegisteredKeywordCacheEntry>();
+    const registeredKeywordGlobalCooldown = Boolean(
+      loadedCacheState?.globalBlockUntil &&
+        loadedCacheState.globalBlockUntil.getTime() > cacheLoadAt.getTime()
+    );
+    let reviewSnapshotCircuitOpen = false;
+    let reviewSnapshotCircuitReason: string | null = null;
+    const registeredKeywordQueueTargets: RegisteredKeywordQueueTarget[] = [];
 
-    const snapshotTryUrls = (placeId: string) => [
-      `https://m.place.naver.com/place/${placeId}/home`,
-      `https://m.place.naver.com/restaurant/${placeId}/home`,
-    ];
-
-    const list = await Promise.all(
-      baseRows.map(async (row) => {
+    const list = await mapWithConcurrency(
+      baseRows,
+      PLACE_ANALYSIS_REVIEW_CONCURRENCY,
+      async (row) => {
         const { _coords, ...rest } = row;
         const placeId = String(rest.placeId || "").trim();
         const placeName = String(rest.name || "").trim();
+        const attemptAt = new Date();
+        const cacheEntry = registeredKeywordCacheByPlaceId.get(placeId);
+        const historyFallback =
+          registeredKeywordHistoryByPlaceId.get(placeId);
+        const freshCache = hasFreshRegisteredKeywordCache(
+          cacheEntry,
+          attemptAt
+        );
+        const cooldownActive = isRegisteredKeywordCooldownActive(
+          cacheEntry,
+          attemptAt
+        );
+        const snapshotCircuitOpenAtStart = reviewSnapshotCircuitOpen;
+        const queueStatus = cacheEntry?.queueStatus ?? "IDLE";
+        const collectionDelayed =
+          registeredKeywordGlobalCooldown || cooldownActive;
+        let keywordDebugReason: string | null =
+          (registeredKeywordGlobalCooldown
+            ? loadedCacheState?.globalBlockReason
+            : cacheEntry?.lastFailureCode) ?? null;
+        let keywordCacheStatus = freshCache
+          ? "HIT_FRESH"
+          : collectionDelayed
+            ? "COLLECTION_DELAYED"
+            : queueStatus === "PROCESSING"
+              ? "PROCESSING"
+              : queueStatus === "QUEUED"
+                ? "QUEUED"
+                : "QUEUE_PENDING";
 
         let visitor = rest.review.visitor;
         let blog = rest.review.blog;
         let total = rest.review.total;
-        let save = rest.review.save ?? "0";
-        
-        // 🌟 [추가됨] 키워드(태그)를 담을 변수
-        let keywords: string[] = [];
+        let save: string | number | null = rest.review.save;
+        let chosenType: "restaurant" | "place" | null = null;
+        let reviewDebugReason: string | null = null;
+        let registeredKeywords = rest.registeredKeywords;
+        let registeredKeywordsStatus: KeywordCollectionStatus =
+          rest.registeredKeywordsStatus;
+        let registeredKeywordsSource:
+          | "NAVER_INFORMATION"
+          | "REGISTERED_KEYWORD_CACHE"
+          | "PLACE_REVIEW_HISTORY"
+          | null = null;
+        let registeredKeywordsCollectedAt: Date | null = null;
+        let reviewFeatureKeywords = rest.reviewFeatureKeywords;
+        let reviewFeatureKeywordsStatus: KeywordCollectionStatus =
+          rest.reviewFeatureKeywordsStatus;
 
-        if (placeId && placeName) {
-          let enriched = false;
+        if (
+          placeId &&
+          placeName &&
+          !freshCache &&
+          rest.registeredKeywordsStatus !== "AVAILABLE"
+        ) {
+          registeredKeywordQueueTargets.push({
+            publicPlaceId: placeId,
+            placeName,
+            category: rest.category,
+            businessType: rest.businessCategory,
+            x: _coords.x,
+            y: _coords.y,
+          });
+        }
 
-          for (const tryUrl of snapshotTryUrls(placeId)) {
-            try {
-              const snapshot = await getNaverPlaceReviewSnapshot({
-                placeUrl: tryUrl,
-                placeName,
-                x: _coords.x,
-                y: _coords.y,
-              });
+        // 리뷰/저장 수는 기존 경로를 유지하되, 등록 키워드 /information 요청은
+        // 이 웹 응답과 분리된 durable queue에서만 수행한다.
+        if (placeId && placeName && !snapshotCircuitOpenAtStart) {
+          try {
+            const restaurantHint = /^(?:restaurant|food|cafe)$/i.test(
+              rest.businessCategory
+            );
+            const placeUrl = `https://m.place.naver.com/${
+              restaurantHint ? "restaurant" : "place"
+            }/${placeId}/home`;
+            const snapshot = await getNaverPlaceReviewSnapshot({
+              placeUrl,
+              placeName,
+              placeId,
+              category: rest.category,
+              businessType: rest.businessCategory,
+              pcmapUrl: `https://pcmap.place.naver.com/${
+                restaurantHint ? "restaurant" : "place"
+              }/${placeId}/home`,
+              x: _coords.x,
+              y: _coords.y,
+              collectRegisteredKeywords: false,
+            });
 
-              const snapshotVisitor = snapshot.visitorReviewCount ?? visitor;
-              const snapshotBlog = snapshot.blogReviewCount ?? blog;
-
-              visitor = snapshotVisitor;
-              blog = snapshotBlog;
-              total = snapshotVisitor + snapshotBlog;
-              save = snapshot.saveCountText ?? save;
-              
-              // 🌟 [추가됨] 스냅샷에서 가져온 키워드 리스트 저장
-              if (snapshot.keywordList && snapshot.keywordList.length > 0) {
-                keywords = snapshot.keywordList;
+            visitor = snapshot.visitorReviewCount ?? visitor;
+            blog = snapshot.blogReviewCount ?? blog;
+            total =
+              visitor !== null && blog !== null ? visitor + blog : total;
+            save = snapshot.saveCountText ?? save;
+            chosenType = snapshot.chosenType;
+            reviewDebugReason = snapshot.debugReason;
+            const explicitBlockReason = [
+              snapshot.debugReason,
+              snapshot.reason,
+            ].find((reason): reason is string =>
+              isRegisteredKeywordBlockReason(reason)
+            );
+            if (explicitBlockReason) {
+              if (
+                shouldOpenReviewSnapshotCircuit({
+                  reason: explicitBlockReason,
+                  requestUrls: snapshot.requestUrls,
+                  collectedRegisteredKeywords: false,
+                })
+              ) {
+                reviewSnapshotCircuitOpen = true;
+                reviewSnapshotCircuitReason = explicitBlockReason;
               }
-              
-              enriched = true;
-              break;
-            } catch {
-              // 다음 URL 시도
             }
-          }
-
-          if (!enriched) {
+            if (snapshot.reviewFeatureKeywordsStatus === "AVAILABLE") {
+              reviewFeatureKeywords = snapshot.reviewFeatureKeywords;
+              reviewFeatureKeywordsStatus = "AVAILABLE";
+            }
+          } catch (error) {
+            reviewDebugReason =
+              error instanceof Error
+                ? `SNAPSHOT_ERROR:${error.name}`
+                : "SNAPSHOT_ERROR";
             console.log("[place-rank-analyze review fallback]", placeName);
           }
+        } else if (snapshotCircuitOpenAtStart) {
+          reviewDebugReason = `SNAPSHOT_CIRCUIT_OPEN:${
+            reviewSnapshotCircuitReason ?? "NAVER_BLOCKED"
+          }`;
+        }
+
+        if (
+          registeredKeywordsStatus === "UNAVAILABLE" &&
+          cacheEntry?.hasSuccessfulValue
+        ) {
+          registeredKeywords = cacheEntry.keywords;
+          registeredKeywordsStatus = "AVAILABLE";
+          registeredKeywordsSource = "REGISTERED_KEYWORD_CACHE";
+          registeredKeywordsCollectedAt = cacheEntry.collectedAt;
+          keywordCacheStatus =
+            freshCache
+              ? "HIT_FRESH"
+              : collectionDelayed
+                ? "HIT_STALE_DELAYED"
+                : queueStatus === "PROCESSING"
+                  ? "HIT_STALE_PROCESSING"
+                  : "HIT_STALE_QUEUE_PENDING";
+        } else if (
+          registeredKeywordsStatus === "UNAVAILABLE" &&
+          historyFallback
+        ) {
+          registeredKeywords = historyFallback.keywords;
+          registeredKeywordsStatus = "AVAILABLE";
+          registeredKeywordsSource = "PLACE_REVIEW_HISTORY";
+          registeredKeywordsCollectedAt = historyFallback.collectedAt;
+          keywordCacheStatus = collectionDelayed
+            ? "LEGACY_HISTORY_DELAYED"
+            : "LEGACY_HISTORY_QUEUE_PENDING";
+        } else if (registeredKeywordsStatus === "AVAILABLE") {
+          registeredKeywordsSource = "NAVER_INFORMATION";
+          registeredKeywordsCollectedAt = attemptAt;
+          keywordCacheStatus = "LIVE_AVAILABLE";
+          keywordDebugReason = null;
         }
 
         return {
@@ -1528,29 +1727,90 @@ export async function POST(req: Request) {
           placeId,
           name: placeName || "-",
           category: rest.category,
+          businessCategory: rest.businessCategory || null,
           address: rest.address,
           imageUrl: rest.imageUrl,
           isPromotedAd: rest.isPromotedAd,
-          keywords, // 🌟 [추가됨] 프론트엔드로 전송
+          registeredKeywords: registeredKeywords?.slice(0, 5) ?? null,
+          registeredKeywordsStatus,
+          registeredKeywordsSource,
+          registeredKeywordsCollectedAt:
+            registeredKeywordsCollectedAt?.toISOString() ?? null,
+          registeredKeywordsCacheSource: cacheEntry?.source ?? null,
+          registeredKeywordsCacheStatus: keywordCacheStatus,
+          registeredKeywordsLastAttemptAt:
+            cacheEntry?.lastAttemptAt?.toISOString() ?? null,
+          registeredKeywordsCooldownUntil:
+            (registeredKeywordGlobalCooldown
+              ? loadedCacheState?.globalBlockUntil
+              : cacheEntry?.cooldownUntil
+            )?.toISOString() ?? null,
+          registeredKeywordsLastFailureCode:
+            cacheEntry?.lastFailureCode ?? null,
+          registeredKeywordsLiveAttempted: false,
+          registeredKeywordsDebugReason: keywordDebugReason,
+          // 기존 UI/API 호환 필드. 의미는 업체 등록 키워드로만 제한한다.
+          keywords: registeredKeywords?.slice(0, 5) ?? null,
+          reviewFeatureKeywords:
+            reviewFeatureKeywords?.slice(0, 5) ?? null,
+          reviewFeatureKeywordsStatus,
           review: {
             visitor,
             blog,
             total,
             save,
+            visitorStatus: visitor === null ? "UNAVAILABLE" : "AVAILABLE",
+            blogStatus: blog === null ? "UNAVAILABLE" : "AVAILABLE",
+            saveStatus: save === null ? "UNAVAILABLE" : "AVAILABLE",
+            chosenType,
+            debugReason: reviewDebugReason,
           },
         };
-      })
+      }
     );
+    const saveCountUnavailableCount = list.filter(
+      (row) => row.review.save === null
+    ).length;
+    if (fallbackUsed && !primaryError) {
+      primaryError = safeGraphqlError(graphqlErrors[0]) ?? "PRIMARY_EMPTY";
+    }
+    const debug = {
+      originalKeyword: rawKeyword,
+      requestedKeyword: keyword,
+      graphqlKeyword: keyword,
+      totalCount: apiTotal,
+      resultCount: list.length,
+      fallbackUsed,
+      saveCountUnavailableCount,
+      primaryError,
+      queryUsed: keyword,
+    };
 
     console.log("[place-rank-analyze graphql]", {
-      keyword,
-      totalCount: apiTotal,
-      parsedCount: list.length,
+      ...debug,
       source,
       graphqlErrors,
     });
 
     const related = await buildRelatedKeywords(keyword);
+
+    if (registeredKeywordQueueTargets.length > 0) {
+      // 응답 전송 뒤 DB enqueue와 한 건의 순차 수집만 수행한다.
+      // 남은 항목은 durable queue를 cron이 이어서 처리한다.
+      after(async () => {
+        try {
+          await enqueueRegisteredKeywordCollectionTargets(
+            registeredKeywordQueueTargets
+          );
+          await processRegisteredKeywordQueue({ maxItems: 1 });
+        } catch (queueError) {
+          console.warn("[place-analysis registered keyword queue] after", {
+            reason:
+              queueError instanceof Error ? queueError.name : "UNKNOWN_ERROR",
+          });
+        }
+      });
+    }
 
     const diagOut = buildPlaceRankDiagnosticsPayload(diagnostics);
 
@@ -1559,12 +1819,23 @@ export async function POST(req: Request) {
       keyword,
       related,
       list,
+      originalKeyword: debug.originalKeyword,
+      requestedKeyword: debug.requestedKeyword,
+      graphqlKeyword: debug.graphqlKeyword,
+      totalCount: debug.totalCount,
+      resultCount: debug.resultCount,
+      fallbackUsed: debug.fallbackUsed,
+      saveCountUnavailableCount: debug.saveCountUnavailableCount,
+      debug,
       diagnostics: {
         failureCode: diagOut.failureCode,
         dataSourceHint: diagOut.dataSourceHint,
         hints: diagOut.hints,
         compactSummary: diagOut.compactSummary,
         resolvedSource: source,
+        fallbackUsed,
+        primaryError,
+        queryUsed: keyword,
       },
     });
   } catch (error) {

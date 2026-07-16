@@ -404,6 +404,7 @@ export function buildGetPlacesListFetchHeaders(
     "Sec-Fetch-Dest": "empty",
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-site",
+    "X-Wtm-NCaptcha-Token": "NCAPTCHA_FALLBACK_NO_OBJECT",
   };
 }
 
@@ -426,5 +427,6 @@ export function buildGetPlacesListFetchHeadersForServer(
     "Sec-Fetch-Dest": "empty",
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-site",
+    "X-Wtm-NCaptcha-Token": "NCAPTCHA_FALLBACK_NO_OBJECT",
   };
 }

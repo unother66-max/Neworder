@@ -166,13 +166,22 @@ export function countBusinessesItemsInBatch(parsed: unknown): number {
     const data = (part as { data?: unknown })?.data as
       | {
           businesses?: { items?: unknown[] };
-          places?: { items?: unknown[] };
+          places?: {
+            items?: unknown[];
+            businesses?: { items?: unknown[] };
+          };
+          placeList?: { businesses?: { items?: unknown[] } };
+          restaurants?: { businesses?: { items?: unknown[] } };
           adBusinesses?: { items?: unknown[] };
         }
       | undefined;
     if (!data) continue;
     const b = data.businesses?.items;
-    const pl = data.places?.items;
+    const pl =
+      data.places?.businesses?.items ??
+      data.placeList?.businesses?.items ??
+      data.restaurants?.businesses?.items ??
+      data.places?.items;
     const a = data.adBusinesses?.items;
     const bLen = Array.isArray(b) ? b.length : 0;
     const plLen = Array.isArray(pl) ? pl.length : 0;

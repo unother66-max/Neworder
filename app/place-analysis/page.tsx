@@ -9,18 +9,17 @@ import {
   useLoginRequiredPreview,
 } from "@/components/login-required-preview";
 import {
-  buildLocationFallbackSearchKeyword,
   countBusinessesItemsInBatch,
   normalizePlaceSearchKeywordTypos,
 } from "@/lib/place-keyword-fallback";
 import {
   NAVER_PCMAP_GRAPHQL_URL,
-  buildGetPlacesListBatch,
   buildGetPlacesListFetchHeaders,
   buildGetPlacesListFetchHeadersForServer,
   pickBusinessesCoords,
-  resolveBusinessesCoords,
 } from "@/lib/naver-map-businesses-shared";
+import { buildPcmapPlaceListRequestBatch } from "@/lib/pcmap-place-list-request";
+import { getRegisteredKeywordEmptyLabel } from "@/lib/place-analysis-registered-keyword-ui";
 
 type RelatedKeywordItem = {
   keyword: string;
@@ -34,15 +33,32 @@ type RankPlaceItem = {
   placeId?: string;
   name: string;
   category?: string;
+  businessCategory?: string | null;
   address?: string;
   imageUrl?: string;
   isPromotedAd?: boolean;
-  keywords?: string[]; // 👈 백엔드에서 키워드를 받을 수 있도록 타입 추가
+  registeredKeywords?: string[] | null;
+  registeredKeywordsStatus?: "AVAILABLE" | "UNAVAILABLE";
+  registeredKeywordsSource?: string | null;
+  registeredKeywordsCollectedAt?: string | null;
+  registeredKeywordsCacheSource?: string | null;
+  registeredKeywordsCacheStatus?: string | null;
+  registeredKeywordsLastAttemptAt?: string | null;
+  registeredKeywordsCooldownUntil?: string | null;
+  registeredKeywordsLastFailureCode?: string | null;
+  registeredKeywordsLiveAttempted?: boolean;
+  registeredKeywordsDebugReason?: string | null;
+  reviewFeatureKeywords?: string[] | null;
+  reviewFeatureKeywordsStatus?: "AVAILABLE" | "UNAVAILABLE";
+  keywords?: string[] | null;
   review?: {
-    total?: number;
-    visitor?: number;
-    blog?: number;
-    save?: string | number;
+    total?: number | null;
+    visitor?: number | null;
+    blog?: number | null;
+    save?: string | number | null;
+    visitorStatus?: "AVAILABLE" | "UNAVAILABLE";
+    blogStatus?: "AVAILABLE" | "UNAVAILABLE";
+    saveStatus?: "AVAILABLE" | "UNAVAILABLE";
   };
 };
 
@@ -92,9 +108,18 @@ function formatCount(value?: string | number | null) {
   return Number(onlyNumber).toLocaleString("ko-KR");
 }
 
+function getDisplayRegisteredKeywords(item: RankPlaceItem): string[] | null {
+  if (item.registeredKeywordsStatus === "UNAVAILABLE") return null;
+  if (Array.isArray(item.registeredKeywords)) {
+    return item.registeredKeywords.slice(0, 5);
+  }
+  if (Array.isArray(item.keywords)) return item.keywords.slice(0, 5);
+  return null;
+}
+
 type BatchAttempt = {
   label: string;
-  body: ReturnType<typeof buildGetPlacesListBatch>;
+  body: ReturnType<typeof buildPcmapPlaceListRequestBatch>;
   headers: Record<string, string>;
 };
 
@@ -106,13 +131,19 @@ async function tryFetchBusinessesBatchInBrowser(
   if (!trimmed) return null;
 
   const attempts: BatchAttempt[] = [];
-  const fb = buildLocationFallbackSearchKeyword(trimmed);
 
   {
     const coords = pickBusinessesCoords(trimmed);
     attempts.push({
       label: "pcmap:fullQuery",
-      body: buildGetPlacesListBatch(trimmed, coords),
+      body: buildPcmapPlaceListRequestBatch({
+        businessType: "place",
+        keyword: trimmed,
+        x: coords.x,
+        y: coords.y,
+        start: 1,
+        display: 70,
+      }),
       headers: buildGetPlacesListFetchHeadersForServer(trimmed, coords),
     });
   }
@@ -121,22 +152,15 @@ async function tryFetchBusinessesBatchInBrowser(
     const coords = pickBusinessesCoords(trimmed);
     attempts.push({
       label: "map:fullQuery",
-      body: buildGetPlacesListBatch(trimmed, coords),
+      body: buildPcmapPlaceListRequestBatch({
+        businessType: "place",
+        keyword: trimmed,
+        x: coords.x,
+        y: coords.y,
+        start: 1,
+        display: 70,
+      }),
       headers: buildGetPlacesListFetchHeaders(trimmed),
-    });
-  }
-
-  if (fb) {
-    const coords = resolveBusinessesCoords(fb, trimmed);
-    attempts.push({
-      label: "pcmap:fallback+anchorCoords",
-      body: buildGetPlacesListBatch(fb, coords),
-      headers: buildGetPlacesListFetchHeadersForServer(fb, coords),
-    });
-    attempts.push({
-      label: "map:fallback+anchorCoords",
-      body: buildGetPlacesListBatch(fb, coords),
-      headers: buildGetPlacesListFetchHeaders(fb),
     });
   }
 
@@ -208,10 +232,13 @@ export default function PlaceAnalysisPage() {
 
   useEffect(() => {
     if (!isPreview) return;
-    setSearchedKeyword("성수 카페");
-    setRelatedKeywords(SAMPLE_PLACE_ANALYSIS_RELATED);
-    setList(SAMPLE_PLACE_ANALYSIS_LIST);
-    setLoading(false);
+    const previewTimer = window.setTimeout(() => {
+      setSearchedKeyword("성수 카페");
+      setRelatedKeywords(SAMPLE_PLACE_ANALYSIS_RELATED);
+      setList(SAMPLE_PLACE_ANALYSIS_LIST);
+      setLoading(false);
+    }, 0);
+    return () => window.clearTimeout(previewTimer);
   }, [isPreview]);
 
   const handleAnalyze = async () => {
@@ -373,6 +400,7 @@ export default function PlaceAnalysisPage() {
         mapAllSearchPlaces?: unknown[];
         mapAllSearchTotalCount?: number;
         businessesGraphqlBatch?: unknown[];
+        businessesGraphqlKeyword?: string;
         clientMapAllSearch?: {
           tokenSent: boolean;
           apiOk?: boolean;
@@ -386,6 +414,7 @@ export default function PlaceAnalysisPage() {
 
       if (hasClientItems && clientBatch) {
         payload.businessesGraphqlBatch = clientBatch;
+        payload.businessesGraphqlKeyword = trimmed;
         setNaverMapDataSource("batch");
         console.log("[place-analysis] businessesGraphqlBatch 전달", {
           batchLength: clientBatch.length,
@@ -624,8 +653,16 @@ export default function PlaceAnalysisPage() {
                     : "분석 결과가 여기에 표시됩니다."}
                 </div>
 
-                <div className="text-[10px] leading-4 text-[#6b7280] md:text-[12px] md:text-[#9ca3af]">
-                  IP, 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
+                <div className="flex flex-col items-end gap-1.5">
+                  {renderedList.length > 0 ? (
+                    <div className="max-w-[520px] text-right text-[10px] leading-4 text-[#6b7280] md:text-[11px]">
+                      등록 키워드는 서버에서 한 업체씩 순차 수집되며 다음 분석에
+                      반영됩니다. 네이버 요청 제한 시 수집이 지연될 수 있습니다.
+                    </div>
+                  ) : null}
+                  <div className="text-[10px] leading-4 text-[#6b7280] md:text-[12px] md:text-[#9ca3af]">
+                    IP, 위치, 시간에 따라 순위 오차가 발생할 수 있습니다.
+                  </div>
                 </div>
               </div>
             </div>
@@ -730,8 +767,15 @@ export default function PlaceAnalysisPage() {
                       </td>
                     </tr>
                   ) : (
-                    renderedList.map((item, idx) => (
-                      <tr
+                    renderedList.map((item, idx) => {
+                      const registeredKeywords =
+                        getDisplayRegisteredKeywords(item);
+                      const keywordEmptyLabel =
+                        getRegisteredKeywordEmptyLabel(
+                          item.registeredKeywordsCacheStatus
+                        );
+                      return (
+                        <tr
                         key={`${item.placeId || item.name}-${idx}`}
                         className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
                       >
@@ -777,8 +821,8 @@ export default function PlaceAnalysisPage() {
                               </div>
 
                               <div className="mt-1 flex max-w-[155px] flex-wrap gap-1 overflow-visible md:hidden">
-                                {item.keywords && item.keywords.length > 0 ? (
-                                  item.keywords.map((kw, i) => (
+                                {registeredKeywords && registeredKeywords.length > 0 ? (
+                                  registeredKeywords.map((kw, i) => (
                                     <span
                                       key={i}
                                       className="inline-flex shrink-0 whitespace-nowrap rounded-[6px] border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold leading-5 text-blue-600"
@@ -787,7 +831,9 @@ export default function PlaceAnalysisPage() {
                                     </span>
                                   ))
                                 ) : (
-                                  <span className="text-[11px] text-[#9ca3af]">-</span>
+                                  <span className="text-[11px] text-[#9ca3af]">
+                                    {keywordEmptyLabel}
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -818,8 +864,8 @@ export default function PlaceAnalysisPage() {
 
                         <td className="hidden px-2 py-3 md:table-cell md:px-5 md:py-5">
                           <div className="flex max-w-[160px] flex-wrap gap-1 md:max-w-[200px] md:gap-1.5">
-                            {item.keywords && item.keywords.length > 0 ? (
-                              item.keywords.map((kw, i) => (
+                            {registeredKeywords && registeredKeywords.length > 0 ? (
+                              registeredKeywords.map((kw, i) => (
                                 <span
                                   key={i}
                                   className="rounded-[6px] border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 md:px-2 md:py-1 md:text-[11px]"
@@ -828,12 +874,15 @@ export default function PlaceAnalysisPage() {
                                 </span>
                               ))
                             ) : (
-                              <span className="text-[11px] text-[#9ca3af] md:text-[12px]">-</span>
+                              <span className="text-[11px] text-[#9ca3af] md:text-[12px]">
+                                {keywordEmptyLabel}
+                              </span>
                             )}
                           </div>
                         </td>
-                      </tr>
-                    ))
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
