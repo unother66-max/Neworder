@@ -1,3 +1,5 @@
+import { parseNaverPlaceNewOpen } from "./naver-place-new-open";
+
 const PCMAP_GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
 const DEFAULT_DISPLAY = 70;
 const MAX_PAGES = 4;
@@ -18,6 +20,7 @@ query getPlacesList($input: PlaceListInput) {
         y
         visitorReviewCount
         blogCafeReviewCount
+        newOpening
         __typename
       }
       __typename
@@ -41,6 +44,8 @@ export type PcmapPlaceListItem = {
   visitorReviewCount: number;
   blogCafeReviewCount: number;
   saveCount: number;
+  isNewOpen: boolean | null;
+  newOpenLabel: "새로오픈" | null;
 };
 
 export type PcmapPlaceListStatus =
@@ -113,6 +118,7 @@ function mapItem(value: unknown): PcmapPlaceListItem | null {
   if (!isRecord(value)) return null;
   const name = stringField(value.name);
   if (!name) return null;
+  const newOpen = parseNaverPlaceNewOpen(value);
   return {
     id: stringField(value.id),
     name,
@@ -125,6 +131,7 @@ function mapItem(value: unknown): PcmapPlaceListItem | null {
     visitorReviewCount: countField(value.visitorReviewCount),
     blogCafeReviewCount: countField(value.blogCafeReviewCount),
     saveCount: 0,
+    ...newOpen,
   };
 }
 

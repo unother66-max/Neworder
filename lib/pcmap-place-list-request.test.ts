@@ -22,6 +22,7 @@ describe("pcmap placeList request payload", () => {
     expect(payload.query).toContain("query getRestaurantsPcmap");
     expect(payload.query).toContain("restaurants: placeList(input: $input)");
     expect(payload.query).toContain("microReview");
+    expect(payload.query).toContain("newOpening");
   });
 
   it("always supplies every required PlaceListInput field", () => {
@@ -51,6 +52,7 @@ describe("pcmap placeList request payload", () => {
     expect(payload!.query).toContain("query getPlacesList");
     expect(payload!.query).toContain("places: placeList(input: $input)");
     expect(payload!.query).not.toContain("microReview");
+    expect(payload!.query).toContain("newOpening");
   });
 
   it("uses safe defaults for invalid coordinates, start, and display", () => {

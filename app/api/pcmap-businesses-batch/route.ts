@@ -4,6 +4,10 @@ import {
   normalizePlaceSearchKeywordTypos,
 } from "@/lib/place-keyword-fallback";
 import { fetchBestPcmapBusinessesBatchJson } from "@/lib/pcmap-businesses-batch-fetch";
+import {
+  PLACE_ANALYSIS_BATCH_SCHEMA_VERSION,
+  pcmapBatchHasNewOpeningField,
+} from "@/lib/naver-place-new-open";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,16 +26,26 @@ export async function POST(req: Request) {
     const { normalized, typoCorrected } = normalizePlaceSearchKeywordTypos(raw);
     const { batch, mode } = await fetchBestPcmapBusinessesBatchJson(normalized);
     const itemCount = batch ? countBusinessesItemsInBatch(batch) : 0;
+    const hasNewOpeningField = pcmapBatchHasNewOpeningField(batch);
 
-    return NextResponse.json({
-      ok: true,
-      keyword: raw,
-      normalizedKeyword: normalized,
-      typoCorrected,
-      mode,
-      batch: itemCount > 0 ? batch : null,
-      itemCount,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        keyword: raw,
+        normalizedKeyword: normalized,
+        typoCorrected,
+        mode,
+        schemaVersion: PLACE_ANALYSIS_BATCH_SCHEMA_VERSION,
+        hasNewOpeningField,
+        batch: itemCount > 0 && hasNewOpeningField ? batch : null,
+        itemCount,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
+    );
   } catch (error) {
     console.error("[pcmap-businesses-batch]", error);
     return NextResponse.json(

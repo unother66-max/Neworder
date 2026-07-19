@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import TopNav from "@/components/top-nav";
+import { PlaceAnalysisNewOpenBadge } from "@/components/place-analysis-new-open-badge";
 import {
   LoginRequiredModal,
   PublicPreviewBanner,
@@ -20,6 +21,11 @@ import {
 } from "@/lib/naver-map-businesses-shared";
 import { buildPcmapPlaceListRequestBatch } from "@/lib/pcmap-place-list-request";
 import { getRegisteredKeywordEmptyLabel } from "@/lib/place-analysis-registered-keyword-ui";
+import {
+  filterNewOpenPlaces,
+  pcmapBatchHasNewOpeningField,
+  PLACE_ANALYSIS_BATCH_SCHEMA_VERSION,
+} from "@/lib/naver-place-new-open";
 
 type RelatedKeywordItem = {
   keyword: string;
@@ -37,6 +43,9 @@ type RankPlaceItem = {
   address?: string;
   imageUrl?: string;
   isPromotedAd?: boolean;
+  isNewOpen?: boolean | null;
+  newOpenLabel?: string | null;
+  source?: "pcmap-graphql" | "apollo-state" | "allsearch" | "cache";
   registeredKeywords?: string[] | null;
   registeredKeywordsStatus?: "AVAILABLE" | "UNAVAILABLE";
   registeredKeywordsSource?: string | null;
@@ -208,6 +217,7 @@ export default function PlaceAnalysisPage() {
   const [searchedKeyword, setSearchedKeyword] = useState("");
   const [relatedKeywords, setRelatedKeywords] = useState<RelatedKeywordItem[]>([]);
   const [list, setList] = useState<RankPlaceItem[]>([]);
+  const [showNewOpenOnly, setShowNewOpenOnly] = useState(false);
   const [error, setError] = useState("");
   
   const [naverMapDataSource, setNaverMapDataSource] = useState<null | "batch" | "allSearch">(null);
@@ -271,6 +281,7 @@ export default function PlaceAnalysisPage() {
       setAnalysisDiagnostics(null);
 
       let clientBatch: unknown[] | null = null;
+      let clientBatchSource: "pcmap-graphql" | null = null;
       let mapAllSearchPlaces: unknown[] | null = null;
       let mapAllSearchTotalCount: number | undefined;
       let clientMapAllSearch:
@@ -291,6 +302,8 @@ export default function PlaceAnalysisPage() {
             batch?: unknown[];
             itemCount?: number;
             mode?: string;
+            schemaVersion?: number;
+            hasNewOpeningField?: boolean;
           };
           if (
             pj.typoCorrected &&
@@ -299,8 +312,15 @@ export default function PlaceAnalysisPage() {
           ) {
             setKeyword(pj.normalizedKeyword);
           }
-          if (pj.batch?.length && (pj.itemCount ?? 0) > 0) {
+          if (
+            pj.schemaVersion === PLACE_ANALYSIS_BATCH_SCHEMA_VERSION &&
+            pj.hasNewOpeningField === true &&
+            pj.batch?.length &&
+            (pj.itemCount ?? 0) > 0 &&
+            pcmapBatchHasNewOpeningField(pj.batch)
+          ) {
             clientBatch = pj.batch;
+            clientBatchSource = "pcmap-graphql";
             console.log("[place-analysis] pcmap-businesses-batch", {
               mode: pj.mode,
               itemCount: pj.itemCount,
@@ -329,6 +349,7 @@ export default function PlaceAnalysisPage() {
           countBusinessesItemsInBatch(fromBrowser) > 0
         ) {
           clientBatch = fromBrowser;
+          clientBatchSource = "pcmap-graphql";
         }
       }
 
@@ -401,6 +422,8 @@ export default function PlaceAnalysisPage() {
         mapAllSearchTotalCount?: number;
         businessesGraphqlBatch?: unknown[];
         businessesGraphqlKeyword?: string;
+        businessesGraphqlSchemaVersion?: number;
+        businessesGraphqlSource?: "pcmap-graphql";
         clientMapAllSearch?: {
           tokenSent: boolean;
           apiOk?: boolean;
@@ -415,6 +438,10 @@ export default function PlaceAnalysisPage() {
       if (hasClientItems && clientBatch) {
         payload.businessesGraphqlBatch = clientBatch;
         payload.businessesGraphqlKeyword = trimmed;
+        payload.businessesGraphqlSchemaVersion =
+          PLACE_ANALYSIS_BATCH_SCHEMA_VERSION;
+        payload.businessesGraphqlSource =
+          clientBatchSource ?? "pcmap-graphql";
         setNaverMapDataSource("batch");
         console.log("[place-analysis] businessesGraphqlBatch 전달", {
           batchLength: clientBatch.length,
@@ -514,7 +541,10 @@ export default function PlaceAnalysisPage() {
     }
   };
 
-  const renderedList = useMemo(() => list, [list]);
+  const renderedList = useMemo(
+    () => filterNewOpenPlaces(list, showNewOpenOnly),
+    [list, showNewOpenOnly]
+  );
 
   return (
     <>
@@ -647,10 +677,26 @@ export default function PlaceAnalysisPage() {
               )}
 
               <div className="flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:gap-2 md:pt-4">
-                <div className="text-[12px] font-semibold text-[#4b5563] md:text-[14px]">
-                  {searchedKeyword
-                    ? `“${searchedKeyword}” 분석 결과`
-                    : "분석 결과가 여기에 표시됩니다."}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-[12px] font-semibold text-[#4b5563] md:text-[14px]">
+                    {searchedKeyword
+                      ? `“${searchedKeyword}” 분석 결과`
+                      : "분석 결과가 여기에 표시됩니다."}
+                  </div>
+                  {list.length > 0 ? (
+                    <button
+                      type="button"
+                      aria-pressed={showNewOpenOnly}
+                      onClick={() => setShowNewOpenOnly((current) => !current)}
+                      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold transition md:text-[11px] ${
+                        showNewOpenOnly
+                          ? "border-red-300 bg-red-50 text-red-700"
+                          : "border-[#e5e7eb] bg-white text-[#6b7280] hover:bg-[#f9fafb]"
+                      }`}
+                    >
+                      새로오픈만 보기
+                    </button>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col items-end gap-1.5">
@@ -763,7 +809,9 @@ export default function PlaceAnalysisPage() {
                         colSpan={8}
                         className="px-3 py-10 text-center text-[12px] text-[#9ca3af] md:px-5 md:py-14 md:text-[14px]"
                       >
-                        아직 분석 결과가 없습니다.
+                        {showNewOpenOnly && list.length > 0
+                          ? "현재 결과에 새로오픈 업체가 없습니다."
+                          : "아직 분석 결과가 없습니다."}
                       </td>
                     </tr>
                   ) : (
@@ -809,6 +857,7 @@ export default function PlaceAnalysisPage() {
                                     광고
                                   </span>
                                 ) : null}
+                                <PlaceAnalysisNewOpenBadge place={item} />
                               </div>
                               {item.address ? (
                                 <div className="mt-1 hidden text-[12px] text-[#9ca3af] md:block">

@@ -44,6 +44,11 @@ import {
   mergePcmapGraphqlBatch,
   parseNullableNaverReviewCountField,
 } from "@/lib/merge-pcmap-businesses-batch";
+import {
+  PLACE_ANALYSIS_BATCH_SCHEMA_VERSION,
+  parseNaverPlaceNewOpen,
+  pcmapBatchHasNewOpeningField,
+} from "@/lib/naver-place-new-open";
 import { buildPcmapPlaceListRequestPayload } from "@/lib/pcmap-place-list-request";
 
 export const runtime = "nodejs";
@@ -58,6 +63,12 @@ const LIST_CAP = 30;
 /** map GraphQL 배치·allSearch 등 네이버가 한 페이지에 내려주는 건수에 맞춤 (display≈70) */
 const LIST_CAP_CLIENT_TRUSTED = 70;
 const PLACE_ANALYSIS_REVIEW_CONCURRENCY = 2;
+
+type PlaceAnalysisCollectionSource =
+  | "pcmap-graphql"
+  | "apollo-state"
+  | "allsearch"
+  | "cache";
 
 function normalizeText(value: string) {
   return String(value || "")
@@ -533,6 +544,8 @@ type GraphqlItem = {
   blogCafeReviewCount?: string | number | null;
   totalReviewCount?: string | number | null;
   saveCount?: string | number | null;
+  /** pcmap PlaceListBusinessesItem.newOpening */
+  newOpening?: boolean | null;
   microReview?: unknown;
   /** pcmap 배치의 PlaceAdSummary */
   isPromotedAd?: boolean;
@@ -668,6 +681,9 @@ function graphqlItemsFromMapAllSearchPlaces(rows: unknown[]): GraphqlItem[] {
       visitorReviewCount: vOk,
       blogCafeReviewCount: bOk,
       totalReviewCount: vOk + bOk,
+      // 현재 allSearch place.list 원본에는 새로오픈 상태 필드가 확인되지 않았다.
+      // 리뷰 수/개업 시점으로 추정하지 않고 unknown으로 유지한다.
+      newOpening: null,
     });
   }
   return out;
@@ -1094,6 +1110,7 @@ function mapItemToListRow(item: GraphqlItem, index: number) {
   const businessCategory = String(item.businessCategory ?? "").trim();
   const reviewFeatureKeywords =
     extractReviewFeatureKeywordsFromObject(item);
+  const newOpen = parseNaverPlaceNewOpen(item);
 
   return {
     rank: index + 1,
@@ -1106,6 +1123,7 @@ function mapItemToListRow(item: GraphqlItem, index: number) {
     ).trim(),
     imageUrl: pickGraphqlItemImageUrl(item),
     isPromotedAd: Boolean(item.isPromotedAd),
+    ...newOpen,
     registeredKeywords: null as string[] | null,
     registeredKeywordsStatus: "UNAVAILABLE" as KeywordCollectionStatus,
     reviewFeatureKeywords: reviewFeatureKeywords.keywords,
@@ -1273,6 +1291,10 @@ export async function POST(req: Request) {
     const clientBatchKeyword = String(
       body.businessesGraphqlKeyword ?? ""
     ).trim();
+    const clientBatchSchemaVersion = Number(
+      body.businessesGraphqlSchemaVersion ?? 0
+    );
+    const clientBatchHasNewOpening = pcmapBatchHasNewOpeningField(clientBatch);
 
     let usedMapAllSearchPlaces = false;
     let usedClientBusinessesBatch = false;
@@ -1281,7 +1303,9 @@ export async function POST(req: Request) {
     if (
       clientBatch &&
       !isIntentMixedKeyword(keyword) &&
-      clientBatchKeyword === keyword
+      clientBatchKeyword === keyword &&
+      clientBatchSchemaVersion === PLACE_ANALYSIS_BATCH_SCHEMA_VERSION &&
+      clientBatchHasNewOpening
     ) {
       console.log("[place-rank-analyze businesses client-batch]", {
         keyword,
@@ -1301,16 +1325,25 @@ export async function POST(req: Request) {
       }
     } else if (clientBatch && !isIntentMixedKeyword(keyword)) {
       noteFailedAttempt(
-        clientBatchKeyword
-          ? `CLIENT_BATCH_QUERY_MISMATCH:${clientBatchKeyword}`
-          : "CLIENT_BATCH_QUERY_UNVERIFIED"
+        clientBatchKeyword !== keyword
+          ? clientBatchKeyword
+            ? `CLIENT_BATCH_QUERY_MISMATCH:${clientBatchKeyword}`
+            : "CLIENT_BATCH_QUERY_UNVERIFIED"
+          : clientBatchSchemaVersion !== PLACE_ANALYSIS_BATCH_SCHEMA_VERSION
+            ? `CLIENT_BATCH_SCHEMA_STALE:${clientBatchSchemaVersion}`
+            : "CLIENT_BATCH_NEW_OPENING_FIELD_MISSING"
       );
       diagnostics.hints.push(
-        "브라우저 GraphQL 응답의 검색어가 원문과 일치하는지 확인할 수 없어 해당 batch를 사용하지 않았습니다."
+        clientBatchKeyword !== keyword
+          ? "브라우저 GraphQL 응답의 검색어가 원문과 일치하는지 확인할 수 없어 해당 batch를 사용하지 않았습니다."
+          : "새로오픈 필드가 없는 구버전 GraphQL batch를 사용하지 않고 다시 수집했습니다."
       );
       console.warn("[place-rank-analyze client batch rejected]", {
         requestedKeyword: keyword,
         clientBatchKeyword: clientBatchKeyword || null,
+        clientBatchSchemaVersion,
+        expectedSchemaVersion: PLACE_ANALYSIS_BATCH_SCHEMA_VERSION,
+        clientBatchHasNewOpening,
       });
     }
 
@@ -1528,6 +1561,27 @@ export async function POST(req: Request) {
     );
     const capped = regionFiltered;
     const baseRows = capped.map((item, index) => mapItemToListRow(item, index));
+    const collectionSource: PlaceAnalysisCollectionSource =
+      source === "mapAllSearch" ? "allsearch" : "pcmap-graphql";
+    const rawGallant = items.find(
+      (item) => normalizeText(String(item.name ?? "")) === normalizeText("갈란트")
+    );
+    const mappedGallant = baseRows.find(
+      (item) => normalizeText(item.name) === normalizeText("갈란트")
+    );
+    if (rawGallant || mappedGallant) {
+      console.log("[place-rank-analyze new-open trace]", {
+        stage: "raw-to-common-mapper",
+        source: collectionSource,
+        placeId: String(rawGallant?.id ?? mappedGallant?.placeId ?? ""),
+        rawHasNewOpening: rawGallant
+          ? Object.prototype.hasOwnProperty.call(rawGallant, "newOpening")
+          : false,
+        rawNewOpening: rawGallant?.newOpening ?? null,
+        mappedIsNewOpen: mappedGallant?.isNewOpen ?? null,
+        mappedNewOpenLabel: mappedGallant?.newOpenLabel ?? null,
+      });
+    }
     const cacheLoadAt = new Date();
     const publicPlaceIds = baseRows
       .map((row) => String(row.placeId || "").trim())
@@ -1731,6 +1785,9 @@ export async function POST(req: Request) {
           address: rest.address,
           imageUrl: rest.imageUrl,
           isPromotedAd: rest.isPromotedAd,
+          isNewOpen: rest.isNewOpen,
+          newOpenLabel: rest.newOpenLabel,
+          source: collectionSource,
           registeredKeywords: registeredKeywords?.slice(0, 5) ?? null,
           registeredKeywordsStatus,
           registeredKeywordsSource,
@@ -1771,6 +1828,9 @@ export async function POST(req: Request) {
     const saveCountUnavailableCount = list.filter(
       (row) => row.review.save === null
     ).length;
+    const finalGallant = list.find(
+      (item) => normalizeText(item.name) === normalizeText("갈란트")
+    );
     if (fallbackUsed && !primaryError) {
       primaryError = safeGraphqlError(graphqlErrors[0]) ?? "PRIMARY_EMPTY";
     }
@@ -1784,6 +1844,23 @@ export async function POST(req: Request) {
       saveCountUnavailableCount,
       primaryError,
       queryUsed: keyword,
+      source: collectionSource,
+      responseCache: "none" as const,
+      batchSchemaVersion: PLACE_ANALYSIS_BATCH_SCHEMA_VERSION,
+      gallantNewOpenTrace: rawGallant || mappedGallant || finalGallant
+        ? {
+            placeId: String(
+              rawGallant?.id ?? mappedGallant?.placeId ?? finalGallant?.placeId ?? ""
+            ),
+            rawHasNewOpening: rawGallant
+              ? Object.prototype.hasOwnProperty.call(rawGallant, "newOpening")
+              : false,
+            rawNewOpening: rawGallant?.newOpening ?? null,
+            mappedIsNewOpen: mappedGallant?.isNewOpen ?? null,
+            finalIsNewOpen: finalGallant?.isNewOpen ?? null,
+            finalNewOpenLabel: finalGallant?.newOpenLabel ?? null,
+          }
+        : null,
     };
 
     console.log("[place-rank-analyze graphql]", {
@@ -1814,30 +1891,39 @@ export async function POST(req: Request) {
 
     const diagOut = buildPlaceRankDiagnosticsPayload(diagnostics);
 
-    return NextResponse.json({
-      ok: true,
-      keyword,
-      related,
-      list,
-      originalKeyword: debug.originalKeyword,
-      requestedKeyword: debug.requestedKeyword,
-      graphqlKeyword: debug.graphqlKeyword,
-      totalCount: debug.totalCount,
-      resultCount: debug.resultCount,
-      fallbackUsed: debug.fallbackUsed,
-      saveCountUnavailableCount: debug.saveCountUnavailableCount,
-      debug,
-      diagnostics: {
-        failureCode: diagOut.failureCode,
-        dataSourceHint: diagOut.dataSourceHint,
-        hints: diagOut.hints,
-        compactSummary: diagOut.compactSummary,
-        resolvedSource: source,
-        fallbackUsed,
-        primaryError,
-        queryUsed: keyword,
+    return NextResponse.json(
+      {
+        ok: true,
+        keyword,
+        related,
+        list,
+        source: collectionSource,
+        originalKeyword: debug.originalKeyword,
+        requestedKeyword: debug.requestedKeyword,
+        graphqlKeyword: debug.graphqlKeyword,
+        totalCount: debug.totalCount,
+        resultCount: debug.resultCount,
+        fallbackUsed: debug.fallbackUsed,
+        saveCountUnavailableCount: debug.saveCountUnavailableCount,
+        debug,
+        diagnostics: {
+          failureCode: diagOut.failureCode,
+          dataSourceHint: diagOut.dataSourceHint,
+          hints: diagOut.hints,
+          compactSummary: diagOut.compactSummary,
+          resolvedSource: source,
+          collectionSource,
+          fallbackUsed,
+          primaryError,
+          queryUsed: keyword,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
+    );
   } catch (error) {
     console.error("place-rank-analyze error:", error);
 

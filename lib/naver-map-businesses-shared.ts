@@ -173,6 +173,7 @@ query getPlacesList(
       y
       address
       roadAddress
+      newOpening
       __typename
     }
     __typename

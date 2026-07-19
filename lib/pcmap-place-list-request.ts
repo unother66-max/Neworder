@@ -21,6 +21,7 @@ query __OPERATION_NAME__($input: PlaceListInput) {
         visitorReviewCount
         blogCafeReviewCount
         saveCount
+        newOpening
         __FEATURE_FIELDS__
         __typename
       }

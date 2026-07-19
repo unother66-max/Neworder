@@ -1,3 +1,5 @@
+import { parseNaverPlaceNewOpen } from "./naver-place-new-open";
+
 const PCMAP_RESTAURANT_LIST_URL =
   "https://pcmap.place.naver.com/restaurant/list";
 
@@ -17,6 +19,8 @@ export type PcmapRestaurantListHtmlPlace = {
   rank: number;
   id: string;
   name: string;
+  isNewOpen: boolean | null;
+  newOpenLabel: "새로오픈" | null;
 };
 
 export type PcmapRestaurantListHtmlResultStatus =
@@ -201,7 +205,7 @@ function resolveRef(value: unknown, index: Map<string, JsonRecord>): unknown {
 function placeFromValue(
   value: unknown,
   index: Map<string, JsonRecord>
-): { id: string; name: string } | null {
+): Omit<PcmapRestaurantListHtmlPlace, "rank"> | null {
   const resolved = resolveRef(value, index);
   if (!isRecord(resolved)) return null;
   const nested = isRecord(resolved.business) ? resolved.business : resolved;
@@ -209,7 +213,7 @@ function placeFromValue(
   if (!name) return null;
   const ref = isRecord(value) ? String(value.__ref ?? "") : "";
   const id = String(nested.id ?? resolved.id ?? ref.split(":").at(-1) ?? "").trim();
-  return { id, name };
+  return { id, name, ...parseNaverPlaceNewOpen(nested) };
 }
 
 function findOrderedArray(
@@ -265,7 +269,7 @@ function findOrderedArray(
 }
 
 function orderedPlacesFromStates(states: unknown[], expectedStart = 1): {
-  places: Array<{ id: string; name: string }>;
+  places: Array<Omit<PcmapRestaurantListHtmlPlace, "rank">>;
   pattern: string | null;
 } {
   const index = buildEntityIndex(states);
@@ -300,7 +304,7 @@ function orderedPlacesFromStates(states: unknown[], expectedStart = 1): {
   for (const state of states) collectNamedRoots(state, "STATE", 0);
 
   const candidates: Array<{
-    places: Array<{ id: string; name: string }>;
+    places: Array<Omit<PcmapRestaurantListHtmlPlace, "rank">>;
     pattern: string;
     score: number;
   }> = [];
@@ -308,7 +312,7 @@ function orderedPlacesFromStates(states: unknown[], expectedStart = 1): {
     const found = findOrderedArray(root.value, index, root.path);
     if (!found) continue;
     const seen = new Set<string>();
-    const places: Array<{ id: string; name: string }> = [];
+    const places: Array<Omit<PcmapRestaurantListHtmlPlace, "rank">> = [];
     for (const value of found.values) {
       const place = placeFromValue(value, index);
       if (!place) continue;
@@ -348,7 +352,12 @@ function orderedPlacesFromStates(states: unknown[], expectedStart = 1): {
       if (matching.length > 0 && matching.length === value.length) {
         const places = matching
           .map((item) => placeFromValue(item, index))
-          .filter((place): place is { id: string; name: string } => Boolean(place));
+          .filter(
+            (
+              place
+            ): place is Omit<PcmapRestaurantListHtmlPlace, "rank"> =>
+              Boolean(place)
+          );
         if (places.length > 0) {
           candidates.push({
             places,

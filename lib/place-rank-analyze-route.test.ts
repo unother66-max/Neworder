@@ -95,6 +95,15 @@ const newOrderClub = {
   blogCafeReviewCount: 900,
   totalReviewCount: 1625,
   saveCount: null,
+  newOpening: null,
+};
+
+const gallant = {
+  ...newOrderClub,
+  id: "2035306921",
+  name: "갈란트",
+  roadAddress: "서울 용산구 한남동",
+  newOpening: true,
 };
 
 const pipeGround = {
@@ -162,11 +171,22 @@ function placeListBatch(
   ];
 }
 
+function withoutNewOpening<T extends Record<string, unknown>>(item: T) {
+  const copy: Record<string, unknown> = { ...item };
+  delete copy.newOpening;
+  return copy;
+}
+
 function analyzeRequest(body: Record<string, unknown>) {
   return new Request("http://localhost/api/place-rank-analyze", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ keyword: FULL_KEYWORD, ...body }),
+    body: JSON.stringify({
+      keyword: FULL_KEYWORD,
+      businessesGraphqlSchemaVersion: 2,
+      businessesGraphqlSource: "pcmap-graphql",
+      ...body,
+    }),
   });
 }
 
@@ -321,6 +341,98 @@ describe("place-rank-analyze route", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
+  it("maps pcmap newOpening without changing rank or review metrics", async () => {
+    const legacyBuzzaPizza = withoutNewOpening(buzzaPizza);
+    const businesses = [
+      gallant,
+      { ...pipeGround, newOpening: false },
+      legacyBuzzaPizza,
+    ];
+
+    const response = await POST(
+      analyzeRequest({
+        businessesGraphqlKeyword: FULL_KEYWORD,
+        businessesGraphqlBatch: placeListBatch(3, businesses),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.list).toHaveLength(3);
+    expect(body.list.map((row: { rank: number }) => row.rank)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(body.list[0]).toMatchObject({
+      placeId: gallant.id,
+      name: gallant.name,
+      isNewOpen: true,
+      newOpenLabel: "새로오픈",
+      source: "pcmap-graphql",
+      review: { visitor: 725, blog: 900, total: 1625, save: null },
+    });
+    expect(body.list[1]).toMatchObject({
+      name: pipeGround.name,
+      isNewOpen: false,
+      newOpenLabel: null,
+    });
+    expect(body.list[2]).toMatchObject({
+      name: buzzaPizza.name,
+      isNewOpen: null,
+      newOpenLabel: null,
+    });
+    expect(body).toMatchObject({
+      source: "pcmap-graphql",
+      debug: {
+        responseCache: "none",
+        gallantNewOpenTrace: {
+          placeId: gallant.id,
+          rawHasNewOpening: true,
+          rawNewOpening: true,
+          mappedIsNewOpen: true,
+          finalIsNewOpen: true,
+          finalNewOpenLabel: "새로오픈",
+        },
+      },
+    });
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+
+  it("rejects a legacy fieldless batch and recollects the same keyword", async () => {
+    const legacyGallant = withoutNewOpening(gallant);
+    mocks.fetch.mockImplementation(async () =>
+      jsonResponse(placeListBatch(1, [gallant]))
+    );
+
+    const response = await POST(
+      analyzeRequest({
+        businessesGraphqlSchemaVersion: 1,
+        businessesGraphqlKeyword: FULL_KEYWORD,
+        businessesGraphqlBatch: placeListBatch(1, [legacyGallant]),
+      })
+    );
+    const body = await response.json();
+    const row = body.list.find(
+      (item: { placeId?: string }) => item.placeId === gallant.id
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.fetch).toHaveBeenCalled();
+    expect(row).toMatchObject({
+      isNewOpen: true,
+      newOpenLabel: "새로오픈",
+      source: "pcmap-graphql",
+    });
+    expect(body.debug).toMatchObject({
+      fallbackUsed: true,
+      responseCache: "none",
+      gallantNewOpenTrace: {
+        rawNewOpening: true,
+        finalIsNewOpen: true,
+      },
+    });
+    expect(body.debug.primaryError).toContain("CLIENT_BATCH_SCHEMA_STALE");
+  });
+
   it("rejects a client batch for 맛집 and never accepts its nationwide total", async () => {
     const response = await POST(
       analyzeRequest({
@@ -343,6 +455,12 @@ describe("place-rank-analyze route", () => {
     expect(body.totalCount).not.toBe(911_430);
     expect(body.list).toHaveLength(1);
     expect(body.list[0].name).toBe(newOrderClub.name);
+    expect(body.list[0]).toMatchObject({
+      isNewOpen: null,
+      newOpenLabel: null,
+      source: "allsearch",
+    });
+    expect(body.source).toBe("allsearch");
     expect(body.list.some((row: { name?: string }) => row.name === "전국 맛집 결과"))
       .toBe(false);
     expect(body.debug).toMatchObject({

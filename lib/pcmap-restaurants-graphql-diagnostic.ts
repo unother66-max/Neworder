@@ -1,4 +1,5 @@
 import { fetchPcmapRestaurantListHtmlDiagnostic } from "./pcmap-restaurant-list-html-fetch";
+import { parseNaverPlaceNewOpen } from "./naver-place-new-open";
 
 const PCMAP_GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
 const DEFAULT_DISPLAY = 70;
@@ -21,6 +22,7 @@ query getRestaurantsPcmap($input: PlaceListInput) {
         visitorReviewCount
         blogCafeReviewCount
         saveCount
+        newOpening
         __typename
       }
       __typename
@@ -44,6 +46,8 @@ export type PcmapRestaurantGraphqlItem = {
   visitorReviewCount: number;
   blogCafeReviewCount: number;
   saveCount: number;
+  isNewOpen: boolean | null;
+  newOpenLabel: "새로오픈" | null;
 };
 
 export type PcmapRestaurantsGraphqlStatus =
@@ -119,6 +123,7 @@ function mapItem(value: unknown): PcmapRestaurantGraphqlItem | null {
   if (!isRecord(value)) return null;
   const name = stringField(value.name);
   if (!name) return null;
+  const newOpen = parseNaverPlaceNewOpen(value);
   return {
     id: stringField(value.id),
     name,
@@ -131,6 +136,7 @@ function mapItem(value: unknown): PcmapRestaurantGraphqlItem | null {
     visitorReviewCount: countField(value.visitorReviewCount),
     blogCafeReviewCount: countField(value.blogCafeReviewCount),
     saveCount: countField(value.saveCount),
+    ...newOpen,
   };
 }
 
@@ -262,6 +268,8 @@ async function htmlFallback(params: {
       visitorReviewCount: 0,
       blogCafeReviewCount: 0,
       saveCount: 0,
+      isNewOpen: item.isNewOpen,
+      newOpenLabel: item.newOpenLabel,
     })),
     items: [],
     pages: params.pages,
