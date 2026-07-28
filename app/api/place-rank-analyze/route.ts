@@ -13,9 +13,15 @@ import {
 } from "@/lib/place-registered-keyword-cache";
 import {
   enqueueRegisteredKeywordCollectionTargets,
+  enqueueRegisteredKeywordVolumeBackfillTargets,
   processRegisteredKeywordQueue,
   type RegisteredKeywordQueueTarget,
 } from "@/lib/place-registered-keyword-queue";
+import {
+  buildRegisteredKeywordsWithVolumes,
+  loadRegisteredKeywordVolumeCache,
+  missingRegisteredKeywordVolumes,
+} from "@/lib/place-registered-keyword-volumes";
 import {
   extractReviewFeatureKeywordsFromObject,
   getNaverPlaceReviewSnapshot,
@@ -1825,10 +1831,53 @@ export async function POST(req: Request) {
         };
       }
     );
-    const saveCountUnavailableCount = list.filter(
+    const registeredKeywordVolumeCache =
+      await loadRegisteredKeywordVolumeCache(
+        list.flatMap((row) => row.registeredKeywords ?? [])
+      );
+    const registeredKeywordVolumeBackfillTargets: RegisteredKeywordQueueTarget[] = [];
+    const responseList = list.map((row) => {
+      const registeredKeywords = buildRegisteredKeywordsWithVolumes(
+        row.registeredKeywords,
+        registeredKeywordVolumeCache
+      );
+      if (
+        missingRegisteredKeywordVolumes(registeredKeywords).length > 0 &&
+        row.placeId &&
+        row.name
+      ) {
+        registeredKeywordVolumeBackfillTargets.push({
+          publicPlaceId: row.placeId,
+          placeName: row.name,
+          category: row.category,
+          businessType: row.businessCategory,
+        });
+      }
+      return {
+        ...row,
+        registeredKeywords,
+      };
+    });
+    const registeredKeywordVolumeUnavailableCount = responseList.reduce(
+      (count, row) =>
+        count +
+        (row.registeredKeywords?.filter(
+          (keyword) => keyword.volumeStatus === "UNAVAILABLE"
+        ).length ?? 0),
+      0
+    );
+    const registeredKeywordVolumePendingCount = responseList.reduce(
+      (count, row) =>
+        count +
+        (row.registeredKeywords?.filter(
+          (keyword) => keyword.volumeStatus === "PENDING"
+        ).length ?? 0),
+      0
+    );
+    const saveCountUnavailableCount = responseList.filter(
       (row) => row.review.save === null
     ).length;
-    const finalGallant = list.find(
+    const finalGallant = responseList.find(
       (item) => normalizeText(item.name) === normalizeText("갈란트")
     );
     if (fallbackUsed && !primaryError) {
@@ -1839,9 +1888,11 @@ export async function POST(req: Request) {
       requestedKeyword: keyword,
       graphqlKeyword: keyword,
       totalCount: apiTotal,
-      resultCount: list.length,
+      resultCount: responseList.length,
       fallbackUsed,
       saveCountUnavailableCount,
+      registeredKeywordVolumeUnavailableCount,
+      registeredKeywordVolumePendingCount,
       primaryError,
       queryUsed: keyword,
       source: collectionSource,
@@ -1870,14 +1921,30 @@ export async function POST(req: Request) {
     });
 
     const related = await buildRelatedKeywords(keyword);
+    const registeredKeywordTargets = baseRows
+      .map((row) => ({
+        publicPlaceId: String(row.placeId || "").trim(),
+        placeName: String(row.name || "").trim(),
+        category: row.category,
+        businessType: row.businessCategory,
+        x: row._coords.x,
+        y: row._coords.y,
+      }))
+      .filter((target) => target.publicPlaceId && target.placeName);
 
-    if (registeredKeywordQueueTargets.length > 0) {
+    if (
+      registeredKeywordQueueTargets.length > 0 ||
+      registeredKeywordVolumeBackfillTargets.length > 0
+    ) {
       // 응답 전송 뒤 DB enqueue와 한 건의 순차 수집만 수행한다.
       // 남은 항목은 durable queue를 cron이 이어서 처리한다.
       after(async () => {
         try {
           await enqueueRegisteredKeywordCollectionTargets(
             registeredKeywordQueueTargets
+          );
+          await enqueueRegisteredKeywordVolumeBackfillTargets(
+            registeredKeywordVolumeBackfillTargets
           );
           await processRegisteredKeywordQueue({ maxItems: 1 });
         } catch (queueError) {
@@ -1896,7 +1963,8 @@ export async function POST(req: Request) {
         ok: true,
         keyword,
         related,
-        list,
+        list: responseList,
+        registeredKeywordTargets,
         source: collectionSource,
         originalKeyword: debug.originalKeyword,
         requestedKeyword: debug.requestedKeyword,
@@ -1905,6 +1973,10 @@ export async function POST(req: Request) {
         resultCount: debug.resultCount,
         fallbackUsed: debug.fallbackUsed,
         saveCountUnavailableCount: debug.saveCountUnavailableCount,
+        registeredKeywordVolumeUnavailableCount:
+          debug.registeredKeywordVolumeUnavailableCount,
+        registeredKeywordVolumePendingCount:
+          debug.registeredKeywordVolumePendingCount,
         debug,
         diagnostics: {
           failureCode: diagOut.failureCode,

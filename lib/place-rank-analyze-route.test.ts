@@ -14,13 +14,20 @@ const mocks = vi.hoisted(() => ({
   getServerSession: vi.fn(),
   after: vi.fn(),
   loadRegisteredKeywordCacheState: vi.fn(),
+  loadRegisteredKeywordVolumeCache: vi.fn(),
   enqueueRegisteredKeywordCollectionTargets: vi.fn(),
+  enqueueRegisteredKeywordVolumeBackfillTargets: vi.fn(),
   processRegisteredKeywordQueue: vi.fn(),
 }));
 
-vi.mock("@/lib/getKeywordSearchVolume", () => ({
-  getKeywordSearchVolume: mocks.getKeywordSearchVolume,
-}));
+vi.mock("@/lib/getKeywordSearchVolume", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/getKeywordSearchVolume")>();
+  return {
+    ...actual,
+    getKeywordSearchVolume: mocks.getKeywordSearchVolume,
+  };
+});
 
 vi.mock("@/lib/getNaverPlaceReviewSnapshot", () => ({
   getNaverPlaceReviewSnapshot: mocks.getNaverPlaceReviewSnapshot,
@@ -74,11 +81,29 @@ vi.mock(
 vi.mock("@/lib/place-registered-keyword-queue", () => ({
   enqueueRegisteredKeywordCollectionTargets:
     mocks.enqueueRegisteredKeywordCollectionTargets,
+  enqueueRegisteredKeywordVolumeBackfillTargets:
+    mocks.enqueueRegisteredKeywordVolumeBackfillTargets,
   processRegisteredKeywordQueue: mocks.processRegisteredKeywordQueue,
 }));
 
+vi.mock(
+  "@/lib/place-registered-keyword-volumes",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/lib/place-registered-keyword-volumes")
+      >();
+    return {
+      ...actual,
+      loadRegisteredKeywordVolumeCache:
+        mocks.loadRegisteredKeywordVolumeCache,
+    };
+  }
+);
+
 import { POST } from "@/app/api/place-rank-analyze/route";
 import { POST as trackPlaceReview } from "@/app/api/place-review-track/route";
+import { keywordVolumeCacheKey } from "@/lib/getKeywordSearchVolume";
 
 const FULL_KEYWORD = "한남동 맛집";
 
@@ -190,6 +215,30 @@ function analyzeRequest(body: Record<string, unknown>) {
   });
 }
 
+function keywordVolumeRow(keyword: string, totalVolume = 120) {
+  const normalizedKeyword = keywordVolumeCacheKey(keyword);
+  return {
+    id: `volume-${normalizedKeyword}`,
+    keyword,
+    normalizedKeyword,
+    monthlyPcQcCnt: Math.floor(totalVolume * 0.2),
+    monthlyMobileQcCnt: totalVolume - Math.floor(totalVolume * 0.2),
+    totalVolume,
+    belowThreshold: totalVolume < 250,
+    source: "naver-searchad",
+    checkedAt: new Date("2026-07-19T00:00:00.000Z"),
+    raw: { matchedKeyword: keyword },
+  };
+}
+
+function keywordMetrics(keywords: readonly string[], totalVolume = 120) {
+  return keywords.map((keyword) => ({
+    keyword,
+    volume: totalVolume,
+    volumeStatus: totalVolume === 0 ? "ZERO" : "AVAILABLE",
+  }));
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -261,11 +310,29 @@ describe("place-rank-analyze route", () => {
       globalBlockUntil: null,
       globalBlockReason: null,
     });
+    mocks.loadRegisteredKeywordVolumeCache.mockImplementation(
+      async (keywords: string[]) =>
+        ({
+          rows: new Map(
+            keywords.map((keyword) => {
+              const row = keywordVolumeRow(keyword);
+              return [row.normalizedKeyword, row];
+            })
+          ),
+          loadStatus: "AVAILABLE",
+        })
+    );
     mocks.enqueueRegisteredKeywordCollectionTargets.mockResolvedValue({
       requested: 0,
       queued: 0,
       deduped: 0,
       freshSkipped: 0,
+    });
+    mocks.enqueueRegisteredKeywordVolumeBackfillTargets.mockResolvedValue({
+      requested: 0,
+      queued: 0,
+      deduped: 0,
+      skipped: 0,
     });
     mocks.processRegisteredKeywordQueue.mockResolvedValue({ status: "EMPTY" });
     vi.stubGlobal("fetch", mocks.fetch);
@@ -675,7 +742,7 @@ describe("place-rank-analyze route", () => {
       );
       expect(item).toMatchObject({
         name,
-        registeredKeywords,
+        registeredKeywords: keywordMetrics(registeredKeywords),
         registeredKeywordsStatus: "AVAILABLE",
         keywords: registeredKeywords,
         reviewFeatureKeywords: reviewFeaturesByName[name],
@@ -708,6 +775,174 @@ describe("place-rank-analyze route", () => {
       const lastUpsert = mocks.historyUpsert.mock.calls.at(-1)?.[0];
       expect(lastUpsert?.update?.keywords).toEqual(registeredKeywords);
     }
+  });
+
+  it("returns 놉스 registeredKeywords with per-keyword volumes sorted descending", async () => {
+    const nops = {
+      ...newOrderClub,
+      id: "1550229480",
+      name: "놉스 한남점",
+      microReview: ["스테이크가 맛있어요"],
+    };
+    const registeredKeywords = [
+      "한남동스테이크",
+      "한남동와인",
+      "한남동양식",
+      "한남동파스타",
+      "한남스테이크",
+    ];
+    const volumes = new Map(
+      [
+        keywordVolumeRow("한남동스테이크", 1690),
+        keywordVolumeRow("한남동와인", 630),
+        keywordVolumeRow("한남동양식", 560),
+        keywordVolumeRow("한남동파스타", 1550),
+        keywordVolumeRow("한남스테이크", 320),
+      ].map((row) => [row.normalizedKeyword, row])
+    );
+    mocks.loadRegisteredKeywordCacheState.mockResolvedValue({
+      byPlaceId: new Map([
+        [
+          nops.id,
+          keywordCacheEntry({
+            publicPlaceId: nops.id,
+            keywords: registeredKeywords,
+            collectedAt: new Date(),
+          }),
+        ],
+      ]),
+      globalBlockUntil: null,
+      globalBlockReason: null,
+    });
+    mocks.loadRegisteredKeywordVolumeCache.mockResolvedValue({
+      rows: volumes,
+      loadStatus: "AVAILABLE",
+    });
+
+    const response = await POST(
+      analyzeRequest({
+        businessesGraphqlKeyword: FULL_KEYWORD,
+        businessesGraphqlBatch: placeListBatch(1, [nops]),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.list[0]).toMatchObject({
+      name: "놉스 한남점",
+      registeredKeywords: [
+        {
+          keyword: "한남동스테이크",
+          volume: 1690,
+          volumeStatus: "AVAILABLE",
+        },
+        {
+          keyword: "한남동파스타",
+          volume: 1550,
+          volumeStatus: "AVAILABLE",
+        },
+        {
+          keyword: "한남동와인",
+          volume: 630,
+          volumeStatus: "AVAILABLE",
+        },
+        {
+          keyword: "한남동양식",
+          volume: 560,
+          volumeStatus: "AVAILABLE",
+        },
+        {
+          keyword: "한남스테이크",
+          volume: 320,
+          volumeStatus: "AVAILABLE",
+        },
+      ],
+      keywords: registeredKeywords,
+      reviewFeatureKeywords: ["스테이크가 맛있어요"],
+    });
+    expect(body.list[0].registeredKeywords).not.toContain(
+      "스테이크가 맛있어요"
+    );
+    expect(body.registeredKeywordVolumeUnavailableCount).toBe(0);
+    expect(
+      mocks.getKeywordSearchVolume.mock.calls.map(([keyword]) => keyword)
+    ).toEqual([FULL_KEYWORD, `${FULL_KEYWORD} 추천`]);
+    expect(mocks.after).not.toHaveBeenCalled();
+  });
+
+  it("returns the actual 놉스 cache as one available volume and four pending backfills", async () => {
+    const nops = {
+      ...newOrderClub,
+      id: "1550229480",
+      name: "놉스 한남점",
+      microReview: ["스테이크가 맛있어요"],
+    };
+    const registeredKeywords = [
+      "한남동스테이크",
+      "한남동와인",
+      "한남동양식",
+      "한남동파스타",
+      "한남스테이크",
+    ];
+    const cachedVolume = keywordVolumeRow("한남동양식", 550);
+    mocks.loadRegisteredKeywordCacheState.mockResolvedValue({
+      byPlaceId: new Map([
+        [
+          nops.id,
+          keywordCacheEntry({
+            publicPlaceId: nops.id,
+            keywords: registeredKeywords,
+            collectedAt: new Date(),
+          }),
+        ],
+      ]),
+      globalBlockUntil: null,
+      globalBlockReason: null,
+    });
+    mocks.loadRegisteredKeywordVolumeCache.mockResolvedValue({
+      rows: new Map([[cachedVolume.normalizedKeyword, cachedVolume]]),
+      loadStatus: "AVAILABLE",
+    });
+
+    const response = await POST(
+      analyzeRequest({
+        businessesGraphqlKeyword: FULL_KEYWORD,
+        businessesGraphqlBatch: placeListBatch(1, [nops]),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.list[0]).toMatchObject({
+      name: "놉스 한남점",
+      placeId: "1550229480",
+      registeredKeywordsStatus: "AVAILABLE",
+      registeredKeywords: [
+        { keyword: "한남동양식", volume: 550, volumeStatus: "AVAILABLE" },
+        {
+          keyword: "한남동스테이크",
+          volume: null,
+          volumeStatus: "PENDING",
+        },
+        { keyword: "한남동와인", volume: null, volumeStatus: "PENDING" },
+        { keyword: "한남동파스타", volume: null, volumeStatus: "PENDING" },
+        { keyword: "한남스테이크", volume: null, volumeStatus: "PENDING" },
+      ],
+    });
+    expect(body.registeredKeywordVolumePendingCount).toBe(4);
+    expect(body.registeredKeywordVolumeUnavailableCount).toBe(0);
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+
+    const queuedWork = mocks.after.mock.calls[0]?.[0];
+    await queuedWork();
+    expect(
+      mocks.enqueueRegisteredKeywordVolumeBackfillTargets
+    ).toHaveBeenCalledWith([
+      expect.objectContaining({
+        publicPlaceId: "1550229480",
+        placeName: "놉스 한남점",
+      }),
+    ]);
   });
 
   it("distinguishes unavailable registered keywords from an available empty list", async () => {
@@ -808,7 +1043,7 @@ describe("place-rank-analyze route", () => {
     expect(response.status).toBe(200);
     expect(body.list[0]).toMatchObject({
       name: "뉴오더클럽 한남",
-      registeredKeywords: ["블루스퀘어맛집", "화덕피자"],
+      registeredKeywords: keywordMetrics(["블루스퀘어맛집", "화덕피자"]),
       registeredKeywordsStatus: "AVAILABLE",
       registeredKeywordsSource: "REGISTERED_KEYWORD_CACHE",
       registeredKeywordsCollectedAt: collectedAt.toISOString(),
@@ -823,6 +1058,63 @@ describe("place-rank-analyze route", () => {
         collectRegisteredKeywords: false,
       })
     );
+  });
+
+  it("keeps fresh registered keywords visible while missing volumes enter the async queue", async () => {
+    const cached = keywordCacheEntry({
+      publicPlaceId: newOrderClub.id,
+      keywords: ["블루스퀘어맛집", "화덕피자"],
+      collectedAt: new Date(),
+    });
+    mocks.loadRegisteredKeywordCacheState.mockResolvedValue({
+      byPlaceId: new Map([[newOrderClub.id, cached]]),
+      globalBlockUntil: null,
+      globalBlockReason: null,
+    });
+    mocks.loadRegisteredKeywordVolumeCache.mockResolvedValue({
+      rows: new Map(),
+      loadStatus: "AVAILABLE",
+    });
+
+    const response = await POST(
+      analyzeRequest({
+        businessesGraphqlKeyword: FULL_KEYWORD,
+        businessesGraphqlBatch: placeListBatch(1),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.list[0]).toMatchObject({
+      registeredKeywords: [
+        {
+          keyword: "블루스퀘어맛집",
+          volume: null,
+          volumeStatus: "PENDING",
+        },
+        {
+          keyword: "화덕피자",
+          volume: null,
+          volumeStatus: "PENDING",
+        },
+      ],
+      registeredKeywordsStatus: "AVAILABLE",
+      registeredKeywordsCacheStatus: "HIT_FRESH",
+    });
+    expect(body.registeredKeywordVolumeUnavailableCount).toBe(0);
+    expect(body.registeredKeywordVolumePendingCount).toBe(2);
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+
+    const queuedWork = mocks.after.mock.calls[0]?.[0];
+    await queuedWork();
+    expect(
+      mocks.enqueueRegisteredKeywordVolumeBackfillTargets
+    ).toHaveBeenCalledWith([
+      expect.objectContaining({
+        publicPlaceId: newOrderClub.id,
+        placeName: newOrderClub.name,
+      }),
+    ]);
   });
 
   it("keeps review collection behavior but never adds a registered-keyword request", async () => {
@@ -1001,7 +1293,7 @@ describe("place-rank-analyze route", () => {
       registeredKeywordsLiveAttempted: false,
     });
     expect(byName.get(pipeGround.name)).toMatchObject({
-      registeredKeywords: ["한남동맛집", "옥수수피자"],
+      registeredKeywords: keywordMetrics(["한남동맛집", "옥수수피자"]),
       registeredKeywordsStatus: "AVAILABLE",
       registeredKeywordsSource: "REGISTERED_KEYWORD_CACHE",
       registeredKeywordsCollectedAt: staleCollectedAt.toISOString(),
@@ -1074,7 +1366,7 @@ describe("place-rank-analyze route", () => {
     const body = await response.json();
 
     expect(body.list[0]).toMatchObject({
-      registeredKeywords: ["맥주술집", "화덕피자"],
+      registeredKeywords: keywordMetrics(["맥주술집", "화덕피자"]),
       registeredKeywordsStatus: "AVAILABLE",
       registeredKeywordsSource: "PLACE_REVIEW_HISTORY",
       registeredKeywordsCacheStatus: "LEGACY_HISTORY_QUEUE_PENDING",

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  classifyRegisteredKeywordInformationHtml,
   chooseBestPlaceTypeResult,
   extractRegisteredKeywordsFromHtml,
   extractReviewFeatureKeywordsFromObject,
@@ -52,6 +53,70 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     expect(extractRegisteredKeywordsFromHtml("<html></html>")).toEqual({
       keywords: null,
       status: "UNAVAILABLE",
+    });
+    expect(
+      extractRegisteredKeywordsFromHtml(
+        `<script id="__NEXT_DATA__" type="application/json">{"props":{"keywordList":null}}</script>`
+      )
+    ).toEqual({ keywords: null, status: "UNAVAILABLE" });
+  });
+
+  it("accepts a valid keywordList before NCAPTCHA strings in the same normal HTML", () => {
+    const result = classifyRegisteredKeywordInformationHtml({
+      publicPlaceId: "1550229480",
+      html: `<html><head><title>놉스 한남점</title></head><body>
+        <script id="__NEXT_DATA__" type="application/json">{
+          "props":{"pageProps":{"id":"1550229480","businessCategory":"restaurant",
+          "keywordList":["한남동스테이크","한남동와인","한남동양식","한남동파스타","한남스테이크"],
+          "pageId":"ncaptcha-information","confirmRules":"CE_EMPTY_TOKEN"}}
+        }</script>
+      </body></html>`,
+    });
+
+    expect(result).toEqual({
+      keywords: [
+        "한남동스테이크",
+        "한남동와인",
+        "한남동양식",
+        "한남동파스타",
+        "한남스테이크",
+      ],
+      status: "AVAILABLE",
+      failureCode: null,
+      confirmedNcaptcha: false,
+    });
+  });
+
+  it("confirms a real challenge only when normal data and keywordList are absent", () => {
+    const result = classifyRegisteredKeywordInformationHtml({
+      publicPlaceId: "1550229480",
+      html: `<html><head><title>접근 제한 - 보안 확인</title></head><body>
+        <div id="ncaptcha-challenge"><form class="captcha-form">
+          <input name="captchaValue" />
+        </form></div>
+        <script>{"pageId":"ncaptcha-information","confirmRules":"CE_EMPTY_TOKEN","ncaptcha":{"uuid":"masked"}}</script>
+      </body></html>`,
+    });
+
+    expect(result).toEqual({
+      keywords: null,
+      status: "UNAVAILABLE",
+      failureCode: "CONFIRMED_NCAPTCHA",
+      confirmedNcaptcha: true,
+    });
+  });
+
+  it("distinguishes a malformed keywordList from a confirmed challenge", () => {
+    const result = classifyRegisteredKeywordInformationHtml({
+      publicPlaceId: "1550229480",
+      html: `<html><body><script>window.__STATE__={"keywordList":["정상키워드",]}</script></body></html>`,
+    });
+
+    expect(result).toEqual({
+      keywords: null,
+      status: "UNAVAILABLE",
+      failureCode: "PARSE_ERROR",
+      confirmedNcaptcha: false,
     });
   });
 
@@ -383,6 +448,107 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("collects registered keywords directly without calling review GraphQL", async () => {
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request) => {
+        const url = String(input);
+        expect(url).toBe(
+          "https://pcmap.place.naver.com/restaurant/10002/information"
+        );
+        return new Response(
+          `<script id="__NEXT_DATA__" type="application/json">{"props":{"keywordList":["한남동맛집","한남동데이트"]}}</script>`,
+          { status: 200, headers: { "Content-Type": "text/html" } }
+        );
+      }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const snapshot = await getNaverPlaceReviewSnapshot({
+      placeUrl: "https://m.place.naver.com/restaurant/10002/home",
+      placeId: "10002",
+      placeName: "대표키워드 전용 매장",
+      businessType: "restaurant",
+      collectRegisteredKeywords: true,
+      registeredKeywordsOnly: true,
+      force: true,
+    });
+
+    expect(snapshot).toMatchObject({
+      ok: true,
+      chosenType: "restaurant",
+      triedTypes: ["restaurant"],
+      visitorReviewCount: null,
+      blogReviewCount: null,
+      saveCountText: null,
+      registeredKeywords: ["한남동맛집", "한남동데이트"],
+      registeredKeywordsStatus: "AVAILABLE",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) =>
+          String(input) === "https://pcmap-api.place.naver.com/graphql"
+      )
+    ).toBe(false);
+  });
+
+  it("marks a challenge-only information page as CONFIRMED_NCAPTCHA", async () => {
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url === "https://pcmap-api.place.naver.com/graphql") {
+          return new Response(
+            JSON.stringify([
+              {
+                data: {
+                  places: {
+                    businesses: {
+                      items: [
+                        {
+                          id: "challenge-place",
+                          name: "챌린지 플레이스",
+                          visitorReviewCount: 10,
+                          blogCafeReviewCount: 2,
+                          saveCount: 30,
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            ]),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        return new Response(
+          `<html><head><title>접근 제한 - 보안 확인</title></head><body>
+            <form id="ncaptcha-challenge"><input name="captchaValue" /></form>
+            <script>{"pageId":"ncaptcha-information","confirmRules":"CE_EMPTY_TOKEN"}</script>
+          </body></html>`,
+          { status: 200, headers: { "Content-Type": "text/html" } }
+        );
+      }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const snapshot = await getNaverPlaceReviewSnapshot({
+      placeUrl: "https://m.place.naver.com/place/challenge-place/home",
+      placeId: "challenge-place",
+      placeName: "챌린지 플레이스",
+      businessType: "place",
+      force: true,
+    });
+
+    expect(snapshot).toMatchObject({
+      registeredKeywords: null,
+      registeredKeywordsStatus: "UNAVAILABLE",
+      debugReason: "place:HTML_CONFIRMED_NCAPTCHA",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps GraphQL review metrics but skips information HTML when registered keyword collection is disabled", async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request) => {
@@ -515,7 +681,7 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
         const url = String(input);
         if (url.includes("/information")) {
           return new Response(
-            `<script id="__NEXT_DATA__" type="application/json">{"props":{"keywordList":["맥주술집","화덕피자"],"microReview":["피자가 맛있어요"]}}</script>`,
+            `<script id="__NEXT_DATA__" type="application/json">{"props":{"keywordList":["맥주술집","화덕피자"],"microReview":["피자가 맛있어요"],"pageId":"ncaptcha-information","confirmRules":"CE_EMPTY_TOKEN","ncaptcha":{"scriptOnly":true}}}</script>`,
             { status: 200, headers: { "Content-Type": "text/html" } }
           );
         }
@@ -569,6 +735,7 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
       reviewFeatureKeywordsStatus: "AVAILABLE",
       keywordList: ["맥주술집", "화덕피자"],
       keywordListStatus: "AVAILABLE",
+      debugReason: null,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

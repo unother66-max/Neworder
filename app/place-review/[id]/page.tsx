@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import TopNav from "@/components/top-nav";
+import { PlaceReviewDeltaBadge } from "@/components/place-review-delta-badge";
+import { parsePlaceReviewCount } from "@/lib/place-review-history";
 import {
   LineChart,
   Line,
@@ -23,6 +25,8 @@ type ReviewHistoryRow = {
   blogReviewDiff?: number | null;
   saveCount: string;
   saveCountDiff?: number | null;
+  trackedDate?: string;
+  comparedTrackedDate?: string | null;
   keywords: string[];
   createdAt: string;
   updatedAt?: string;
@@ -41,6 +45,10 @@ type PlaceDetail = {
   placeMobileVolume?: number | null;
   placePcVolume?: number | null;
   reviewHistory: ReviewHistoryRow[];
+  reviewHistoryHasMore?: boolean;
+  reviewHistoryPageSize?: number;
+  chartReviewHistory?: ReviewHistoryRow[];
+  chartDays?: number;
 };
 
 function formatDateLabel(value: string) {
@@ -48,6 +56,17 @@ function formatDateLabel(value: string) {
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
   return `${mm}/${dd}`;
+}
+
+function formatHistoryDateLabel(
+  trackedDate: string | undefined,
+  fallback: string
+) {
+  const normalized = String(trackedDate ?? "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return `${normalized.slice(5, 7)}/${normalized.slice(8, 10)}`;
+  }
+  return formatDateLabel(fallback);
 }
 
 function formatDateTimeLabel(value: string) {
@@ -64,18 +83,31 @@ function formatDateTimeLabel(value: string) {
 
 function formatNumber(value?: number | string | null) {
   if (value === null || value === undefined || value === "" || value === "-") return "-";
-  const n = Number(String(value).replace(/,/g, "").replace(/[^\d.-]/g, ""));
-  if (!Number.isFinite(n)) return String(value);
-  return new Intl.NumberFormat("ko-KR").format(n);
-}
-
-function parseSaveCount(value: string) {
-  const onlyNumber = String(value || "").replace(/[^\d]/g, "");
-  const parsed = Number(onlyNumber);
-  return Number.isFinite(parsed) ? parsed : 0;
+  const parsed = parsePlaceReviewCount(value);
+  if (parsed === null) return String(value);
+  return new Intl.NumberFormat("ko-KR").format(parsed);
 }
 
 type MetricKey = "total" | "visitor" | "blog" | "save";
+
+function ReviewMetricCell({
+  value,
+  diff,
+}: {
+  value: number | string;
+  diff?: number | null;
+}) {
+  return (
+    <td className="px-4 py-4 md:px-5">
+      <div className="flex items-center gap-2">
+        <span className="text-[14px] font-bold tabular-nums text-[#111827] md:text-[15px]">
+          {formatNumber(value)}
+        </span>
+        <PlaceReviewDeltaBadge value={diff} />
+      </div>
+    </td>
+  );
+}
 
 export default function PlaceReviewDetailPage() {
   const params = useParams();
@@ -87,6 +119,8 @@ export default function PlaceReviewDetailPage() {
   const [metric, setMetric] = useState<MetricKey>("total");
   const [updating, setUpdating] = useState(false);
   const [trackingUpdating, setTrackingUpdating] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyLoadMoreError, setHistoryLoadMoreError] = useState("");
 
   // --- 디자인 통일용 호버 상태값 ---
   const [trackingHover, setTrackingHover] = useState(false);
@@ -94,7 +128,7 @@ export default function PlaceReviewDetailPage() {
   const [updateHover, setUpdateHover] = useState(false);
   const [updateMousePos, setUpdateMousePos] = useState({ x: 0, y: 0 });
 
-  const loadDetail = async () => {
+  const loadDetail = useCallback(async () => {
     if (!id) return;
     const res = await fetch(
       `/api/place-review-detail?id=${encodeURIComponent(id)}`,
@@ -105,7 +139,8 @@ export default function PlaceReviewDetailPage() {
       throw new Error(data?.message || "상세 조회 실패");
     }
     setPlace(data.place as PlaceDetail);
-  };
+    setHistoryLoadMoreError("");
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -115,23 +150,30 @@ export default function PlaceReviewDetailPage() {
         setError("");
         await loadDetail();
       } catch (e) {
-        console.error(e);
-        setError(e instanceof Error ? e.message : "상세 조회 중 오류가 발생했습니다.");
+        const message =
+          e instanceof Error
+            ? e.message
+            : "상세 조회 중 오류가 발생했습니다.";
+        if (message !== "로그인이 필요합니다.") {
+          console.error(e);
+        }
+        setError(message);
         setPlace(null);
       } finally {
         setLoading(false);
       }
     };
     run();
-  }, [id]);
+  }, [id, loadDetail]);
 
   const chartData = useMemo(() => {
     if (!place) return [];
   
-    return [...(place.reviewHistory || [])]
-      .sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    return [...(place.chartReviewHistory || place.reviewHistory || [])]
+      .sort((a, b) =>
+        (a.trackedDate || a.createdAt).localeCompare(
+          b.trackedDate || b.createdAt
+        )
       )
       .map((r, index) => {
         const dateValue = r.updatedAt || r.createdAt;
@@ -143,18 +185,74 @@ export default function PlaceReviewDetailPage() {
               ? r.visitorReviewCount
               : metric === "blog"
                 ? r.blogReviewCount
-                : parseSaveCount(r.saveCount);
+                : parsePlaceReviewCount(r.saveCount) ?? 0;
+
+        const diff =
+          metric === "total"
+            ? r.totalReviewDiff
+            : metric === "visitor"
+              ? r.visitorReviewDiff
+              : metric === "blog"
+                ? r.blogReviewDiff
+                : r.saveCountDiff;
   
         return {
           id: r.id,
           label: formatDateTimeLabel(dateValue),
-          shortLabel: formatDateTimeLabel(dateValue),
+          shortLabel: formatHistoryDateLabel(r.trackedDate, dateValue),
           value,
+          diff,
+          comparedTrackedDate: r.comparedTrackedDate ?? null,
           fullDate: dateValue,
           index: index + 1,
         };
       });
   }, [place, metric]);
+
+  const loadMoreHistory = useCallback(async () => {
+    if (!id || !place || historyLoadingMore || !place.reviewHistoryHasMore) {
+      return;
+    }
+
+    try {
+      setHistoryLoadingMore(true);
+      setHistoryLoadMoreError("");
+      const historyOffset = place.reviewHistory.length;
+      const res = await fetch(
+        `/api/place-review-detail?id=${encodeURIComponent(id)}&historyOffset=${historyOffset}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message || "리뷰 히스토리 추가 조회 실패");
+      }
+
+      const nextPlace = data.place as PlaceDetail;
+      setPlace((current) => {
+        if (!current) return current;
+        const existingIds = new Set(current.reviewHistory.map((row) => row.id));
+        const additionalRows = (nextPlace.reviewHistory || []).filter(
+          (row) => !existingIds.has(row.id)
+        );
+        return {
+          ...current,
+          reviewHistory: [...current.reviewHistory, ...additionalRows],
+          reviewHistoryHasMore: nextPlace.reviewHistoryHasMore,
+          reviewHistoryPageSize:
+            nextPlace.reviewHistoryPageSize ?? current.reviewHistoryPageSize,
+        };
+      });
+    } catch (e) {
+      const message =
+        e instanceof Error
+          ? e.message
+          : "리뷰 히스토리를 추가로 불러오지 못했습니다.";
+      console.error(e);
+      setHistoryLoadMoreError(message);
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  }, [historyLoadingMore, id, place]);
 
   const valueLabel =
     metric === "total"
@@ -414,11 +512,15 @@ export default function PlaceReviewDetailPage() {
                       리뷰 변화 그래프
                     </div>
                     <div className="mt-1 text-[12px] text-[#9ca3af]">
-                      날짜별 {valueLabel} 추이를 표시합니다.
+                      최근 1년의 날짜별 {valueLabel} 추이를 표시합니다.
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div
+                    role="group"
+                    aria-label="리뷰 변화 그래프 지표"
+                    className="flex flex-wrap gap-2"
+                  >
                     {(
                       [
                         { key: "total", label: "전체" },
@@ -429,6 +531,8 @@ export default function PlaceReviewDetailPage() {
                     ).map((m) => (
                       <button
                         key={m.key}
+                        type="button"
+                        aria-pressed={metric === m.key}
                         onClick={() => setMetric(m.key)}
                         className={
                           metric === m.key
@@ -443,54 +547,81 @@ export default function PlaceReviewDetailPage() {
                 </div>
 
                 {chartData.length > 0 ? (
-                  <div className="h-[320px] rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={chartData}
-                        margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis
-                          dataKey="shortLabel"
-                          tick={{ fontSize: 11 }}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <YAxis
-                          domain={[yMin, yMax]}
-                          tick={{ fontSize: 11 }}
-                          tickLine={false}
-                          axisLine={false}
-                          width={42}
-                          allowDecimals={false}
-                        />
-                        <Tooltip
-                          formatter={(value) => [formatNumber(value as any), valueLabel]}
-                          labelFormatter={(label, payload) => {
-                            const item = payload?.[0]?.payload;
-                            return item?.label || label;
-                          }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          strokeWidth={2.5}
-                          dot={{ r: 3 }}
-                          activeDot={{ r: 5 }}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
+                  <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-4">
+                    <div className="h-[280px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={chartData}
+                          margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="shortLabel"
+                            tick={{ fontSize: 11 }}
+                            tickLine={false}
+                            axisLine={false}
+                            interval="preserveStartEnd"
+                            minTickGap={48}
+                          />
+                          <YAxis
+                            domain={[yMin, yMax]}
+                            tick={{ fontSize: 11 }}
+                            tickLine={false}
+                            axisLine={false}
+                            width={42}
+                            allowDecimals={false}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (!active || !payload?.length) return null;
+                              const item = payload[0]?.payload as
+                                | {
+                                    label: string;
+                                    value: number;
+                                    diff?: number | null;
+                                  }
+                                | undefined;
+                              if (!item) return null;
+
+                              return (
+                                <div className="rounded-[12px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-lg">
+                                  <div className="text-[11px] font-semibold text-[#6b7280]">
+                                    {item.label}
+                                  </div>
+                                  <div className="mt-1 text-[13px] font-bold text-[#111827]">
+                                    {valueLabel} {formatNumber(item.value)}
+                                  </div>
+                                  <PlaceReviewDeltaBadge
+                                    value={item.diff}
+                                    className="mt-2"
+                                  />
+                                </div>
+                              );
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            name={valueLabel}
+                            stroke="#2563EB"
+                            strokeWidth={2.5}
+                            dot={chartData.length <= 90 ? { r: 3 } : false}
+                            activeDot={{ r: 6 }}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
                       </ResponsiveContainer>
-{recentUpdatedAt ? (
-  <div className="mt-3 text-right text-[12px] font-semibold text-[#9ca3af]">
-    최근 업데이트: {formatDateTimeLabel(recentUpdatedAt)}
-  </div>
-) : null}
-</div>
-
-  
-) : (
-
+                    </div>
+                    {recentUpdatedAt ? (
+                      <div className="mt-3 text-right text-[12px] font-semibold text-[#9ca3af]">
+                        최근 업데이트: {formatDateTimeLabel(recentUpdatedAt)}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
                   <div className="flex h-[220px] items-center justify-center rounded-[16px] border border-dashed border-[#d1d5db] bg-[#fafafa] text-[13px] text-[#9ca3af]">
                     아직 저장된 리뷰 이력이 없습니다.
                   </div>
@@ -502,15 +633,37 @@ export default function PlaceReviewDetailPage() {
                   <h2 className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
                     리뷰 히스토리
                   </h2>
+                  <p className="mt-1 text-[11px] leading-5 text-[#6b7280] md:text-[12px]">
+                    현재값 오른쪽의 ▲·▼ 표시는 바로 전날 대비 증감입니다.
+                  </p>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse">
+                <div
+                  role="region"
+                  aria-label="날짜별 리뷰 히스토리"
+                  tabIndex={0}
+                  className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563EB]"
+                >
+                  <table className="min-w-[760px] border-collapse">
+                    <caption className="sr-only">
+                      날짜별 전체, 방문자, 블로그 리뷰와 저장 수 및 전일 대비 증감
+                    </caption>
                     <thead className="bg-[#f9fafb]">
                       <tr>
-                        {["날짜", "전체", "방문자", "블로그", "저장"].map((h) => (
+                        {[
+                          "날짜",
+                          "전체 리뷰수",
+                          "방문자 리뷰",
+                          "블로그 리뷰",
+                          "저장수",
+                        ].map((h, index) => (
                           <th
                             key={h}
-                            className="px-5 py-3.5 text-left text-[12px] font-extrabold text-[#6b7280]"
+                            scope="col"
+                            className={`px-4 py-3.5 text-left text-[12px] font-extrabold text-[#6b7280] md:px-5 ${
+                              index === 0
+                                ? "sticky left-0 z-10 min-w-[96px] bg-[#f9fafb]"
+                                : "min-w-[152px]"
+                            }`}
                           >
                             {h}
                           </th>
@@ -531,32 +684,63 @@ export default function PlaceReviewDetailPage() {
                         place.reviewHistory.map((row) => (
                           <tr
                             key={row.id}
-                            className="border-t border-[#f3f4f6] bg-white"
+                            className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
                           >
-                            <td className="whitespace-nowrap px-5 py-4 text-[12px] font-semibold text-[#6b7280]">
-                              {formatDateLabel(row.updatedAt || row.createdAt)}
+                            <td className="sticky left-0 z-[1] whitespace-nowrap bg-white px-4 py-4 text-[12px] font-bold text-[#374151] md:px-5">
+                              {formatHistoryDateLabel(
+                                row.trackedDate,
+                                row.updatedAt || row.createdAt
+                              )}
                               <div className="mt-1 text-[10px] font-semibold text-[#9ca3af]">
                                 업데이트
                               </div>
                             </td>
-                            <td className="px-5 py-4 text-[14px] font-semibold text-[#111827]">
-                              {formatNumber(row.totalReviewCount)}
-                            </td>
-                            <td className="px-5 py-4 text-[14px] font-semibold text-[#111827]">
-                              {formatNumber(row.visitorReviewCount)}
-                            </td>
-                            <td className="px-5 py-4 text-[14px] font-semibold text-[#111827]">
-                              {formatNumber(row.blogReviewCount)}
-                            </td>
-                            <td className="px-5 py-4 text-[14px] font-semibold text-[#111827]">
-                              {row.saveCount || "-"}
-                            </td>
+                            <ReviewMetricCell
+                              value={row.totalReviewCount}
+                              diff={row.totalReviewDiff}
+                            />
+                            <ReviewMetricCell
+                              value={row.visitorReviewCount}
+                              diff={row.visitorReviewDiff}
+                            />
+                            <ReviewMetricCell
+                              value={row.blogReviewCount}
+                              diff={row.blogReviewDiff}
+                            />
+                            <ReviewMetricCell
+                              value={row.saveCount || "-"}
+                              diff={row.saveCountDiff}
+                            />
                           </tr>
                         ))
                       )}
                     </tbody>
                   </table>
                 </div>
+                {place.reviewHistoryHasMore || historyLoadMoreError ? (
+                  <div className="border-t border-[#f3f4f6] px-5 py-4 text-center md:px-6">
+                    {historyLoadMoreError ? (
+                      <p
+                        role="alert"
+                        className="mb-3 text-[12px] font-semibold text-[#dc2626]"
+                      >
+                        {historyLoadMoreError}
+                      </p>
+                    ) : null}
+                    {place.reviewHistoryHasMore ? (
+                      <button
+                        type="button"
+                        onClick={loadMoreHistory}
+                        disabled={historyLoadingMore}
+                        className="inline-flex h-[42px] min-w-[160px] items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[13px] font-bold text-[#111827] transition hover:border-[#2563EB] hover:bg-[#eff6ff] hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {historyLoadingMore
+                          ? "불러오는 중..."
+                          : `${place.reviewHistoryPageSize ?? 30}개 더보기`}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           )}

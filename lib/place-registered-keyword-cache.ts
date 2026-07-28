@@ -56,7 +56,18 @@ export function getRegisteredKeywordSuccessTtlMs(): number {
   );
 }
 
-export function getRegisteredKeywordFailureCooldownMs(blocked: boolean): number {
+export function getRegisteredKeywordFailureCooldownMs(
+  blocked: boolean,
+  failureCode?: unknown
+): number {
+  if (blocked && /COOLDOWN_HTTP_429/i.test(String(failureCode ?? ""))) {
+    return boundedEnvNumber(
+      "PLACE_ANALYSIS_REGISTERED_KEYWORD_RATE_LIMIT_COOLDOWN_MS",
+      10 * 60 * 1000,
+      2 * 60 * 1000,
+      60 * 60 * 1000
+    );
+  }
   return blocked
     ? boundedEnvNumber(
         "PLACE_ANALYSIS_REGISTERED_KEYWORD_BLOCK_COOLDOWN_MS",
@@ -82,7 +93,7 @@ export function getRegisteredKeywordRefreshLeaseMs(): number {
 }
 
 export function isRegisteredKeywordBlockReason(reason: unknown): boolean {
-  return /NCAPTCHA|COOLDOWN(?:_HTTP_429)?|BLOCKED_HTTP_403|HTTP_429/i.test(
+  return /CONFIRMED_NCAPTCHA|COOLDOWN(?:_HTTP_429)?|BLOCKED_HTTP_403|HTTP_429/i.test(
     String(reason ?? "")
   );
 }
@@ -128,15 +139,24 @@ function cacheSelect() {
 }
 
 const blockReasonWhere = [
-  { lastFailureCode: { contains: "NCAPTCHA", mode: "insensitive" as const } },
-  { lastFailureCode: { contains: "COOLDOWN", mode: "insensitive" as const } },
   {
     lastFailureCode: {
-      contains: "BLOCKED_HTTP_403",
+      contains: "HTML_CONFIRMED_NCAPTCHA",
       mode: "insensitive" as const,
     },
   },
-  { lastFailureCode: { contains: "HTTP_429", mode: "insensitive" as const } },
+  {
+    lastFailureCode: {
+      contains: "HTML_COOLDOWN_HTTP_429",
+      mode: "insensitive" as const,
+    },
+  },
+  {
+    lastFailureCode: {
+      contains: "HTML_BLOCKED_HTTP_403",
+      mode: "insensitive" as const,
+    },
+  },
 ];
 
 export async function loadRegisteredKeywordCacheState(
@@ -339,7 +359,8 @@ export async function saveRegisteredKeywordFailure(params: {
   const attemptedAt = params.attemptedAt ?? new Date();
   const failureCode = String(params.failureCode || "UNAVAILABLE").slice(0, 500);
   const cooldownUntil = new Date(
-    attemptedAt.getTime() + getRegisteredKeywordFailureCooldownMs(params.blocked)
+    attemptedAt.getTime() +
+      getRegisteredKeywordFailureCooldownMs(params.blocked, failureCode)
   );
   return prisma.placeRegisteredKeywordCache.upsert({
     where: { publicPlaceId: params.publicPlaceId },
@@ -349,6 +370,7 @@ export async function saveRegisteredKeywordFailure(params: {
       cooldownUntil,
       refreshLeaseUntil: null,
       queueStatus: "QUEUED",
+      queuedAt: attemptedAt,
       processingStartedAt: null,
     },
     create: {

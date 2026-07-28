@@ -29,6 +29,7 @@ import {
   hasFreshRegisteredKeywordCache,
   isRegisteredKeywordBlockReason,
   isRegisteredKeywordCooldownActive,
+  loadRegisteredKeywordCacheState,
   mapWithConcurrency,
   saveRegisteredKeywordSuccess,
   saveRegisteredKeywordFailure,
@@ -87,7 +88,7 @@ describe("place registered keyword cache helpers", () => {
     expect(result).toEqual([50, 40, 30, 20, 10]);
   });
 
-  it("uses a 24h success TTL, 1h failure cooldown, and 6h block cooldown", () => {
+  it("uses a short 429 retry window without weakening CAPTCHA blocks", () => {
     expect(getRegisteredKeywordSuccessTtlMs()).toBe(24 * 60 * 60 * 1000);
     expect(getRegisteredKeywordFailureCooldownMs(false)).toBe(
       60 * 60 * 1000
@@ -95,6 +96,12 @@ describe("place registered keyword cache helpers", () => {
     expect(getRegisteredKeywordFailureCooldownMs(true)).toBe(
       6 * 60 * 60 * 1000
     );
+    expect(
+      getRegisteredKeywordFailureCooldownMs(
+        true,
+        "restaurant:HTML_COOLDOWN_HTTP_429"
+      )
+    ).toBe(10 * 60 * 1000);
   });
 
   it("distinguishes a fresh value, an expired value, and an active cooldown", () => {
@@ -137,15 +144,24 @@ describe("place registered keyword cache helpers", () => {
     ).toBe(false);
   });
 
-  it("recognizes CAPTCHA, cooldown, 403, and 429 as global stop reasons", () => {
+  it("recognizes only confirmed CAPTCHA, cooldown, 403, and 429 as global stop reasons", () => {
     for (const reason of [
-      "restaurant:HTML_NCAPTCHA",
+      "restaurant:HTML_CONFIRMED_NCAPTCHA",
       "COOLDOWN_HTTP_429",
       "BLOCKED_HTTP_403",
       "HTTP_429",
     ]) {
       expect(isRegisteredKeywordBlockReason(reason)).toBe(true);
     }
+    expect(isRegisteredKeywordBlockReason("restaurant:HTML_NCAPTCHA")).toBe(
+      false
+    );
+    expect(isRegisteredKeywordBlockReason("restaurant:HTML_PARSE_ERROR")).toBe(
+      false
+    );
+    expect(
+      isRegisteredKeywordBlockReason("restaurant:HTML_KEYWORDLIST_MISSING")
+    ).toBe(false);
     expect(isRegisteredKeywordBlockReason("HTML_PARSE_FAILED")).toBe(false);
     expect(isRegisteredKeywordBlockReason(null)).toBe(false);
   });
@@ -156,17 +172,42 @@ describe("place registered keyword cache helpers", () => {
     prismaMocks.createMany.mockResolvedValue({ count: 1 });
     prismaMocks.findFirst.mockResolvedValue({
       cooldownUntil,
-      lastFailureCode: "restaurant:HTML_NCAPTCHA",
+      lastFailureCode: "restaurant:HTML_CONFIRMED_NCAPTCHA",
     });
 
     await expect(
       claimRegisteredKeywordRefresh("220044", now)
     ).resolves.toEqual({
       status: "GLOBAL_BLOCK",
-      reason: "restaurant:HTML_NCAPTCHA",
+      reason: "restaurant:HTML_CONFIRMED_NCAPTCHA",
       until: cooldownUntil,
     });
     expect(prismaMocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("limits global keyword blocking to confirmed information-page failures", async () => {
+    prismaMocks.findFirst.mockResolvedValue(null);
+
+    const state = await loadRegisteredKeywordCacheState([], new Date());
+
+    expect(state.globalBlockUntil).toBeNull();
+    const where = prismaMocks.findFirst.mock.calls[0]?.[0]?.where;
+    expect(
+      where.OR.map(
+        (condition: { lastFailureCode: { contains: string } }) =>
+          condition.lastFailureCode.contains
+      )
+    ).toEqual([
+      "HTML_CONFIRMED_NCAPTCHA",
+      "HTML_COOLDOWN_HTTP_429",
+      "HTML_BLOCKED_HTTP_403",
+    ]);
+    expect(
+      where.OR.some(
+        (condition: { lastFailureCode: { contains: string } }) =>
+          condition.lastFailureCode.contains.includes("GRAPHQL")
+      )
+    ).toBe(false);
   });
 
   it("records a failed attempt without overwriting the last successful keywords", async () => {
@@ -175,7 +216,7 @@ describe("place registered keyword cache helpers", () => {
 
     await saveRegisteredKeywordFailure({
       publicPlaceId: "220044",
-      failureCode: "restaurant:HTML_NCAPTCHA",
+      failureCode: "restaurant:HTML_CONFIRMED_NCAPTCHA",
       blocked: true,
       attemptedAt,
     });
@@ -184,9 +225,10 @@ describe("place registered keyword cache helpers", () => {
     expect(write.where).toEqual({ publicPlaceId: "220044" });
     expect(write.update).toMatchObject({
       lastAttemptAt: attemptedAt,
-      lastFailureCode: "restaurant:HTML_NCAPTCHA",
+      lastFailureCode: "restaurant:HTML_CONFIRMED_NCAPTCHA",
       refreshLeaseUntil: null,
       queueStatus: "QUEUED",
+      queuedAt: attemptedAt,
       processingStartedAt: null,
     });
     expect(write.update).not.toHaveProperty("keywords");

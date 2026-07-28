@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { processRegisteredKeywordQueue } from "@/lib/place-registered-keyword-queue";
+import {
+  getRegisteredKeywordCronQueueOptions,
+  processRegisteredKeywordQueue,
+} from "@/lib/place-registered-keyword-queue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,10 +23,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, reason: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  const result = await processRegisteredKeywordQueue({
-    maxItems: 3,
-    jitterMs: 1_000,
+  const options = getRegisteredKeywordCronQueueOptions();
+  const result = await processRegisteredKeywordQueue(options);
+  console.log("[place-analysis registered keyword queue] cron", {
+    concurrency: 1,
+    ...options,
+    ...result,
   });
-  console.log("[place-analysis registered keyword queue] cron", result);
-  return NextResponse.json({ ok: true, concurrency: 1, ...result });
+  return NextResponse.json({
+    ok: true,
+    concurrency: 1,
+    ...options,
+    ...result,
+  });
 }

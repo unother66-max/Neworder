@@ -71,6 +71,7 @@ export type GetKeywordSearchVolumeOptions = {
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const SEARCHAD_REQUEST_TIMEOUT_MS = 4_000;
 /** SearchAD 결과 영속 캐시 TTL — 블톡·keyword-refresh 공통 */
 export const KEYWORD_VOLUME_DB_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -446,6 +447,7 @@ async function fetchKeywordSearchVolumeUncached(
         "Content-Type": "application/json; charset=UTF-8",
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(SEARCHAD_REQUEST_TIMEOUT_MS),
     });
   };
 

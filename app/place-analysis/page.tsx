@@ -5,6 +5,11 @@ import { useSession } from "next-auth/react";
 import TopNav from "@/components/top-nav";
 import { PlaceAnalysisNewOpenBadge } from "@/components/place-analysis-new-open-badge";
 import {
+  normalizePlaceAnalysisRegisteredKeywords,
+  PlaceAnalysisRegisteredKeywords,
+  type PlaceAnalysisRegisteredKeyword,
+} from "@/components/place-analysis-registered-keywords";
+import {
   LoginRequiredModal,
   PublicPreviewBanner,
   useLoginRequiredPreview,
@@ -20,7 +25,13 @@ import {
   pickBusinessesCoords,
 } from "@/lib/naver-map-businesses-shared";
 import { buildPcmapPlaceListRequestBatch } from "@/lib/pcmap-place-list-request";
-import { getRegisteredKeywordEmptyLabel } from "@/lib/place-analysis-registered-keyword-ui";
+import {
+  getRegisteredKeywordEmptyLabel,
+  getRegisteredKeywordProgressLabel,
+  hasCollectedRegisteredKeywords,
+  hasPendingRegisteredKeywordVolumes,
+  isRegisteredKeywordCollectionDelayed,
+} from "@/lib/place-analysis-registered-keyword-ui";
 import {
   filterNewOpenPlaces,
   pcmapBatchHasNewOpeningField,
@@ -46,7 +57,7 @@ type RankPlaceItem = {
   isNewOpen?: boolean | null;
   newOpenLabel?: string | null;
   source?: "pcmap-graphql" | "apollo-state" | "allsearch" | "cache";
-  registeredKeywords?: string[] | null;
+  registeredKeywords?: Array<string | PlaceAnalysisRegisteredKeyword> | null;
   registeredKeywordsStatus?: "AVAILABLE" | "UNAVAILABLE";
   registeredKeywordsSource?: string | null;
   registeredKeywordsCollectedAt?: string | null;
@@ -68,6 +79,58 @@ type RankPlaceItem = {
     visitorStatus?: "AVAILABLE" | "UNAVAILABLE";
     blogStatus?: "AVAILABLE" | "UNAVAILABLE";
     saveStatus?: "AVAILABLE" | "UNAVAILABLE";
+  };
+};
+
+type RegisteredKeywordCollectionTarget = {
+  publicPlaceId: string;
+  placeName: string;
+  category?: string | null;
+  businessType?: string | null;
+  x?: string | null;
+  y?: string | null;
+};
+
+type RegisteredKeywordCollectionProgress = {
+  total: number;
+  available: number;
+  pending: number;
+  volumePending: number;
+  running: boolean;
+  delayed: boolean;
+};
+
+type RegisteredKeywordProgressRow = Pick<
+  RankPlaceItem,
+  | "registeredKeywords"
+  | "registeredKeywordsStatus"
+  | "registeredKeywordsSource"
+  | "registeredKeywordsCollectedAt"
+  | "registeredKeywordsCacheSource"
+  | "registeredKeywordsCacheStatus"
+  | "registeredKeywordsLastAttemptAt"
+  | "registeredKeywordsCooldownUntil"
+  | "registeredKeywordsLastFailureCode"
+  | "registeredKeywordsLiveAttempted"
+  | "registeredKeywordsDebugReason"
+  | "keywords"
+> & {
+  placeId: string;
+};
+
+type RegisteredKeywordProgressResponse = {
+  ok?: boolean;
+  complete?: boolean;
+  rows?: RegisteredKeywordProgressRow[];
+  pendingPlaceIds?: string[];
+  remainingPlaceIds?: string[];
+  volumePendingPlaceIds?: string[];
+  retryableNowPlaceIds?: string[];
+  retryableCollectionPlaceIds?: string[];
+  retryableVolumePlaceIds?: string[];
+  queue?: {
+    status?: string;
+    attempted?: number;
   };
 };
 
@@ -117,13 +180,71 @@ function formatCount(value?: string | number | null) {
   return Number(onlyNumber).toLocaleString("ko-KR");
 }
 
-function getDisplayRegisteredKeywords(item: RankPlaceItem): string[] | null {
-  if (item.registeredKeywordsStatus === "UNAVAILABLE") return null;
-  if (Array.isArray(item.registeredKeywords)) {
-    return item.registeredKeywords.slice(0, 5);
+function normalizeProgressRow(value: unknown): RegisteredKeywordProgressRow | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const placeId = String(row.placeId ?? "").trim();
+  if (!/^\d{1,32}$/.test(placeId)) return null;
+
+  const normalized: RegisteredKeywordProgressRow = { placeId };
+  if (
+    row.registeredKeywords === null ||
+    Array.isArray(row.registeredKeywords)
+  ) {
+    normalized.registeredKeywords =
+      row.registeredKeywords as RankPlaceItem["registeredKeywords"];
   }
-  if (Array.isArray(item.keywords)) return item.keywords.slice(0, 5);
-  return null;
+  if (
+    row.registeredKeywordsStatus === "AVAILABLE" ||
+    row.registeredKeywordsStatus === "UNAVAILABLE"
+  ) {
+    normalized.registeredKeywordsStatus = row.registeredKeywordsStatus;
+  }
+  for (const field of [
+    "registeredKeywordsSource",
+    "registeredKeywordsCollectedAt",
+    "registeredKeywordsCacheSource",
+    "registeredKeywordsCacheStatus",
+    "registeredKeywordsLastAttemptAt",
+    "registeredKeywordsCooldownUntil",
+    "registeredKeywordsLastFailureCode",
+    "registeredKeywordsDebugReason",
+  ] as const) {
+    const fieldValue = row[field];
+    if (fieldValue === null || typeof fieldValue === "string") {
+      normalized[field] = fieldValue;
+    }
+  }
+  if (typeof row.registeredKeywordsLiveAttempted === "boolean") {
+    normalized.registeredKeywordsLiveAttempted =
+      row.registeredKeywordsLiveAttempted;
+  }
+  if (
+    row.keywords === null ||
+    (Array.isArray(row.keywords) &&
+      row.keywords.every((keyword) => typeof keyword === "string"))
+  ) {
+    normalized.keywords = row.keywords as string[] | null;
+  }
+  return normalized;
+}
+
+function waitForRegisteredKeywordRetry(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 type BatchAttempt = {
@@ -219,6 +340,8 @@ export default function PlaceAnalysisPage() {
   const [list, setList] = useState<RankPlaceItem[]>([]);
   const [showNewOpenOnly, setShowNewOpenOnly] = useState(false);
   const [error, setError] = useState("");
+  const [registeredKeywordProgress, setRegisteredKeywordProgress] =
+    useState<RegisteredKeywordCollectionProgress | null>(null);
   
   const [naverMapDataSource, setNaverMapDataSource] = useState<null | "batch" | "allSearch">(null);
   const [placeSearchHint, setPlaceSearchHint] = useState("");
@@ -242,16 +365,28 @@ export default function PlaceAnalysisPage() {
 
   useEffect(() => {
     if (!isPreview) return;
+    analyzeGenRef.current += 1;
+    analyzeAbortRef.current?.abort();
     const previewTimer = window.setTimeout(() => {
       setSearchedKeyword("성수 카페");
       setRelatedKeywords(SAMPLE_PLACE_ANALYSIS_RELATED);
       setList(SAMPLE_PLACE_ANALYSIS_LIST);
+      setRegisteredKeywordProgress(null);
       setLoading(false);
     }, 0);
     return () => window.clearTimeout(previewTimer);
   }, [isPreview]);
 
+  useEffect(
+    () => () => {
+      analyzeGenRef.current += 1;
+      analyzeAbortRef.current?.abort();
+    },
+    []
+  );
+
   const handleAnalyze = async () => {
+    if (status === "loading") return;
     if (guardAction()) return;
     const trimmedRaw = keyword.trim();
 
@@ -279,6 +414,8 @@ export default function PlaceAnalysisPage() {
       setNaverMapDataSource(null);
       setPlaceSearchHint("");
       setAnalysisDiagnostics(null);
+      setShowNewOpenOnly(false);
+      setRegisteredKeywordProgress(null);
 
       let clientBatch: unknown[] | null = null;
       let clientBatchSource: "pcmap-graphql" | null = null;
@@ -462,12 +599,22 @@ export default function PlaceAnalysisPage() {
         signal,
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: Record<string, unknown> | null = null;
+      try {
+        data = JSON.parse(responseText) as Record<string, unknown>;
+      } catch {
+        data = null;
+      }
 
       if (!alive()) return;
 
       if (!res.ok || !data?.ok) {
-        setError(data?.message || "분석 중 오류가 발생했습니다.");
+        setError(
+          typeof data?.message === "string"
+            ? data.message
+            : `분석 서버 응답을 확인할 수 없습니다. (${res.status})`
+        );
         setRelatedKeywords([]);
         setList([]);
         setPlaceSearchHint("");
@@ -475,10 +622,372 @@ export default function PlaceAnalysisPage() {
         return;
       }
 
-      setSearchedKeyword(data.keyword || trimmed);
-      setRelatedKeywords(Array.isArray(data.related) ? data.related : []);
-      const listArr = Array.isArray(data.list) ? data.list : [];
+      setSearchedKeyword(
+        typeof data.keyword === "string" ? data.keyword : trimmed
+      );
+      setRelatedKeywords(
+        Array.isArray(data.related)
+          ? (data.related as RelatedKeywordItem[])
+          : []
+      );
+      const listArr: RankPlaceItem[] = Array.isArray(data.list)
+        ? data.list.filter(
+            (item): item is RankPlaceItem =>
+              Boolean(
+                item &&
+                  typeof item === "object" &&
+                  typeof (item as RankPlaceItem).name === "string" &&
+                  typeof (item as RankPlaceItem).rank === "number" &&
+                  Number.isFinite((item as RankPlaceItem).rank)
+              )
+          )
+        : [];
       setList(listArr);
+
+      const rawResponseTargets: unknown[] = Array.isArray(
+        data.registeredKeywordTargets
+      )
+        ? data.registeredKeywordTargets
+        : [];
+      const responseTargets = rawResponseTargets.reduce<
+        RegisteredKeywordCollectionTarget[]
+      >((targets, target) => {
+        if (!target || typeof target !== "object") return targets;
+        const row = target as Record<string, unknown>;
+        const publicPlaceId = String(row.publicPlaceId ?? "").trim();
+        const placeName = String(row.placeName ?? "").trim();
+        if (!/^\d{1,32}$/.test(publicPlaceId) || !placeName) {
+          return targets;
+        }
+        targets.push({
+          publicPlaceId,
+          placeName,
+          category:
+            typeof row.category === "string" ? row.category : null,
+          businessType:
+            typeof row.businessType === "string"
+              ? row.businessType
+              : null,
+          x: typeof row.x === "string" ? row.x : null,
+          y: typeof row.y === "string" ? row.y : null,
+        });
+        return targets;
+      }, []);
+      const fallbackTargets = listArr.reduce<
+        RegisteredKeywordCollectionTarget[]
+      >((targets, item) => {
+          const publicPlaceId = String(item.placeId ?? "").trim();
+          if (!/^\d{1,32}$/.test(publicPlaceId) || !item.name.trim()) {
+            return targets;
+          }
+          targets.push({
+            publicPlaceId,
+            placeName: item.name.trim(),
+            category: item.category ?? null,
+            businessType: item.businessCategory ?? null,
+          });
+          return targets;
+        }, []);
+      const registeredKeywordTargetById = new Map<
+        string,
+        RegisteredKeywordCollectionTarget
+      >();
+      for (const target of fallbackTargets) {
+        registeredKeywordTargetById.set(target.publicPlaceId, target);
+      }
+      for (const target of responseTargets) {
+        registeredKeywordTargetById.set(target.publicPlaceId, target);
+      }
+      const registeredKeywordTargets = Array.from(
+        registeredKeywordTargetById.values()
+      );
+
+      if (registeredKeywordTargets.length > 0) {
+        const completedPlaceIds = new Set(
+          listArr
+            .filter(hasCollectedRegisteredKeywords)
+            .map((item) => String(item.placeId ?? "").trim())
+            .filter((placeId) =>
+              registeredKeywordTargetById.has(placeId)
+            )
+        );
+        const initialVolumePending = new Set(
+          listArr
+            .filter(hasPendingRegisteredKeywordVolumes)
+            .map((item) => String(item.placeId ?? "").trim())
+            .filter((placeId) =>
+              registeredKeywordTargetById.has(placeId)
+            )
+        ).size;
+        const initialAvailable = registeredKeywordTargets.filter((target) =>
+          completedPlaceIds.has(target.publicPlaceId)
+        ).length;
+        const initialPending = Math.max(
+          0,
+          registeredKeywordTargets.length - initialAvailable
+        );
+        setRegisteredKeywordProgress({
+          total: registeredKeywordTargets.length,
+          available: initialAvailable,
+          pending: initialPending,
+          volumePending: initialVolumePending,
+          running: initialPending > 0 || initialVolumePending > 0,
+          delayed: false,
+        });
+
+        if (initialPending > 0 || initialVolumePending > 0) {
+          const maxWorkRounds = Math.min(
+            18,
+            Math.max(
+              4,
+              Math.ceil(registeredKeywordTargets.length / 5) + 4
+            )
+          );
+          void (async () => {
+            const deadlineAt =
+              Date.now() +
+              Math.min(
+                8 * 60_000,
+                Math.max(
+                  2 * 60_000,
+                  registeredKeywordTargets.length * 7_000
+                )
+              );
+            let workRounds = 0;
+            let consecutiveErrors = 0;
+            while (
+              workRounds < maxWorkRounds &&
+              Date.now() < deadlineAt
+            ) {
+              if (signal.aborted || !alive()) return;
+              let refreshData: RegisteredKeywordProgressResponse;
+              let refreshStatus = 0;
+              try {
+                const refreshRes = await fetch(
+                  "/api/place-analysis-registered-keywords",
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      targets: registeredKeywordTargets,
+                    }),
+                    signal,
+                  }
+                );
+                refreshStatus = refreshRes.status;
+                const refreshText = await refreshRes.text();
+                let parsed: RegisteredKeywordProgressResponse | null =
+                  null;
+                try {
+                  parsed = JSON.parse(
+                    refreshText
+                  ) as RegisteredKeywordProgressResponse;
+                } catch {
+                  parsed = null;
+                }
+                if (!refreshRes.ok || !parsed?.ok) {
+                  throw new Error(
+                    `REGISTERED_KEYWORD_REFRESH_HTTP_${refreshRes.status}`
+                  );
+                }
+                refreshData = parsed;
+                consecutiveErrors = 0;
+              } catch (refreshRequestError) {
+                if (
+                  signal.aborted ||
+                  (refreshRequestError instanceof Error &&
+                    refreshRequestError.name === "AbortError") ||
+                  !alive()
+                ) {
+                  return;
+                }
+                consecutiveErrors += 1;
+                if (
+                  consecutiveErrors <= 2 &&
+                  Date.now() < deadlineAt
+                ) {
+                  await waitForRegisteredKeywordRetry(
+                    600 * consecutiveErrors,
+                    signal
+                  );
+                  continue;
+                }
+                throw new Error(
+                  `REGISTERED_KEYWORD_REFRESH_FAILED_${refreshStatus || "NETWORK"}`,
+                  { cause: refreshRequestError }
+                );
+              }
+              if (signal.aborted || !alive()) return;
+
+              const progressRows = (
+                Array.isArray(refreshData.rows)
+                  ? refreshData.rows
+                  : []
+              )
+                .map(normalizeProgressRow)
+                .filter(
+                  (
+                    row
+                  ): row is RegisteredKeywordProgressRow => row !== null
+                );
+              const updates = new Map(
+                progressRows.map(
+                  (row) => [row.placeId, row] as const
+                )
+              );
+              setList((current) =>
+                current.map((item) => {
+                  const update = updates.get(String(item.placeId ?? ""));
+                  return update ? { ...item, ...update } : item;
+                })
+              );
+
+              const collectionPending = Array.isArray(
+                refreshData.remainingPlaceIds
+              )
+                ? new Set(
+                    refreshData.remainingPlaceIds.filter(
+                      (placeId) =>
+                        typeof placeId === "string" &&
+                        registeredKeywordTargetById.has(placeId)
+                    )
+                  ).size
+                : Math.max(
+                    0,
+                    registeredKeywordTargets.length -
+                      progressRows.filter((row) =>
+                        hasCollectedRegisteredKeywords(row)
+                      ).length
+                  );
+              const volumePending = Array.isArray(
+                refreshData.volumePendingPlaceIds
+              )
+                ? new Set(
+                    refreshData.volumePendingPlaceIds.filter(
+                      (placeId) =>
+                        typeof placeId === "string" &&
+                        registeredKeywordTargetById.has(placeId)
+                    )
+                  ).size
+                : progressRows.filter((row) =>
+                    hasPendingRegisteredKeywordVolumes(row)
+                  ).length;
+              const overallPending = Array.isArray(
+                refreshData.pendingPlaceIds
+              )
+                ? new Set(
+                    refreshData.pendingPlaceIds.filter(
+                      (placeId) =>
+                        typeof placeId === "string" &&
+                        registeredKeywordTargetById.has(placeId)
+                    )
+                  ).size
+                : Math.min(
+                    registeredKeywordTargets.length,
+                    collectionPending + volumePending
+                  );
+              const available = Math.max(
+                0,
+                registeredKeywordTargets.length - collectionPending
+              );
+              const retryableCollection = Array.isArray(
+                refreshData.retryableCollectionPlaceIds
+              )
+                ? new Set(
+                    refreshData.retryableCollectionPlaceIds.filter(
+                      (placeId) =>
+                        typeof placeId === "string" &&
+                        registeredKeywordTargetById.has(placeId)
+                    )
+                  ).size
+                : collectionPending;
+              const retryableNow = Array.isArray(
+                refreshData.retryableNowPlaceIds
+              )
+                ? new Set(
+                    refreshData.retryableNowPlaceIds.filter(
+                      (placeId) =>
+                        typeof placeId === "string" &&
+                        registeredKeywordTargetById.has(placeId)
+                    )
+                  ).size
+                : overallPending;
+              const queueStatus = String(
+                refreshData.queue?.status ?? ""
+              );
+              const collectionDelayed =
+                isRegisteredKeywordCollectionDelayed({
+                  queueStatus,
+                  collectionPending,
+                  retryableCollection,
+                });
+              const overallDelayed =
+                queueStatus === "GLOBAL_COOLDOWN" ||
+                (overallPending > 0 && retryableNow === 0);
+              setRegisteredKeywordProgress({
+                total: registeredKeywordTargets.length,
+                available,
+                pending: collectionPending,
+                volumePending,
+                running:
+                  collectionPending > 0
+                    ? !collectionDelayed
+                    : volumePending > 0 && !overallDelayed,
+                delayed: collectionDelayed,
+              });
+
+              if (queueStatus !== "WORKER_BUSY") {
+                workRounds += 1;
+              }
+              if (
+                refreshData.complete ||
+                overallPending === 0 ||
+                overallDelayed
+              ) {
+                return;
+              }
+              await waitForRegisteredKeywordRetry(
+                queueStatus === "WORKER_BUSY" ? 1_000 : 350,
+                signal
+              );
+            }
+            if (alive()) {
+              setRegisteredKeywordProgress((current) =>
+                current
+                  ? {
+                      ...current,
+                      running: false,
+                    }
+                  : current
+              );
+            }
+          })().catch((refreshError) => {
+            if (
+              signal.aborted ||
+              (refreshError instanceof Error &&
+                refreshError.name === "AbortError") ||
+              !alive()
+            ) {
+              return;
+            }
+            console.warn(
+              "[place-analysis] 대표키워드 자동 수집 실패",
+              refreshError
+            );
+            setRegisteredKeywordProgress((current) =>
+              current
+                ? {
+                    ...current,
+                    running: false,
+                    delayed: current.pending > 0,
+                  }
+                : current
+            );
+          });
+        }
+      } else {
+        setRegisteredKeywordProgress(null);
+      }
 
       const diag = data.diagnostics as
         | {
@@ -600,7 +1109,7 @@ export default function PlaceAnalysisPage() {
                 <button
                   type="button"
                   onClick={handleAnalyze}
-                  disabled={loading}
+                  disabled={loading || status === "loading"}
                   onMouseEnter={() => setIsAnalyzeHovered(true)}
                   onMouseLeave={() => setIsAnalyzeHovered(false)}
                   onMouseMove={(e) => {
@@ -700,10 +1209,16 @@ export default function PlaceAnalysisPage() {
                 </div>
 
                 <div className="flex flex-col items-end gap-1.5">
-                  {renderedList.length > 0 ? (
-                    <div className="max-w-[520px] text-right text-[10px] leading-4 text-[#6b7280] md:text-[11px]">
-                      등록 키워드는 서버에서 한 업체씩 순차 수집되며 다음 분석에
-                      반영됩니다. 네이버 요청 제한 시 수집이 지연될 수 있습니다.
+                  {list.length > 0 ? (
+                    <div
+                      aria-live="polite"
+                      className="max-w-[520px] text-right text-[10px] leading-4 text-[#6b7280] md:text-[11px]"
+                    >
+                      {registeredKeywordProgress
+                        ? getRegisteredKeywordProgressLabel(
+                            registeredKeywordProgress
+                          )
+                        : "검색된 모든 매장의 대표키워드를 순차 수집해 이 화면에 자동 반영합니다."}
                     </div>
                   ) : null}
                   <div className="text-[10px] leading-4 text-[#6b7280] md:text-[12px] md:text-[#9ca3af]">
@@ -797,7 +1312,7 @@ export default function PlaceAnalysisPage() {
                       저장수
                     </th>
                     <th className="hidden px-2 py-2.5 text-left text-[11px] font-bold text-[#6b7280] md:table-cell md:px-5 md:py-4 md:text-[13px]">
-                      특징 키워드
+                      대표키워드 / 검색량
                     </th>
                   </tr>
                 </thead>
@@ -817,7 +1332,12 @@ export default function PlaceAnalysisPage() {
                   ) : (
                     renderedList.map((item, idx) => {
                       const registeredKeywords =
-                        getDisplayRegisteredKeywords(item);
+                        normalizePlaceAnalysisRegisteredKeywords({
+                          registeredKeywords: item.registeredKeywords,
+                          registeredKeywordsStatus:
+                            item.registeredKeywordsStatus,
+                          legacyKeywords: item.keywords,
+                        });
                       const keywordEmptyLabel =
                         getRegisteredKeywordEmptyLabel(
                           item.registeredKeywordsCacheStatus
@@ -869,21 +1389,12 @@ export default function PlaceAnalysisPage() {
                                 {item.category || "-"}
                               </div>
 
-                              <div className="mt-1 flex max-w-[155px] flex-wrap gap-1 overflow-visible md:hidden">
-                                {registeredKeywords && registeredKeywords.length > 0 ? (
-                                  registeredKeywords.map((kw, i) => (
-                                    <span
-                                      key={i}
-                                      className="inline-flex shrink-0 whitespace-nowrap rounded-[6px] border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold leading-5 text-blue-600"
-                                    >
-                                      #{kw}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-[11px] text-[#9ca3af]">
-                                    {keywordEmptyLabel}
-                                  </span>
-                                )}
+                              <div className="mt-1 md:hidden">
+                                <PlaceAnalysisRegisteredKeywords
+                                  keywords={registeredKeywords}
+                                  emptyLabel={keywordEmptyLabel}
+                                  compact
+                                />
                               </div>
                             </div>
                           </div>
@@ -912,22 +1423,10 @@ export default function PlaceAnalysisPage() {
                         </td>
 
                         <td className="hidden px-2 py-3 md:table-cell md:px-5 md:py-5">
-                          <div className="flex max-w-[160px] flex-wrap gap-1 md:max-w-[200px] md:gap-1.5">
-                            {registeredKeywords && registeredKeywords.length > 0 ? (
-                              registeredKeywords.map((kw, i) => (
-                                <span
-                                  key={i}
-                                  className="rounded-[6px] border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 md:px-2 md:py-1 md:text-[11px]"
-                                >
-                                  #{kw}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-[11px] text-[#9ca3af] md:text-[12px]">
-                                {keywordEmptyLabel}
-                              </span>
-                            )}
-                          </div>
+                          <PlaceAnalysisRegisteredKeywords
+                            keywords={registeredKeywords}
+                            emptyLabel={keywordEmptyLabel}
+                          />
                         </td>
                         </tr>
                       );

@@ -2,6 +2,11 @@ import { buildPcmapPlaceListRequestBatch } from "./pcmap-place-list-request";
 
 export type NaverPlaceType = "restaurant" | "place";
 export type KeywordCollectionStatus = "AVAILABLE" | "UNAVAILABLE";
+export type RegisteredKeywordHtmlFailureCode =
+  | "CONFIRMED_NCAPTCHA"
+  | "PARSE_ERROR"
+  | "KEYWORDLIST_MISSING"
+  | "UNKNOWN_HTML";
 
 export type ReviewSnapshot = {
   ok: boolean;
@@ -40,9 +45,12 @@ export type GetReviewSnapshotInput = {
   force?: boolean;
   /** false면 리뷰/저장 수는 수집하되 /information 등록 키워드 요청만 생략한다. */
   collectRegisteredKeywords?: boolean;
+  /** true면 리뷰 GraphQL을 건너뛰고 /information의 대표키워드만 수집한다. */
+  registeredKeywordsOnly?: boolean;
 };
 
 const GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
+const NAVER_PLACE_REQUEST_TIMEOUT_MS = 7_000;
 
 declare global {
   var __placeReviewSnapshotInFlight:
@@ -115,18 +123,24 @@ function normalizeText(value: string) {
     .trim();
 }
 
+function hasConfirmedNcaptchaPayload(body: string): boolean {
+  const hasPageId = /"pageId"\s*:\s*"ncaptcha/i.test(body);
+  const hasRules = /"confirmRules"\s*:\s*"CE_/i.test(body);
+  const hasState = /"ncaptcha"\s*:\s*\{/i.test(body);
+  const hasNoResultPage = /ncaptcha-all-search-no-result/i.test(body);
+  return (hasPageId && (hasRules || hasState)) || (hasNoResultPage && hasRules);
+}
+
 function detectNaverBlockReason(status: number, body: string): string | null {
   if (status === 429) return "COOLDOWN_HTTP_429";
   if (status === 403) return "BLOCKED_HTTP_403";
-  if (
-    /"pageId"\s*:\s*"ncaptcha/i.test(body) ||
-    /"ncaptcha"\s*:\s*\{/i.test(body) ||
-    /"confirmRules"\s*:\s*"CE_/i.test(body) ||
-    /ncaptcha-all-search-no-result/i.test(body) ||
-    /요청.{0,10}(차단|제한)/i.test(body)
-  ) {
-    return "NCAPTCHA";
-  }
+  if (hasConfirmedNcaptchaPayload(body)) return "CONFIRMED_NCAPTCHA";
+  return null;
+}
+
+function detectHttpBlockReason(status: number): string | null {
+  if (status === 429) return "COOLDOWN_HTTP_429";
+  if (status === 403) return "BLOCKED_HTTP_403";
   return null;
 }
 
@@ -145,14 +159,18 @@ async function fetchHtml(url: string) {
       "Upgrade-Insecure-Requests": "1",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(NAVER_PLACE_REQUEST_TIMEOUT_MS),
   });
 
   const html = await res.text();
-  const blockReason = detectNaverBlockReason(res.status, html);
+  // HTML 본문의 NCAPTCHA 문자열은 정상 초기 상태/스크립트에도 포함될 수 있다.
+  // 여기서는 HTTP 레벨 차단만 확정하고 본문 판정은 정상 데이터 파싱 뒤에 한다.
+  const blockReason = detectHttpBlockReason(res.status);
   return {
     html,
     status: res.status,
     ok: res.ok,
+    contentType: res.headers.get("content-type"),
     blocked: blockReason !== null,
     blockReason,
     finalUrl: res.url || url,
@@ -439,9 +457,26 @@ export function extractReviewFeatureKeywordsFromObject(
  * /place-review가 기존부터 사용하던 업체 등록 키워드 파서.
  * `/information` 초기 상태의 `keywordList`만 읽고 microReview는 섞지 않는다.
  */
-export function extractRegisteredKeywordsFromHtml(
+type DetailedRegisteredKeywordParseResult = KeywordParseResult & {
+  failureCode: "PARSE_ERROR" | "KEYWORDLIST_MISSING" | null;
+};
+
+function normalizeRegisteredKeywordArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const values: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    const keyword = item.normalize("NFKC").trim();
+    if (!keyword) return null;
+    values.push(keyword);
+  }
+  return uniqueKeywords(values);
+}
+
+function parseRegisteredKeywordsFromHtml(
   html: string
-): KeywordParseResult {
+): DetailedRegisteredKeywordParseResult {
+  let sawInvalidKeywordList = false;
   // /place-review의 기존 정상 동작과 같은 첫 keywordList 배열을 우선한다.
   const matched = html.match(
     /(?:\\"|")keywordList(?:\\"|")\s*:\s*(\[[\s\S]*?\])/i
@@ -449,24 +484,138 @@ export function extractRegisteredKeywordsFromHtml(
   if (matched?.[1]) {
     try {
       const parsed = JSON.parse(matched[1].replace(/\\"/g, '"'));
-      return {
-        keywords: uniqueKeywords(normalizeKeywordValue(parsed)),
-        status: "AVAILABLE",
-      };
+      const keywords = normalizeRegisteredKeywordArray(parsed);
+      if (keywords) {
+        return { keywords, status: "AVAILABLE", failureCode: null };
+      }
+      sawInvalidKeywordList = true;
     } catch {
-      return { keywords: null, status: "UNAVAILABLE" };
+      // 손상된 raw state 뒤에 유효한 __NEXT_DATA__가 있을 수 있으므로 계속 본다.
+      sawInvalidKeywordList = true;
     }
   }
 
   const nextData = findNextDataJson(html);
   const matches = collectKeyMatches(nextData, [/^keywordList$/i]);
-  if (matches.length > 0) {
+  for (const match of matches) {
+    const keywords = normalizeRegisteredKeywordArray(match.value);
+    if (keywords) {
+      return { keywords, status: "AVAILABLE", failureCode: null };
+    }
+    sawInvalidKeywordList = true;
+  }
+  return {
+    keywords: null,
+    status: "UNAVAILABLE",
+    failureCode: sawInvalidKeywordList ? "PARSE_ERROR" : "KEYWORDLIST_MISSING",
+  };
+}
+
+export function extractRegisteredKeywordsFromHtml(
+  html: string
+): KeywordParseResult {
+  const parsed = parseRegisteredKeywordsFromHtml(html);
+  return { keywords: parsed.keywords, status: parsed.status };
+}
+
+function hasNormalPlaceHtmlData(
+  html: string,
+  publicPlaceId: string,
+  metrics: ReturnType<typeof parseHtmlMetrics>
+): boolean {
+  if (
+    metrics.visitorReviewCount !== null ||
+    metrics.blogReviewCount !== null ||
+    metrics.saveCount !== null
+  ) {
+    return true;
+  }
+  const hasPlaceId =
+    Boolean(publicPlaceId) &&
+    (html.includes(`/${publicPlaceId}`) ||
+      new RegExp(`(?:\\"|")id(?:\\"|")\\s*:\\s*(?:\\"|")${publicPlaceId}(?:\\"|")`).test(
+        html
+      ));
+  const normalKeyCount = [
+    /(?:\\"|")businessCategory(?:\\"|")\s*:/i,
+    /(?:\\"|")roadAddress(?:\\"|")\s*:/i,
+    /(?:\\"|")visitorReviewCount(?:\\"|")\s*:/i,
+    /(?:\\"|")blogCafeReviewCount(?:\\"|")\s*:/i,
+    /(?:\\"|")saveCount(?:\\"|")\s*:/i,
+  ].filter((pattern) => pattern.test(html)).length;
+  return hasPlaceId && normalKeyCount >= 1;
+}
+
+export function isConfirmedNcaptchaHtml(params: {
+  html: string;
+  normalDataPresent: boolean;
+}): boolean {
+  if (params.normalDataPresent) return false;
+  const { html } = params;
+  const hasPageId = /"pageId"\s*:\s*"ncaptcha/i.test(html);
+  const hasRules = /"confirmRules"\s*:\s*"CE_/i.test(html);
+  const hasChallengeUi =
+    /<(?:form|div|section)[^>]+(?:id|class)=["'][^"']*(?:ncaptcha|captcha)[^"']*["']/i.test(
+      html
+    ) ||
+    /<input[^>]+(?:id|name)=["'][^"']*(?:captcha|captchaValue)[^"']*["']/i.test(
+      html
+    );
+  const hasRestrictedPageText =
+    /<title[^>]*>[^<]*(?:접근\s*제한|보안\s*확인|자동입력\s*방지|captcha)[^<]*<\/title>/i.test(
+      html
+    ) ||
+    /(?:자동입력\s*방지|보안문자|접근이\s*제한|요청이\s*(?:차단|제한))/i.test(
+      html
+    );
+  return (
+    (hasPageId && hasRules) ||
+    (hasChallengeUi && (hasPageId || hasRules || hasRestrictedPageText))
+  );
+}
+
+export function classifyRegisteredKeywordInformationHtml(params: {
+  html: string;
+  publicPlaceId: string;
+}): KeywordParseResult & {
+  failureCode: RegisteredKeywordHtmlFailureCode | null;
+  confirmedNcaptcha: boolean;
+} {
+  const parsed = parseRegisteredKeywordsFromHtml(params.html);
+  const metrics = parseHtmlMetrics(params.html);
+  const normalPlaceData = hasNormalPlaceHtmlData(
+    params.html,
+    params.publicPlaceId,
+    metrics
+  );
+
+  // 유효한 비어 있지 않은 keywordList는 가장 강한 정상 응답 증거다.
+  if (parsed.status === "AVAILABLE" && (parsed.keywords?.length ?? 0) > 0) {
+    return { ...parsed, failureCode: null, confirmedNcaptcha: false };
+  }
+
+  const confirmedNcaptcha = isConfirmedNcaptchaHtml({
+    html: params.html,
+    // 명시적 []는 기존 정책상 "정상 응답이며 실제 키워드 없음"이다.
+    normalDataPresent: normalPlaceData || parsed.status === "AVAILABLE",
+  });
+  if (confirmedNcaptcha) {
     return {
-      keywords: uniqueKeywords(normalizeKeywordValue(matches[0]?.value)),
-      status: "AVAILABLE",
+      keywords: null,
+      status: "UNAVAILABLE",
+      failureCode: "CONFIRMED_NCAPTCHA",
+      confirmedNcaptcha: true,
     };
   }
-  return { keywords: null, status: "UNAVAILABLE" };
+  if (parsed.status === "AVAILABLE") {
+    return { ...parsed, failureCode: null, confirmedNcaptcha: false };
+  }
+  return {
+    ...parsed,
+    failureCode:
+      parsed.failureCode ?? (normalPlaceData ? "KEYWORDLIST_MISSING" : "UNKNOWN_HTML"),
+    confirmedNcaptcha: false,
+  };
 }
 
 export type ParsedTypeResult = {
@@ -657,6 +806,7 @@ async function fetchCountsFromGraphql(
       },
       body: JSON.stringify(payload),
       cache: "no-store",
+      signal: AbortSignal.timeout(NAVER_PLACE_REQUEST_TIMEOUT_MS),
     });
 
     const raw = await res.text();
@@ -770,15 +920,28 @@ async function fetchTypeAttempt(
 ): Promise<ParsedTypeResult> {
   const collectRegisteredKeywords = input.collectRegisteredKeywords !== false;
   const placeName = String(input.placeName || "");
-  const graphql = await fetchCountsFromGraphql(
-    type,
-    placeName,
-    placeName,
-    publicPlaceId,
-    input.x,
-    input.y
-  );
-  const requestUrls = [graphql.requestUrl];
+  const registeredKeywordsOnly = input.registeredKeywordsOnly === true;
+  const graphql: GraphqlCountsResult = registeredKeywordsOnly
+    ? {
+        visitorReviewCount: null,
+        blogReviewCount: null,
+        saveCount: null,
+        reviewFeatureKeywords: null,
+        reviewFeatureKeywordsStatus: "UNAVAILABLE",
+        blocked: false,
+        debugReason: null,
+        requestUrl: "",
+        operationName: "REGISTERED_KEYWORDS_ONLY",
+      }
+    : await fetchCountsFromGraphql(
+        type,
+        placeName,
+        placeName,
+        publicPlaceId,
+        input.x,
+        input.y
+      );
+  const requestUrls = graphql.requestUrl ? [graphql.requestUrl] : [];
   let visitorReviewCount = graphql.visitorReviewCount;
   let blogReviewCount = graphql.blogReviewCount;
   let saveCount = graphql.saveCount;
@@ -790,19 +953,21 @@ async function fetchTypeAttempt(
   const debugReasons = graphql.debugReason ? [graphql.debugReason] : [];
 
   const finish = (blocked = false): ParsedTypeResult => {
-    const complete = hasCompleteMetrics({
-      type,
-      pageMetricCount,
-      visitorReviewCount,
-      blogReviewCount,
-      saveCount,
-      registeredKeywords,
-      registeredKeywordsStatus,
-      reviewFeatureKeywords,
-      reviewFeatureKeywordsStatus,
-      keywordList: registeredKeywords,
-      keywordListStatus: registeredKeywordsStatus,
-    });
+    const complete = registeredKeywordsOnly
+      ? registeredKeywordsStatus === "AVAILABLE"
+      : hasCompleteMetrics({
+          type,
+          pageMetricCount,
+          visitorReviewCount,
+          blogReviewCount,
+          saveCount,
+          registeredKeywords,
+          registeredKeywordsStatus,
+          reviewFeatureKeywords,
+          reviewFeatureKeywordsStatus,
+          keywordList: registeredKeywords,
+          keywordListStatus: registeredKeywordsStatus,
+        });
     return {
       type,
       pageMetricCount,
@@ -818,7 +983,11 @@ async function fetchTypeAttempt(
       blocked,
       debugReason:
         debugReasons.join("|") ||
-        (blocked || !complete ? `${type}:METRICS_INCOMPLETE` : null),
+        (blocked || !complete
+          ? registeredKeywordsOnly
+            ? `${type}:REGISTERED_KEYWORDS_UNAVAILABLE`
+            : `${type}:METRICS_INCOMPLETE`
+          : null),
       requestUrls,
       operationName: graphql.operationName,
     };
@@ -834,20 +1003,22 @@ async function fetchTypeAttempt(
 
   const informationUrl =
     `https://pcmap.place.naver.com/${type}/${publicPlaceId}/information`;
-  const urls = graphqlMetricsComplete
+  const urls = registeredKeywordsOnly
     ? [informationUrl]
-    : collectRegisteredKeywords
-      ? [
-          `https://m.place.naver.com/${type}/${publicPlaceId}/home`,
-          `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
-          informationUrl,
-          `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
-        ]
-      : [
-          `https://m.place.naver.com/${type}/${publicPlaceId}/home`,
-          `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
-          `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
-        ];
+    : graphqlMetricsComplete
+      ? [informationUrl]
+      : collectRegisteredKeywords
+        ? [
+            `https://m.place.naver.com/${type}/${publicPlaceId}/home`,
+            `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
+            informationUrl,
+            `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
+          ]
+        : [
+            `https://m.place.naver.com/${type}/${publicPlaceId}/home`,
+            `https://m.place.naver.com/${type}/${publicPlaceId}/review/visitor?entry=ple&reviewSort=recent`,
+            `https://map.naver.com/p/entry/place/${publicPlaceId}?c=15.00,0,0,0,dh`,
+          ];
 
   let registeredKeywordRequestAttempted = false;
   for (const url of urls) {
@@ -860,12 +1031,55 @@ async function fetchTypeAttempt(
       return finish(true);
     }
     if (!response.ok) {
-      debugReasons.push(`${type}:HTML_HTTP_${response.status}`);
+      debugReasons.push(`${type}:HTML_HTTP_ERROR_${response.status}`);
+      if (isInformationRequest && hasCompleteMetrics(finish())) return finish();
+      continue;
+    }
+    if (
+      response.contentType &&
+      !/(?:text\/html|application\/xhtml\+xml)/i.test(response.contentType)
+    ) {
+      debugReasons.push(`${type}:HTML_UNKNOWN_HTML`);
       if (isInformationRequest && hasCompleteMetrics(finish())) return finish();
       continue;
     }
 
     const metrics = parseHtmlMetrics(response.html);
+    if (isInformationRequest) {
+      const parsedRegisteredKeywords =
+        classifyRegisteredKeywordInformationHtml({
+          html: response.html,
+          publicPlaceId,
+        });
+      if (parsedRegisteredKeywords.status === "AVAILABLE") {
+        registeredKeywords = parsedRegisteredKeywords.keywords;
+        registeredKeywordsStatus = "AVAILABLE";
+      } else if (parsedRegisteredKeywords.confirmedNcaptcha) {
+        debugReasons.push(`${type}:HTML_CONFIRMED_NCAPTCHA`);
+        return finish(true);
+      } else {
+        debugReasons.push(
+          `${type}:HTML_${
+            parsedRegisteredKeywords.failureCode ?? "UNKNOWN_HTML"
+          }`
+        );
+      }
+    } else {
+      const normalDataPresent = hasNormalPlaceHtmlData(
+        response.html,
+        publicPlaceId,
+        metrics
+      );
+      if (
+        isConfirmedNcaptchaHtml({
+          html: response.html,
+          normalDataPresent,
+        })
+      ) {
+        debugReasons.push(`${type}:HTML_CONFIRMED_NCAPTCHA`);
+        return finish(true);
+      }
+    }
     if (visitorReviewCount === null && metrics.visitorReviewCount !== null) {
       visitorReviewCount = metrics.visitorReviewCount;
       pageMetricCount += 1;
@@ -877,17 +1091,10 @@ async function fetchTypeAttempt(
     if (saveCount === null && metrics.saveCount !== null) {
       saveCount = metrics.saveCount;
     }
-    if (isInformationRequest) {
-      const parsedRegisteredKeywords =
-        extractRegisteredKeywordsFromHtml(response.html);
-      registeredKeywords = parsedRegisteredKeywords.keywords;
-      registeredKeywordsStatus = parsedRegisteredKeywords.status;
-      if (parsedRegisteredKeywords.status === "UNAVAILABLE") {
-        debugReasons.push(`${type}:REGISTERED_KEYWORDS_UNAVAILABLE`);
-      }
-    }
     if (
-      hasCompleteMetrics(finish()) &&
+      (registeredKeywordsOnly
+        ? registeredKeywordsStatus === "AVAILABLE"
+        : hasCompleteMetrics(finish())) &&
       (!collectRegisteredKeywords ||
         registeredKeywordsStatus === "AVAILABLE" ||
         registeredKeywordRequestAttempted)
@@ -896,7 +1103,7 @@ async function fetchTypeAttempt(
     }
   }
 
-  if (saveCount === null) {
+  if (!registeredKeywordsOnly && saveCount === null) {
     debugReasons.push(`${type}:SAVE_COUNT_UNAVAILABLE`);
   }
 
@@ -940,15 +1147,40 @@ async function fetchSnapshotCore(
 
     const typeOrder = resolvePlaceTypeOrder(input);
     const hintType = typeOrder[0] ?? null;
-    const attempted = await runPlaceTypeAttempts(typeOrder, (type) =>
-      fetchTypeAttempt(type, input, publicPlaceId)
-    );
+    const attempted = input.registeredKeywordsOnly
+      ? await (async () => {
+          const attempts: ParsedTypeResult[] = [];
+          for (const type of typeOrder) {
+            const attempt = await fetchTypeAttempt(type, input, publicPlaceId);
+            attempts.push(attempt);
+            if (
+              attempt.registeredKeywordsStatus === "AVAILABLE" ||
+              attempt.blocked
+            ) {
+              return {
+                chosen: attempt,
+                attempts,
+                stoppedByBlock: Boolean(attempt.blocked),
+              };
+            }
+          }
+          return {
+            chosen: chooseBestPlaceTypeResult(attempts),
+            attempts,
+            stoppedByBlock: false,
+          };
+        })()
+      : await runPlaceTypeAttempts(typeOrder, (type) =>
+          fetchTypeAttempt(type, input, publicPlaceId)
+        );
     const parsed = attempted.chosen;
     const triedTypes = attempted.attempts.map((result) => result.type);
     const requestUrls = attempted.attempts.flatMap(
       (result) => result.requestUrls ?? []
     );
-    const complete = hasCompleteMetrics(parsed);
+    const complete = input.registeredKeywordsOnly
+      ? parsed?.registeredKeywordsStatus === "AVAILABLE"
+      : hasCompleteMetrics(parsed);
     const blockedReason = attempted.attempts
       .map((result) => result.debugReason || "")
       .find((reason) => /NCAPTCHA|COOLDOWN|BLOCKED_HTTP/i.test(reason));
@@ -958,7 +1190,9 @@ async function fetchSnapshotCore(
         ? /COOLDOWN/i.test(blockedReason)
           ? "NAVER_COOLDOWN"
           : "NAVER_BLOCKED_OR_CAPTCHA"
-        : "REVIEW_METRICS_INCOMPLETE";
+        : input.registeredKeywordsOnly
+          ? "REGISTERED_KEYWORDS_UNAVAILABLE"
+          : "REVIEW_METRICS_INCOMPLETE";
     const debugReason = complete
       ? parsed?.debugReason ?? null
       : attempted.attempts
