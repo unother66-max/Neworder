@@ -151,6 +151,189 @@ describe("place-review-track POST", () => {
     expect(mocks.getVolume).not.toHaveBeenCalled();
   });
 
+  it("updates fresh review counts while retaining only an unavailable save count", async () => {
+    mocks.getSnapshot.mockResolvedValue({
+      ok: false,
+      reason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+      hintType: "place",
+      chosenType: "place",
+      triedTypes: ["place"],
+      requestUrls: ["https://pcmap-api.place.naver.com/graphql"],
+      cacheStatus: "FORCE_BYPASS",
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      saveCountText: null,
+      registeredKeywords: ["서울역개인필라테스"],
+      registeredKeywordsStatus: "AVAILABLE",
+      reviewFeatureKeywords: null,
+      reviewFeatureKeywordsStatus: "UNAVAILABLE",
+      keywordList: ["서울역개인필라테스"],
+      keywordListStatus: "AVAILABLE",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/place-review-track", {
+        method: "POST",
+        body: JSON.stringify({ placeId: "place-1" }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      partial: true,
+      reason: null,
+      sourceReason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+      parsed: {
+        visitorReviewCount: 93,
+        blogReviewCount: 128,
+        totalReviewCount: 221,
+        saveCount: "300",
+        retainedFields: ["saveCount"],
+      },
+    });
+    expect(mocks.historyUpsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          visitorReviewCount: 93,
+          blogReviewCount: 128,
+          totalReviewCount: 221,
+          saveCount: "300",
+          keywords: ["서울역개인필라테스"],
+        }),
+      })
+    );
+
+    const cronResponse = await runTrackingCron(
+      new Request("http://localhost/api/cron/place-review-tracking", {
+        headers: { "x-vercel-cron": "1" },
+      })
+    );
+    const cronBody = await cronResponse.json();
+
+    expect(cronResponse.status).toBe(200);
+    expect(cronBody.results[0]).toMatchObject({
+      saved: true,
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      totalReviewCount: 221,
+      saveCount: "300",
+      partial: true,
+      retainedFields: ["saveCount"],
+      sourceReason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+    });
+    expect(cronBody.results[0].reason).toBeUndefined();
+    expect(mocks.historyUpsert).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects partial review data when the snapshot was explicitly blocked", async () => {
+    mocks.getSnapshot.mockResolvedValue({
+      ok: false,
+      reason: "NAVER_BLOCKED_OR_CAPTCHA",
+      debugReason: "place:HTML_CONFIRMED_NCAPTCHA",
+      hintType: "place",
+      chosenType: "place",
+      triedTypes: ["place"],
+      requestUrls: ["https://pcmap-api.place.naver.com/graphql"],
+      cacheStatus: "FORCE_BYPASS",
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      saveCountText: null,
+      registeredKeywords: null,
+      registeredKeywordsStatus: "UNAVAILABLE",
+      reviewFeatureKeywords: null,
+      reviewFeatureKeywordsStatus: "UNAVAILABLE",
+      keywordList: null,
+      keywordListStatus: "UNAVAILABLE",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/place-review-track", {
+        method: "POST",
+        body: JSON.stringify({ placeId: "place-1" }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(body.reason).toBe("NAVER_BLOCKED_OR_CAPTCHA");
+
+    const cronResponse = await runTrackingCron(
+      new Request("http://localhost/api/cron/place-review-tracking", {
+        headers: { "x-vercel-cron": "1" },
+      })
+    );
+    const cronBody = await cronResponse.json();
+
+    expect(cronBody.results[0]).toMatchObject({
+      saved: false,
+      reason: "NAVER_BLOCKED_OR_CAPTCHA",
+    });
+    expect(mocks.historyUpsert).not.toHaveBeenCalled();
+    expect(mocks.getVolume).not.toHaveBeenCalled();
+  });
+
+  it("does not invent a save count when no previous history exists", async () => {
+    const placeWithoutHistory = {
+      id: "place-1",
+      name: "키코필라테스",
+      category: "필라테스",
+      placeUrl: "https://m.place.naver.com/restaurant/123/home",
+      x: "127.1",
+      y: "37.5",
+      placeMobileVolume: 10,
+      placePcVolume: 5,
+      placeMonthlyVolume: 15,
+      reviewHistory: [],
+    };
+    mocks.findUnique.mockResolvedValue(placeWithoutHistory);
+    mocks.findMany.mockResolvedValue([placeWithoutHistory]);
+    mocks.getSnapshot.mockResolvedValue({
+      ok: false,
+      reason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+      hintType: "place",
+      chosenType: "place",
+      triedTypes: ["place"],
+      requestUrls: ["https://pcmap-api.place.naver.com/graphql"],
+      cacheStatus: "FORCE_BYPASS",
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      saveCountText: null,
+      registeredKeywords: [],
+      registeredKeywordsStatus: "AVAILABLE",
+      reviewFeatureKeywords: null,
+      reviewFeatureKeywordsStatus: "UNAVAILABLE",
+      keywordList: [],
+      keywordListStatus: "AVAILABLE",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/place-review-track", {
+        method: "POST",
+        body: JSON.stringify({ placeId: "place-1" }),
+      })
+    );
+    expect(response.status).toBe(422);
+
+    const cronResponse = await runTrackingCron(
+      new Request("http://localhost/api/cron/place-review-tracking", {
+        headers: { "x-vercel-cron": "1" },
+      })
+    );
+    const cronBody = await cronResponse.json();
+    expect(cronBody.results[0]).toMatchObject({
+      saved: false,
+      reason: "REVIEW_METRICS_INCOMPLETE",
+    });
+    expect(mocks.historyUpsert).not.toHaveBeenCalled();
+    expect(mocks.getVolume).not.toHaveBeenCalled();
+  });
+
   it("creates a fresh snapshot after a successful fetch", async () => {
     mocks.getSnapshot.mockResolvedValue({
       ok: true,

@@ -19,10 +19,35 @@ describe("resolvePlaceReviewSnapshot", () => {
     });
   });
 
-  it("rejects partial fresh data instead of copying previous metrics", () => {
+  it("requires fresh review counts but keeps the previous save count", () => {
     expect(
       resolvePlaceReviewSnapshot(
         {
+          reason: "REVIEW_METRICS_INCOMPLETE",
+          visitorReviewCount: 120,
+          blogReviewCount: 31,
+          saveCountText: null,
+        },
+        {
+          visitorReviewCount: 100,
+          blogReviewCount: 30,
+          saveCount: "450",
+        }
+      )
+    ).toEqual({
+      visitorReviewCount: 120,
+      blogReviewCount: 31,
+      totalReviewCount: 151,
+      saveCount: "450",
+      retainedFields: ["saveCount"],
+    });
+  });
+
+  it("does not copy previous review counts when a fresh review metric is missing", () => {
+    expect(
+      resolvePlaceReviewSnapshot(
+        {
+          reason: "REVIEW_METRICS_INCOMPLETE",
           visitorReviewCount: 120,
           blogReviewCount: null,
           saveCountText: null,
@@ -39,10 +64,29 @@ describe("resolvePlaceReviewSnapshot", () => {
   it("does not invent zero values without a previous snapshot", () => {
     expect(
       resolvePlaceReviewSnapshot({
-        visitorReviewCount: null,
-        blogReviewCount: null,
+        reason: "REVIEW_METRICS_INCOMPLETE",
+        visitorReviewCount: 120,
+        blogReviewCount: 31,
         saveCountText: null,
       })
+    ).toBeNull();
+  });
+
+  it("does not retain a save count when the request was blocked", () => {
+    expect(
+      resolvePlaceReviewSnapshot(
+        {
+          reason: "NAVER_BLOCKED_OR_CAPTCHA",
+          visitorReviewCount: 120,
+          blogReviewCount: 31,
+          saveCountText: null,
+        },
+        {
+          visitorReviewCount: 100,
+          blogReviewCount: 30,
+          saveCount: "450",
+        }
+      )
     ).toBeNull();
   });
 });

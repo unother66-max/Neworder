@@ -60,6 +60,56 @@ function request(itemId = "item-1", query = "") {
   );
 }
 
+type ShoppingItemFixture = {
+  title: string;
+  link: string;
+  image?: string;
+  lprice: string;
+  mallName?: string;
+  productId?: string;
+  shippingFee?: string | number;
+  deliveryFee?: string | number;
+  deliveryFeeContent?: string;
+  shippingInfo?: string;
+};
+
+function portalPayload(items: ShoppingItemFixture[]) {
+  return {
+    data: [
+      {
+        page: 1,
+        pageSize: items.length,
+        slots: items.map((item, index) => {
+          const deliveryFee = item.shippingFee ?? item.deliveryFee;
+          return {
+            slotType: "CARD",
+            data: {
+              cardType: "ORGANIC_CARD",
+              rank: index + 1,
+              nvMid: item.productId,
+              productName: item.title,
+              productUrl: { pcUrl: item.link },
+              images: item.image ? [{ imageUrl: item.image }] : [],
+              mallName: item.mallName,
+              discountedKRWSalePrice: Number(item.lprice),
+              deliveryFeeContent: item.deliveryFeeContent,
+              shippingInfo: item.shippingInfo,
+              ...(deliveryFee != null
+                ? {
+                    productDeliveryInfo: {
+                      deliveryFee,
+                      deliveryFeeTypes: [Number(deliveryFee) > 0 ? "PAID" : "FREE"],
+                    },
+                  }
+                : {}),
+            },
+          };
+        }),
+      },
+    ],
+  };
+}
+
 describe("NewOrder price search route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -113,16 +163,16 @@ describe("NewOrder price search route", () => {
     const directQuery = "니트릴장갑 블랙 M";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({
-          items: [
+        JSON.stringify(
+          portalPayload([
             {
-              title: "브랜드 제한 없는 니트릴장갑 블랙 M 100매",
+              title: "브랜드 제한 없는 니트릴장갑 <mark>블랙</mark> M 100매",
               link: "https://shopping.example/gloves",
               productId: "gloves",
               lprice: "8900",
             },
-          ],
-        }),
+          ])
+        ),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
     );
@@ -134,9 +184,15 @@ describe("NewOrder price search route", () => {
     expect(response.status).toBe(200);
     expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(
-      new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("query")
-    ).toBe(directQuery);
+    const requestedUrl = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(requestedUrl.hostname).toBe("ns-portal.shopping.naver.com");
+    expect(requestedUrl.pathname).toBe("/api/v2/shopping-paged-slot");
+    expect(requestedUrl.searchParams.get("query")).toBe(directQuery);
+    expect(requestedUrl.searchParams.get("source")).toBe("shp_gui");
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain(
+      "openapi.naver.com"
+    );
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: "no-store" });
     expect(data).toMatchObject({
       ok: true,
       searchedKeywords: [directQuery],
@@ -144,6 +200,7 @@ describe("NewOrder price search route", () => {
       coupangSearchUrl: `https://www.coupang.com/np/search?q=${encodeURIComponent(directQuery)}`,
     });
     expect(data.candidates[0]).toMatchObject({
+      title: "브랜드 제한 없는 니트릴장갑 블랙 M 100매",
       productId: "gloves",
       isDirectSearch: true,
       passesRequired: true,
@@ -162,21 +219,27 @@ describe("NewOrder price search route", () => {
     });
   });
 
-  it("returns a fixed JSON failure when Naver credentials are missing", async () => {
+  it("네이버 API 키 없이도 쇼핑 검색 경로를 사용한다", async () => {
     vi.stubEnv("NAVER_CLIENT_ID", "");
     vi.stubEnv("NAVER_CLIENT_SECRET", "");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(portalPayload([])), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
     const response = await GET(request());
     const data = await response.json();
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     expect(data).toMatchObject({
-      ok: false,
+      ok: true,
       candidates: [],
-      message: "가격 후보 조회에 실패했습니다.",
+      message: null,
     });
-    expect(data.reason).toContain("NAVER_CLIENT_ID");
-    expect(data.reason).toContain("NAVER_CLIENT_SECRET");
+    expect(fetchMock).toHaveBeenCalledTimes(item.naverSearchKeywords.length);
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty(
+      "X-Naver-Client-Id"
+    );
   });
 
   it("returns JSON when the item database lookup fails", async () => {
@@ -198,7 +261,7 @@ describe("NewOrder price search route", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ items: [] }), {
+        new Response(JSON.stringify(portalPayload([])), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         })
@@ -244,8 +307,8 @@ describe("NewOrder price search route", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({
-            items: [
+          JSON.stringify(
+            portalPayload([
               {
                 title: "올리타리아 소스 2kg × 6개",
                 link: "https://shopping.example/shipping",
@@ -253,8 +316,8 @@ describe("NewOrder price search route", () => {
                 lprice: "38040",
                 deliveryFeeContent: "배송비 2,500원 (10개마다 부과)",
               },
-            ],
-          }),
+            ])
+          ),
           { status: 200, headers: { "Content-Type": "application/json" } }
         )
       )
@@ -311,16 +374,16 @@ describe("NewOrder price search route", () => {
       pricePerMeasure: null,
     });
     const searchResponse = new Response(
-      JSON.stringify({
-        items: [
+      JSON.stringify(
+        portalPayload([
           {
             title: "올리타리아 코스트코 베이컨 크럼블 567g 10개",
             link: "https://smartstore.naver.com/example/products/1",
             productId: "bacon",
             lprice: "20300",
           },
-        ],
-      }),
+        ])
+      ),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
     const detailResponse = new Response(
@@ -334,7 +397,7 @@ describe("NewOrder price search route", () => {
       { status: 200, headers: { "Content-Type": "text/html" } }
     );
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) =>
-      String(input).includes("openapi.naver.com")
+      String(input).includes("ns-portal.shopping.naver.com")
         ? Promise.resolve(searchResponse.clone())
         : Promise.resolve(detailResponse.clone())
     );
@@ -385,16 +448,16 @@ describe("NewOrder price search route", () => {
     });
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({
-          items: [
+        JSON.stringify(
+          portalPayload([
             {
               title: "올리타리아 서울연유 500g",
               link: "https://smartstore.naver.com/example/products/saved",
               productId: "saved",
               lprice: "3600",
             },
-          ],
-        }),
+          ])
+        ),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
     );
@@ -441,16 +504,16 @@ describe("NewOrder price search route", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({
-            items: [
+          JSON.stringify(
+            portalPayload([
               {
                 title: "올리타리아 형식이 잘못된 상품명",
                 link: "https://shopping.example/product/1",
                 productId: "product-1",
                 lprice: "56060",
               },
-            ],
-          }),
+            ])
+          ),
           { status: 200, headers: { "Content-Type": "application/json" } }
         )
       )
@@ -474,8 +537,8 @@ describe("NewOrder price search route", () => {
   it("저장된 정확 검색어만 사용하고 다른 브랜드를 제외한다", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({
-          items: [
+        JSON.stringify(
+          portalPayload([
             {
               title:
                 "올리타리아 송로버섯향 엑스트라버진 올리브유 250ml, 5개",
@@ -489,8 +552,8 @@ describe("NewOrder price search route", () => {
               productId: "terre",
               lprice: "40000",
             },
-          ],
-        }),
+          ])
+        ),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
     );
@@ -543,8 +606,8 @@ describe("NewOrder price search route", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({
-            items: [
+          JSON.stringify(
+            portalPayload([
               {
                 title: "시아스 피자소스 2kg",
                 link: "https://shopping.example/sias",
@@ -563,8 +626,8 @@ describe("NewOrder price search route", () => {
                 productId: "other",
                 lprice: "8000",
               },
-            ],
-          }),
+            ])
+          ),
           { status: 200, headers: { "Content-Type": "application/json" } }
         )
       )

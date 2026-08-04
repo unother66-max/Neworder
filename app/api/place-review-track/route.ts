@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
+import { resolvePlaceReviewSnapshot } from "@/lib/place-review-snapshot-fallback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,12 +84,8 @@ export async function POST(req: Request) {
     });
 
     const latest = place.reviewHistory[0];
-    if (
-      !snapshot.ok ||
-      snapshot.visitorReviewCount === null ||
-      snapshot.blogReviewCount === null ||
-      snapshot.saveCountText === null
-    ) {
+    const resolvedSnapshot = resolvePlaceReviewSnapshot(snapshot, latest);
+    if (!resolvedSnapshot) {
       const reason = snapshot.reason ?? "REVIEW_SNAPSHOT_UNAVAILABLE";
       const debugReason = snapshot.debugReason ?? reason;
       console.warn("[place-review-track] fresh snapshot unavailable", {
@@ -124,6 +121,29 @@ export async function POST(req: Request) {
         },
         { status: 422 }
       );
+    }
+
+    const {
+      visitorReviewCount,
+      blogReviewCount,
+      totalReviewCount,
+      saveCount,
+      retainedFields,
+    } = resolvedSnapshot;
+    const partial = retainedFields.length > 0;
+
+    if (retainedFields.length > 0) {
+      console.warn("[place-review-track] keep previous save count", {
+        placeId,
+        placeName: place.name,
+        retainedFields,
+        previousSaveCount: latest?.saveCount,
+        parsed: {
+          visitorReviewCount: snapshot.visitorReviewCount,
+          blogReviewCount: snapshot.blogReviewCount,
+          saveCount: snapshot.saveCountText,
+        },
+      });
     }
 
     // ✅ 매장 이름 기준 검색량 — 성공·합계 > 0일 때만 갱신, 아니면 기존 DB 값 유지
@@ -162,11 +182,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const visitorReviewCount = snapshot.visitorReviewCount;
-    const blogReviewCount = snapshot.blogReviewCount;
-    const totalReviewCount = visitorReviewCount + blogReviewCount;
-    const saveCount = snapshot.saveCountText;
-
     const registeredKeywordsStatus =
       snapshot.registeredKeywordsStatus ?? snapshot.keywordListStatus;
     const freshRegisteredKeywords =
@@ -191,6 +206,7 @@ export async function POST(req: Request) {
       chosenType: snapshot.chosenType,
       triedTypes: snapshot.triedTypes,
       debugReason: snapshot.debugReason,
+      retainedFields,
     });
 
     // 🔥 하루 1개 (중복 제거)
@@ -230,7 +246,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      reason: snapshot.reason,
+      partial,
+      reason: null,
+      sourceReason: partial ? snapshot.reason : null,
       debugReason: snapshot.debugReason,
       hintType: snapshot.hintType,
       chosenType: snapshot.chosenType,
@@ -244,7 +262,8 @@ export async function POST(req: Request) {
         saveCount,
         keywords,
         registeredKeywordsStatus,
-        retainedFields: [],
+        retainedFields,
+        partial,
         cacheStatus: snapshot.cacheStatus,
         chosenType: snapshot.chosenType,
         triedTypes: snapshot.triedTypes,

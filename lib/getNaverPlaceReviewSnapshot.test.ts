@@ -300,6 +300,91 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     expect(result.attempts).toHaveLength(1);
   });
 
+  it("does not retry a general place as a restaurant when fresh reviews exist", async () => {
+    const called: string[] = [];
+    const result = await runPlaceTypeAttempts(
+      ["place", "restaurant"],
+      async (type) => {
+        called.push(type);
+        return {
+          type,
+          pageMetricCount: 0,
+          visitorReviewCount: 93,
+          blogReviewCount: 128,
+          saveCount: null,
+          registeredKeywords: [],
+          registeredKeywordsStatus: "AVAILABLE",
+          reviewFeatureKeywords: null,
+          reviewFeatureKeywordsStatus: "UNAVAILABLE",
+          keywordList: [],
+          keywordListStatus: "AVAILABLE",
+          blocked: false,
+          debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+        };
+      }
+    );
+
+    expect(called).toEqual(["place"]);
+    expect(result.chosen).toMatchObject({
+      type: "place",
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      saveCount: null,
+    });
+  });
+
+  it("still reports an explicit block after fresh place reviews were parsed", async () => {
+    const result = await runPlaceTypeAttempts(["place", "restaurant"], async (type) => ({
+      type,
+      pageMetricCount: 0,
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      saveCount: null,
+      registeredKeywords: null,
+      registeredKeywordsStatus: "UNAVAILABLE",
+      reviewFeatureKeywords: null,
+      reviewFeatureKeywordsStatus: "UNAVAILABLE",
+      keywordList: null,
+      keywordListStatus: "UNAVAILABLE",
+      blocked: true,
+      debugReason: "place:HTML_CONFIRMED_NCAPTCHA",
+    }));
+
+    expect(result.attempts).toHaveLength(1);
+    expect(result.stoppedByBlock).toBe(true);
+  });
+
+  it("still tries place when a restaurant result is missing only its save count", async () => {
+    const called: string[] = [];
+    const result = await runPlaceTypeAttempts(
+      ["restaurant", "place"],
+      async (type) => {
+        called.push(type);
+        return {
+          type,
+          pageMetricCount: 0,
+          visitorReviewCount: 93,
+          blogReviewCount: 128,
+          saveCount: type === "place" ? 300 : null,
+          registeredKeywords: [],
+          registeredKeywordsStatus: "AVAILABLE",
+          reviewFeatureKeywords: null,
+          reviewFeatureKeywordsStatus: "UNAVAILABLE",
+          keywordList: [],
+          keywordListStatus: "AVAILABLE",
+          blocked: false,
+          debugReason:
+            type === "restaurant"
+              ? "restaurant:SAVE_COUNT_UNAVAILABLE"
+              : null,
+        };
+      }
+    );
+
+    expect(called).toEqual(["restaurant", "place"]);
+    expect(result.chosen).toMatchObject({ type: "place", saveCount: 300 });
+  });
+
   it("keeps an unavailable save count null when visitor and blog counts exist", async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
@@ -369,6 +454,7 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     expect(snapshot).toMatchObject({
       ok: false,
       chosenType: "place",
+      triedTypes: ["place"],
       visitorReviewCount: 725,
       blogReviewCount: 900,
       totalReviewCount: 1625,
@@ -378,7 +464,15 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     expect(snapshot.debugReason).not.toContain(
       "SAVE_COUNT_UNAVAILABLE_NORMALIZED_TO_ZERO"
     );
-    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const graphqlCalls = fetchMock.mock.calls.filter(
+      ([input]) => String(input) === "https://pcmap-api.place.naver.com/graphql"
+    );
+    expect(graphqlCalls).toHaveLength(1);
+    const graphqlPayload = JSON.parse(
+      String(graphqlCalls[0]?.[1]?.body || "[]")
+    ) as Array<{ operationName?: string }>;
+    expect(graphqlPayload[0]?.operationName).toBe("getPlacesList");
   });
 
   it("collects getPlacesList registered keywords from information HTML without refetching review pages", async () => {

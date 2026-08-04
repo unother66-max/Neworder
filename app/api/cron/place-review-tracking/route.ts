@@ -3,6 +3,7 @@ import { createAdminAlert } from "@/lib/admin-alert";
 import { NextResponse } from "next/server";
 import { getNaverPlaceReviewSnapshot } from "@/lib/getNaverPlaceReviewSnapshot";
 import { getPlaceNameSearchVolume } from "@/lib/getPlaceNameSearchVolume";
+import { resolvePlaceReviewSnapshot } from "@/lib/place-review-snapshot-fallback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,6 +61,9 @@ export async function GET(req: Request) {
       blogReviewCount?: number;
       saveCount?: string;
       keywords?: string[];
+      partial?: boolean;
+      retainedFields?: string[];
+      sourceReason?: string;
       reason?: string;
       debugReason?: string;
       chosenType?: "restaurant" | "place" | null;
@@ -102,12 +106,8 @@ export async function GET(req: Request) {
         });
 
         const latest = place.reviewHistory[0];
-        if (
-          !snapshot.ok ||
-          snapshot.visitorReviewCount === null ||
-          snapshot.blogReviewCount === null ||
-          snapshot.saveCountText === null
-        ) {
+        const resolvedSnapshot = resolvePlaceReviewSnapshot(snapshot, latest);
+        if (!resolvedSnapshot) {
           const reason = snapshot.reason ?? "REVIEW_SNAPSHOT_UNAVAILABLE";
           const debugReason = snapshot.debugReason ?? reason;
           results.push({
@@ -139,6 +139,29 @@ export async function GET(req: Request) {
           continue;
         }
 
+        const {
+          visitorReviewCount,
+          blogReviewCount,
+          totalReviewCount,
+          saveCount,
+          retainedFields,
+        } = resolvedSnapshot;
+        const partial = retainedFields.length > 0;
+
+        if (retainedFields.length > 0) {
+          console.warn("[place-review-tracking] keep previous save count", {
+            placeId: place.id,
+            placeName: place.name,
+            retainedFields,
+            previousSaveCount: latest?.saveCount,
+            parsed: {
+              visitorReviewCount: snapshot.visitorReviewCount,
+              blogReviewCount: snapshot.blogReviewCount,
+              saveCount: snapshot.saveCountText,
+            },
+          });
+        }
+
         const registeredKeywordsStatus =
           snapshot.registeredKeywordsStatus ?? snapshot.keywordListStatus;
         const freshRegisteredKeywords =
@@ -147,11 +170,6 @@ export async function GET(req: Request) {
           registeredKeywordsStatus === "AVAILABLE"
             ? (freshRegisteredKeywords ?? [])
             : (latest?.keywords ?? []);
-
-        const visitorReviewCount = snapshot.visitorReviewCount;
-        const blogReviewCount = snapshot.blogReviewCount;
-        const totalReviewCount = visitorReviewCount + blogReviewCount;
-        const saveCount = snapshot.saveCountText;
 
         const volume = await getPlaceNameSearchVolume(place.name);
         const volTotal =
@@ -228,7 +246,9 @@ export async function GET(req: Request) {
           blogReviewCount,
           saveCount,
           keywords,
-          reason: snapshot.reason ?? undefined,
+          partial,
+          retainedFields,
+          sourceReason: partial ? snapshot.reason ?? undefined : undefined,
           debugReason: snapshot.debugReason ?? undefined,
           chosenType: snapshot.chosenType,
           triedTypes: snapshot.triedTypes,

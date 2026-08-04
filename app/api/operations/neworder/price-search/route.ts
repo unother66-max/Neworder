@@ -19,23 +19,16 @@ import {
   compareKeywordMatches,
   matchProductKeywords,
 } from "@/lib/neworder/product-matching";
+import {
+  searchNaverShopping,
+  type NaverShoppingSearchItem,
+} from "@/lib/neworder/naver-shopping-search";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type NaverShopItem = {
-  title?: string;
-  link?: string;
-  image?: string;
-  lprice?: string;
-  mallName?: string;
-  productId?: string;
-  shippingFee?: string | number;
-  deliveryFee?: string | number;
-  deliveryFeeContent?: string;
-  shippingInfo?: string;
-};
+type NaverShopItem = NaverShoppingSearchItem;
 
 type NaverCandidate = NaverShopItem & {
   matchedKeyword: string;
@@ -177,30 +170,6 @@ function safePriceMetrics(
   }
 }
 
-async function readNaverItems(
-  response: Response,
-  keyword: string
-): Promise<NaverShopItem[]> {
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(
-      `${keyword}: 네이버 쇼핑 API HTTP ${response.status}${
-        responseText ? ` - ${responseText.slice(0, 200)}` : ""
-      }`
-    );
-  }
-  if (!responseText.trim()) {
-    throw new Error(`${keyword}: 네이버 쇼핑 API 응답 본문이 비어 있습니다.`);
-  }
-
-  try {
-    const data = JSON.parse(responseText) as { items?: NaverShopItem[] };
-    return Array.isArray(data.items) ? data.items : [];
-  } catch {
-    throw new Error(`${keyword}: 네이버 쇼핑 API 응답이 JSON 형식이 아닙니다.`);
-  }
-}
-
 export async function GET(request: Request) {
   try {
     const access = await getNewOrderAccess();
@@ -288,36 +257,9 @@ export async function GET(request: Request) {
         context
       );
     }
-    const clientId = process.env.NAVER_CLIENT_ID?.trim();
-    const clientSecret = process.env.NAVER_CLIENT_SECRET?.trim();
-
-    if (!clientId || !clientSecret) {
-      const missingVariables = [
-        !clientId ? "NAVER_CLIENT_ID" : null,
-        !clientSecret ? "NAVER_CLIENT_SECRET" : null,
-      ].filter(Boolean);
-      return failure(
-        503,
-        "가격 후보 조회에 실패했습니다.",
-        `네이버 API 키가 설정되지 않았습니다. 누락된 환경변수: ${missingVariables.join(", ")}`,
-        context
-      );
-    }
-
     const results = await Promise.allSettled(
       naverKeywords.map(async (keyword) => {
-        const url =
-          "https://openapi.naver.com/v1/search/shop.json" +
-          `?query=${encodeURIComponent(keyword)}&display=30&start=1&sort=sim`;
-        const response = await fetch(url, {
-          headers: {
-            "X-Naver-Client-Id": clientId,
-            "X-Naver-Client-Secret": clientSecret,
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        });
-        return { keyword, items: await readNaverItems(response, keyword) };
+        return { keyword, items: await searchNaverShopping(keyword) };
       })
     );
 

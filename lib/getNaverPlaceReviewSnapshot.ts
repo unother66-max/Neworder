@@ -716,6 +716,27 @@ function hasCompleteMetrics(result: ParsedTypeResult | null | undefined) {
   );
 }
 
+function hasFreshReviewMetrics(
+  result: ParsedTypeResult | null | undefined
+) {
+  return (
+    result?.visitorReviewCount !== null &&
+    result?.visitorReviewCount !== undefined &&
+    result.blogReviewCount !== null &&
+    result.blogReviewCount !== undefined
+  );
+}
+
+function hasSufficientMetricsForType(
+  result: ParsedTypeResult | null | undefined
+) {
+  if (!hasFreshReviewMetrics(result)) return false;
+
+  // 일반 플레이스 목록은 저장 수를 제공하지 않는 업체가 있다. 타입 내부의
+  // HTML 복구는 유지하되, 리뷰가 확보되면 restaurant 타입으로 재조회하지 않는다.
+  return result?.type === "place" || hasCompleteMetrics(result);
+}
+
 export async function runPlaceTypeAttempts(
   typeOrder: NaverPlaceType[],
   loadAttempt: (type: NaverPlaceType) => Promise<ParsedTypeResult>
@@ -728,11 +749,11 @@ export async function runPlaceTypeAttempts(
   for (const type of typeOrder) {
     const attempt = await loadAttempt(type);
     attempts.push(attempt);
-    if (hasCompleteMetrics(attempt)) {
-      return { chosen: attempt, attempts, stoppedByBlock: false };
-    }
     if (attempt.blocked) {
       return { chosen: attempt, attempts, stoppedByBlock: true };
+    }
+    if (hasSufficientMetricsForType(attempt)) {
+      return { chosen: attempt, attempts, stoppedByBlock: false };
     }
   }
   return {
@@ -968,6 +989,22 @@ async function fetchTypeAttempt(
           keywordList: registeredKeywords,
           keywordListStatus: registeredKeywordsStatus,
         });
+    const missingMetricsReason =
+      !registeredKeywordsOnly &&
+      visitorReviewCount !== null &&
+      blogReviewCount !== null &&
+      saveCount === null
+        ? `${type}:SAVE_COUNT_UNAVAILABLE`
+        : registeredKeywordsOnly
+          ? `${type}:REGISTERED_KEYWORDS_UNAVAILABLE`
+          : `${type}:METRICS_INCOMPLETE`;
+    const finishDebugReasons = [...debugReasons];
+    if (
+      missingMetricsReason === `${type}:SAVE_COUNT_UNAVAILABLE` &&
+      !finishDebugReasons.includes(missingMetricsReason)
+    ) {
+      finishDebugReasons.push(missingMetricsReason);
+    }
     return {
       type,
       pageMetricCount,
@@ -982,12 +1019,8 @@ async function fetchTypeAttempt(
       keywordListStatus: registeredKeywordsStatus,
       blocked,
       debugReason:
-        debugReasons.join("|") ||
-        (blocked || !complete
-          ? registeredKeywordsOnly
-            ? `${type}:REGISTERED_KEYWORDS_UNAVAILABLE`
-            : `${type}:METRICS_INCOMPLETE`
-          : null),
+        finishDebugReasons.join("|") ||
+        (blocked || !complete ? missingMetricsReason : null),
       requestUrls,
       operationName: graphql.operationName,
     };
