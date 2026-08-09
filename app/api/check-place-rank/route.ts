@@ -12,6 +12,7 @@ import {
   fetchAllSearchPlacesForIntentKeyword,
 } from "@/lib/naver-map-all-search";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
+import { resolvePlaceRankSearchMode } from "@/lib/place-rank-search-mode";
 import {
   fetchPcmapPlaceListGraphql,
   type PcmapPlaceListResult,
@@ -50,19 +51,6 @@ function normalizeText(value: unknown) {
     .replace(/앤/g, "and")
     .replace(/[()[\]{}'"`.,·•\-_/]/g, "")
     .trim();
-}
-
-function shouldUseRestaurantGraphql(params: {
-  keyword: string;
-  category?: string;
-}): boolean {
-  const text = `${params.keyword} ${params.category ?? ""}`.toLowerCase();
-  if (
-    /(필라테스|바레|헬스|피트니스|요가|학원|아카데미|미용|뷰티|네일|병원|의원|약국|치과|fitness|pilates|barre|academy|beauty|hospital)/i.test(text)
-  ) {
-    return false;
-  }
-  return /(맛집|음식|식당|레스토랑|카페|커피|피자|치킨|고기|한식|양식|중식|일식|분식|술집|와인|브런치|restaurant|cafe|coffee|food|pizza)/i.test(text);
 }
 
 function mapPcmapItemsToCheckPlaceRankList(
@@ -190,10 +178,11 @@ export async function POST(req: Request) {
       serverConcurrency: resolvePlaceRankServerConcurrency(),
     };
 
-    const useRestaurantGraphql = shouldUseRestaurantGraphql({
+    const searchMode = resolvePlaceRankSearchMode({
       keyword: actualKeyword,
       category: placeCategory,
     });
+    const useRestaurantGraphql = searchMode === "restaurant";
     usedSource = useRestaurantGraphql
       ? "pcmap-graphql"
       : "pcmap-place-graphql";

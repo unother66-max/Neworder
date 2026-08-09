@@ -48,16 +48,21 @@ export async function GET(req: NextRequest) {
             keyword: keyword.keyword,
             targetName: keyword.place.name,
             placeCategory: keyword.place.category,
+            x: keyword.place.x,
+            y: keyword.place.y,
           }),
           cache: "no-store",
         });
 
         const text = await rankRes.text();
 
-        let rankData: any = null;
+        let rankData: {
+          canSaveRank?: boolean;
+          rank?: string | number;
+        } | null = null;
         try {
           rankData = text ? JSON.parse(text) : null;
-        } catch (error) {
+        } catch {
           console.error(
             "cron JSON parse 실패:",
             keyword.keyword,
