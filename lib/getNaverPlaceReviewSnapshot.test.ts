@@ -222,6 +222,26 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     ).toEqual(["place", "restaurant"]);
   });
 
+  it("uses place first for 소풍동물원 despite 키즈카페 and a restaurant URL", () => {
+    expect(
+      resolvePlaceTypeOrder({
+        category: "키즈카페,실내놀이터",
+        placeName: "소풍동물원",
+        placeUrl: "https://m.place.naver.com/restaurant/36192987/home",
+      })
+    ).toEqual(["place", "restaurant"]);
+  });
+
+  it("uses a general-place name override when the category is unknown", () => {
+    expect(
+      resolvePlaceTypeOrder({
+        category: "기타",
+        placeName: "소풍동물원",
+        placeUrl: "https://m.place.naver.com/restaurant/36192987/home",
+      })
+    ).toEqual(["place", "restaurant"]);
+  });
+
   it("uses the place result when restaurant is empty without a block", async () => {
     const called: string[] = [];
     const result = await runPlaceTypeAttempts(

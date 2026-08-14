@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
+import { parsePlaceReviewCount } from "@/lib/place-review-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,22 +12,16 @@ type ReviewRow = {
   totalReviewCount: number;
   visitorReviewCount: number;
   blogReviewCount: number;
-  saveCount: string;
+  saveCount: string | null;
   keywords: string[];
   createdAt: Date;
   updatedAt: Date;
 };
 
-function parseSaveCount(value: string) {
-  const onlyNumber = String(value || "").replace(/[^\d]/g, "");
-  const parsed = Number(onlyNumber);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 export async function GET() {
   try {
-    const session = (await getServerSession(authOptions as any)) as any;
-    const userId = session?.user?.id as string | undefined;
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json(
@@ -57,13 +52,15 @@ export async function GET() {
       },
     });
 
-    const mappedPlaces = places.map((place: any) => {
+    const mappedPlaces = places.map((place) => {
       const history = (place.reviewHistory as ReviewRow[]).map(
         (row, idx, arr: ReviewRow[]) => {
           const prev = arr[idx + 1];
 
-          const currentSaveCount = parseSaveCount(row.saveCount);
-          const prevSaveCount = prev ? parseSaveCount(prev.saveCount) : 0;
+          const currentSaveCount = parsePlaceReviewCount(row.saveCount);
+          const prevSaveCount = prev
+            ? parsePlaceReviewCount(prev.saveCount)
+            : null;
 
           return {
             id: row.id,
@@ -80,7 +77,10 @@ export async function GET() {
               ? row.blogReviewCount - prev.blogReviewCount
               : null,
             saveCount: row.saveCount,
-            saveCountDiff: prev ? currentSaveCount - prevSaveCount : null,
+            saveCountDiff:
+              prev && currentSaveCount !== null && prevSaveCount !== null
+                ? currentSaveCount - prevSaveCount
+                : null,
             keywords: row.keywords,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,

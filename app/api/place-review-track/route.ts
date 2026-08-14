@@ -129,14 +129,16 @@ export async function POST(req: Request) {
       totalReviewCount,
       saveCount,
       retainedFields,
+      unavailableFields,
     } = resolvedSnapshot;
-    const partial = retainedFields.length > 0;
+    const partial = unavailableFields.length > 0;
 
-    if (retainedFields.length > 0) {
-      console.warn("[place-review-track] keep previous save count", {
+    if (unavailableFields.length > 0) {
+      console.warn("[place-review-track] save count unavailable", {
         placeId,
         placeName: place.name,
         retainedFields,
+        unavailableFields,
         previousSaveCount: latest?.saveCount,
         parsed: {
           visitorReviewCount: snapshot.visitorReviewCount,
@@ -207,6 +209,7 @@ export async function POST(req: Request) {
       triedTypes: snapshot.triedTypes,
       debugReason: snapshot.debugReason,
       retainedFields,
+      unavailableFields,
     });
 
     // 🔥 하루 1개 (중복 제거)
@@ -263,6 +266,7 @@ export async function POST(req: Request) {
         keywords,
         registeredKeywordsStatus,
         retainedFields,
+        unavailableFields,
         partial,
         cacheStatus: snapshot.cacheStatus,
         chosenType: snapshot.chosenType,

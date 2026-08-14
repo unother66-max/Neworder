@@ -23,7 +23,7 @@ type ReviewHistoryRow = {
   visitorReviewDiff?: number | null;
   blogReviewCount: number;
   blogReviewDiff?: number | null;
-  saveCount: string;
+  saveCount: string | null;
   saveCountDiff?: number | null;
   trackedDate?: string;
   comparedTrackedDate?: string | null;
@@ -94,7 +94,7 @@ function ReviewMetricCell({
   value,
   diff,
 }: {
-  value: number | string;
+  value: number | string | null;
   diff?: number | null;
 }) {
   return (
@@ -185,7 +185,7 @@ export default function PlaceReviewDetailPage() {
               ? r.visitorReviewCount
               : metric === "blog"
                 ? r.blogReviewCount
-                : parsePlaceReviewCount(r.saveCount) ?? 0;
+                : parsePlaceReviewCount(r.saveCount);
 
         const diff =
           metric === "total"
@@ -263,7 +263,12 @@ export default function PlaceReviewDetailPage() {
           ? "블로그 리뷰"
           : "저장수";
 
-  const values = chartData.map((d) => d.value);
+  const values = chartData
+    .map((d) => d.value)
+    .filter(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value)
+    );
   const yMin = values.length ? Math.max(0, Math.min(...values) - 3) : 0;
   const yMax = values.length ? Math.max(...values) + 3 : 10;
 
@@ -546,7 +551,7 @@ export default function PlaceReviewDetailPage() {
                   </div>
                 </div>
 
-                {chartData.length > 0 ? (
+                {values.length > 0 ? (
                   <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-4">
                     <div className="h-[280px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -580,7 +585,7 @@ export default function PlaceReviewDetailPage() {
                               const item = payload[0]?.payload as
                                 | {
                                     label: string;
-                                    value: number;
+                                    value: number | null;
                                     diff?: number | null;
                                   }
                                 | undefined;
@@ -623,7 +628,9 @@ export default function PlaceReviewDetailPage() {
                   </div>
                 ) : (
                   <div className="flex h-[220px] items-center justify-center rounded-[16px] border border-dashed border-[#d1d5db] bg-[#fafafa] text-[13px] text-[#9ca3af]">
-                    아직 저장된 리뷰 이력이 없습니다.
+                    {metric === "save" && chartData.length > 0
+                      ? "네이버에서 저장 수를 제공하지 않는 업체입니다."
+                      : "아직 저장된 리뷰 이력이 없습니다."}
                   </div>
                 )}
               </div>

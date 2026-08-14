@@ -1,5 +1,6 @@
 type ParsedReviewSnapshot = {
   reason?: string | null;
+  chosenType?: "restaurant" | "place" | null;
   visitorReviewCount: number | null;
   blogReviewCount: number | null;
   saveCountText: string | null;
@@ -8,7 +9,7 @@ type ParsedReviewSnapshot = {
 type PreviousReviewSnapshot = {
   visitorReviewCount: number;
   blogReviewCount: number;
-  saveCount: string;
+  saveCount: string | null;
 };
 
 export function resolvePlaceReviewSnapshot(
@@ -17,8 +18,9 @@ export function resolvePlaceReviewSnapshot(
 ) {
   const visitorReviewCount = parsed.visitorReviewCount;
   const blogReviewCount = parsed.blogReviewCount;
-  const canRetainPreviousSaveCount =
+  const canUsePartialPlaceSnapshot =
     parsed.reason === "REVIEW_METRICS_INCOMPLETE" &&
+    parsed.chosenType === "place" &&
     visitorReviewCount !== null &&
     blogReviewCount !== null &&
     parsed.saveCountText === null;
@@ -28,13 +30,13 @@ export function resolvePlaceReviewSnapshot(
   // 마지막 정상 저장 수를 유지해 리뷰 갱신 전체가 막히지 않게 한다.
   const saveCount =
     parsed.saveCountText ??
-    (canRetainPreviousSaveCount ? previous?.saveCount : null) ??
+    (canUsePartialPlaceSnapshot ? previous?.saveCount : null) ??
     null;
 
   if (
     visitorReviewCount === null ||
     blogReviewCount === null ||
-    saveCount === null
+    (parsed.saveCountText === null && !canUsePartialPlaceSnapshot)
   ) {
     return null;
   }
@@ -44,6 +46,10 @@ export function resolvePlaceReviewSnapshot(
     blogReviewCount,
     totalReviewCount: visitorReviewCount + blogReviewCount,
     saveCount,
-    retainedFields: parsed.saveCountText === null ? ["saveCount"] : [],
+    retainedFields:
+      parsed.saveCountText === null && previous?.saveCount != null
+        ? ["saveCount"]
+        : [],
+    unavailableFields: parsed.saveCountText === null ? ["saveCount"] : [],
   };
 }

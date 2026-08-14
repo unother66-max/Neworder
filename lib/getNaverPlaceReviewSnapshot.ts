@@ -1,4 +1,5 @@
 import { buildPcmapPlaceListRequestBatch } from "./pcmap-place-list-request";
+import { isGeneralPlaceSearchOverride } from "./place-rank-search-mode";
 
 export type NaverPlaceType = "restaurant" | "place";
 export type KeywordCollectionStatus = "AVAILABLE" | "UNAVAILABLE";
@@ -685,7 +686,12 @@ export function resolvePlaceTypeOrder(
   }
 
   const category = String(input.category || "");
-  if (GENERAL_PLACE_PATTERN.test(category)) return ["place", "restaurant"];
+  if (
+    isGeneralPlaceSearchOverride(category) ||
+    GENERAL_PLACE_PATTERN.test(category)
+  ) {
+    return ["place", "restaurant"];
+  }
   if (RESTAURANT_PATTERN.test(category)) return ["restaurant", "place"];
 
   const pcmapHint = typeFromUrl(input.pcmapUrl);
@@ -696,7 +702,9 @@ export function resolvePlaceTypeOrder(
   }
 
   const name = String(input.placeName || "");
-  if (GENERAL_PLACE_PATTERN.test(name)) return ["place", "restaurant"];
+  if (isGeneralPlaceSearchOverride(name) || GENERAL_PLACE_PATTERN.test(name)) {
+    return ["place", "restaurant"];
+  }
   if (RESTAURANT_PATTERN.test(name)) return ["restaurant", "place"];
 
   const urlHint = typeFromUrl(input.placeUrl) ?? "place";

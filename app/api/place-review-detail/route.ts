@@ -19,7 +19,7 @@ type ReviewRow = {
   totalReviewCount: number;
   visitorReviewCount: number;
   blogReviewCount: number;
-  saveCount: string;
+  saveCount: string | null;
   trackedDate: string;
   keywords: string[];
   createdAt: Date;

@@ -59,10 +59,11 @@ export async function GET(req: Request) {
       totalReviewCount?: number;
       visitorReviewCount?: number;
       blogReviewCount?: number;
-      saveCount?: string;
+      saveCount?: string | null;
       keywords?: string[];
       partial?: boolean;
       retainedFields?: string[];
+      unavailableFields?: string[];
       sourceReason?: string;
       reason?: string;
       debugReason?: string;
@@ -145,14 +146,16 @@ export async function GET(req: Request) {
           totalReviewCount,
           saveCount,
           retainedFields,
+          unavailableFields,
         } = resolvedSnapshot;
-        const partial = retainedFields.length > 0;
+        const partial = unavailableFields.length > 0;
 
-        if (retainedFields.length > 0) {
-          console.warn("[place-review-tracking] keep previous save count", {
+        if (unavailableFields.length > 0) {
+          console.warn("[place-review-tracking] save count unavailable", {
             placeId: place.id,
             placeName: place.name,
             retainedFields,
+            unavailableFields,
             previousSaveCount: latest?.saveCount,
             parsed: {
               visitorReviewCount: snapshot.visitorReviewCount,
@@ -248,6 +251,7 @@ export async function GET(req: Request) {
           keywords,
           partial,
           retainedFields,
+          unavailableFields,
           sourceReason: partial ? snapshot.reason ?? undefined : undefined,
           debugReason: snapshot.debugReason ?? undefined,
           chosenType: snapshot.chosenType,

@@ -24,6 +24,7 @@ describe("resolvePlaceReviewSnapshot", () => {
       resolvePlaceReviewSnapshot(
         {
           reason: "REVIEW_METRICS_INCOMPLETE",
+          chosenType: "place",
           visitorReviewCount: 120,
           blogReviewCount: 31,
           saveCountText: null,
@@ -40,6 +41,7 @@ describe("resolvePlaceReviewSnapshot", () => {
       totalReviewCount: 151,
       saveCount: "450",
       retainedFields: ["saveCount"],
+      unavailableFields: ["saveCount"],
     });
   });
 
@@ -48,6 +50,7 @@ describe("resolvePlaceReviewSnapshot", () => {
       resolvePlaceReviewSnapshot(
         {
           reason: "REVIEW_METRICS_INCOMPLETE",
+          chosenType: "place",
           visitorReviewCount: 120,
           blogReviewCount: null,
           saveCountText: null,
@@ -61,10 +64,30 @@ describe("resolvePlaceReviewSnapshot", () => {
     ).toBeNull();
   });
 
-  it("does not invent zero values without a previous snapshot", () => {
+  it("accepts a first general-place snapshot without inventing a save count", () => {
     expect(
       resolvePlaceReviewSnapshot({
         reason: "REVIEW_METRICS_INCOMPLETE",
+        chosenType: "place",
+        visitorReviewCount: 120,
+        blogReviewCount: 31,
+        saveCountText: null,
+      })
+    ).toEqual({
+      visitorReviewCount: 120,
+      blogReviewCount: 31,
+      totalReviewCount: 151,
+      saveCount: null,
+      retainedFields: [],
+      unavailableFields: ["saveCount"],
+    });
+  });
+
+  it("does not accept a restaurant snapshot with a missing save count", () => {
+    expect(
+      resolvePlaceReviewSnapshot({
+        reason: "REVIEW_METRICS_INCOMPLETE",
+        chosenType: "restaurant",
         visitorReviewCount: 120,
         blogReviewCount: 31,
         saveCountText: null,
@@ -77,6 +100,7 @@ describe("resolvePlaceReviewSnapshot", () => {
       resolvePlaceReviewSnapshot(
         {
           reason: "NAVER_BLOCKED_OR_CAPTCHA",
+          chosenType: "place",
           visitorReviewCount: 120,
           blogReviewCount: 31,
           saveCountText: null,

@@ -149,6 +149,17 @@ describe("place-review-track POST", () => {
     expect(mocks.historyUpsert).not.toHaveBeenCalled();
     expect(mocks.placeUpdate).not.toHaveBeenCalled();
     expect(mocks.getVolume).not.toHaveBeenCalled();
+    expect(mocks.createAdminAlert).toHaveBeenCalledTimes(1);
+    expect(mocks.createAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: "error",
+        meta: expect.objectContaining({
+          placeId: "place-1",
+          reason: "NAVER_BLOCKED_OR_CAPTCHA",
+          debugReason: "place:GRAPHQL_NCAPTCHA",
+        }),
+      })
+    );
   });
 
   it("updates fresh review counts while retaining only an unavailable save count", async () => {
@@ -193,6 +204,7 @@ describe("place-review-track POST", () => {
         totalReviewCount: 221,
         saveCount: "300",
         retainedFields: ["saveCount"],
+        unavailableFields: ["saveCount"],
       },
     });
     expect(mocks.historyUpsert).toHaveBeenLastCalledWith(
@@ -223,11 +235,13 @@ describe("place-review-track POST", () => {
       saveCount: "300",
       partial: true,
       retainedFields: ["saveCount"],
+      unavailableFields: ["saveCount"],
       sourceReason: "REVIEW_METRICS_INCOMPLETE",
       debugReason: "place:SAVE_COUNT_UNAVAILABLE",
     });
     expect(cronBody.results[0].reason).toBeUndefined();
     expect(mocks.historyUpsert).toHaveBeenCalledTimes(2);
+    expect(mocks.createAdminAlert).not.toHaveBeenCalled();
   });
 
   it("rejects partial review data when the snapshot was explicitly blocked", async () => {
@@ -277,7 +291,7 @@ describe("place-review-track POST", () => {
     expect(mocks.getVolume).not.toHaveBeenCalled();
   });
 
-  it("does not invent a save count when no previous history exists", async () => {
+  it("saves a first general-place snapshot with an unavailable save count", async () => {
     const placeWithoutHistory = {
       id: "place-1",
       name: "키코필라테스",
@@ -318,7 +332,41 @@ describe("place-review-track POST", () => {
         body: JSON.stringify({ placeId: "place-1" }),
       })
     );
-    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      partial: true,
+      reason: null,
+      sourceReason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+      parsed: {
+        visitorReviewCount: 93,
+        blogReviewCount: 128,
+        totalReviewCount: 221,
+        saveCount: null,
+        retainedFields: [],
+        unavailableFields: ["saveCount"],
+      },
+    });
+    expect(mocks.historyUpsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          visitorReviewCount: 93,
+          blogReviewCount: 128,
+          totalReviewCount: 221,
+          saveCount: null,
+          keywords: [],
+        }),
+        create: expect.objectContaining({
+          visitorReviewCount: 93,
+          blogReviewCount: 128,
+          totalReviewCount: 221,
+          saveCount: null,
+          keywords: [],
+        }),
+      })
+    );
 
     const cronResponse = await runTrackingCron(
       new Request("http://localhost/api/cron/place-review-tracking", {
@@ -327,11 +375,61 @@ describe("place-review-track POST", () => {
     );
     const cronBody = await cronResponse.json();
     expect(cronBody.results[0]).toMatchObject({
+      saved: true,
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      totalReviewCount: 221,
+      saveCount: null,
+      partial: true,
+      retainedFields: [],
+      unavailableFields: ["saveCount"],
+      sourceReason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+    });
+    expect(cronBody.results[0].reason).toBeUndefined();
+    expect(mocks.historyUpsert).toHaveBeenCalledTimes(2);
+    expect(mocks.getVolume).toHaveBeenCalledTimes(2);
+    expect(mocks.placeUpdate).toHaveBeenCalledTimes(2);
+    expect(mocks.createAdminAlert).not.toHaveBeenCalled();
+  });
+
+  it("keeps a missing restaurant save count as a cron error", async () => {
+    mocks.getSnapshot.mockResolvedValue({
+      ok: false,
+      reason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "restaurant:SAVE_COUNT_UNAVAILABLE",
+      hintType: "restaurant",
+      chosenType: "restaurant",
+      triedTypes: ["restaurant"],
+      requestUrls: ["https://pcmap-api.place.naver.com/graphql"],
+      cacheStatus: "MISS",
+      visitorReviewCount: 93,
+      blogReviewCount: 128,
+      saveCountText: null,
+      registeredKeywords: null,
+      registeredKeywordsStatus: "UNAVAILABLE",
+      reviewFeatureKeywords: null,
+      reviewFeatureKeywordsStatus: "UNAVAILABLE",
+      keywordList: null,
+      keywordListStatus: "UNAVAILABLE",
+    });
+
+    const cronResponse = await runTrackingCron(
+      new Request("http://localhost/api/cron/place-review-tracking", {
+        headers: { "x-vercel-cron": "1" },
+      })
+    );
+    const cronBody = await cronResponse.json();
+
+    expect(cronBody.results[0]).toMatchObject({
       saved: false,
       reason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "restaurant:SAVE_COUNT_UNAVAILABLE",
+      chosenType: "restaurant",
     });
     expect(mocks.historyUpsert).not.toHaveBeenCalled();
     expect(mocks.getVolume).not.toHaveBeenCalled();
+    expect(mocks.createAdminAlert).toHaveBeenCalledTimes(1);
   });
 
   it("creates a fresh snapshot after a successful fetch", async () => {

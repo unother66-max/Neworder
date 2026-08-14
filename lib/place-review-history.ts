@@ -3,7 +3,7 @@ export type PlaceReviewHistorySnapshot = {
   totalReviewCount: number;
   visitorReviewCount: number;
   blogReviewCount: number;
-  saveCount: string;
+  saveCount: string | null;
 };
 
 export type PlaceReviewDailyDiff = {

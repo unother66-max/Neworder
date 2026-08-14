@@ -6,7 +6,6 @@ import {
   MapPin,
   Smartphone,
   Monitor,
-  MoreVertical,
   Pin,
   HelpCircle,
   Trash2,
@@ -33,7 +32,7 @@ type ReviewHistoryRow = {
   visitorReviewDiff?: number | null;
   blogReviewCount: number;
   blogReviewDiff?: number | null;
-  saveCount: string;
+  saveCount: string | null;
   saveCountDiff?: number | null;
   keywords: string[];
 };
@@ -43,7 +42,8 @@ type ApiReviewHistory = {
   totalReviewCount: number;
   visitorReviewCount: number;
   blogReviewCount: number;
-  saveCount: string;
+  saveCount: string | null;
+  saveCountDiff?: number | null;
   keywords: string[];
   createdAt: string;
   updatedAt?: string;
@@ -181,9 +181,7 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
       blogReviewCount: row.blogReviewCount,
       blogReviewDiff: prev ? row.blogReviewCount - prev.blogReviewCount : null,
       saveCount: row.saveCount,
-      saveCountDiff: prev
-        ? Number(row.saveCount || 0) - Number(prev.saveCount || 0)
-        : null,
+      saveCountDiff: row.saveCountDiff ?? null,
       keywords: row.keywords || [],
     };
   });
@@ -380,13 +378,10 @@ export default function PlaceReviewPage() {
   }
 
   useEffect(() => {
-    if (status === "loading") return;
-    if (status === "unauthenticated") {
-      setStores(SAMPLE_REVIEW_STORES);
-      setLoading(false);
-      return;
-    }
-    fetchPlaces();
+    if (status !== "authenticated") return;
+    // 인증 완료 시 서버 목록을 클라이언트 상태와 동기화한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchPlaces();
   }, [status]);
 
   useEffect(() => {
@@ -504,18 +499,23 @@ export default function PlaceReviewPage() {
     }
   }
 
+  const visibleStores =
+    status === "unauthenticated" ? SAMPLE_REVIEW_STORES : stores;
+  const pageLoading =
+    status === "loading" || (status === "authenticated" && loading);
+
   const filteredStores = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return stores;
+    if (!keyword) return visibleStores;
 
-    return stores.filter((store) => {
+    return visibleStores.filter((store) => {
       return (
         store.name.toLowerCase().includes(keyword) ||
         store.displayName.toLowerCase().includes(keyword) ||
         store.address.toLowerCase().includes(keyword)
       );
     });
-  }, [search, stores]);
+  }, [search, visibleStores]);
 
   async function handleUpdateStore(storeId: string) {
     try {
@@ -739,7 +739,7 @@ export default function PlaceReviewPage() {
                 </div>
 
                 <p className="mt-1 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
-                  {loading
+                  {pageLoading
                     ? "📍 리뷰 데이터 불러오는 중..."
                     : "📍 리뷰/저장수 변화 조회중"}
                 </p>
@@ -752,7 +752,7 @@ export default function PlaceReviewPage() {
           </div>
 
           <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
-            {loading ? (
+            {pageLoading ? (
               <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
                 <p className="text-[15px] font-bold text-[#111827] md:text-[18px]">
                   불러오는 중...
@@ -1155,7 +1155,7 @@ export default function PlaceReviewPage() {
                                   </td>
 
                                   <td className="px-1 py-2.5 text-[11px] font-semibold text-[#111827] md:px-4 md:py-4 md:text-[14px]">
-                                    {row.saveCount}
+                                    {row.saveCount || "-"}
                                     <DiffText value={row.saveCountDiff} />
                                   </td>
 

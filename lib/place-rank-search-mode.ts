@@ -126,7 +126,7 @@ function includesAnyHint(value: unknown, hints: readonly string[]): boolean {
   return Boolean(normalized) && hints.some((hint) => normalized.includes(hint));
 }
 
-function isGeneralPlaceOverrideIntent(value: unknown): boolean {
+export function isGeneralPlaceSearchOverride(value: unknown): boolean {
   const text = String(value ?? "");
   return (
     includesAnyHint(text, GENERAL_PLACE_OVERRIDE_HINTS) ||
@@ -144,13 +144,13 @@ export function resolvePlaceRankSearchMode(params: {
   keyword: unknown;
   category?: unknown;
 }): PlaceRankSearchMode {
-  if (isGeneralPlaceOverrideIntent(params.keyword)) return "place";
+  if (isGeneralPlaceSearchOverride(params.keyword)) return "place";
   if (includesAnyHint(params.keyword, RESTAURANT_HINTS)) return "restaurant";
   if (includesAnyHint(params.keyword, GENERAL_PLACE_FALLBACK_HINTS)) {
     return "place";
   }
 
-  if (isGeneralPlaceOverrideIntent(params.category)) return "place";
+  if (isGeneralPlaceSearchOverride(params.category)) return "place";
   if (includesAnyHint(params.category, RESTAURANT_HINTS)) return "restaurant";
   if (includesAnyHint(params.category, GENERAL_PLACE_FALLBACK_HINTS)) {
     return "place";

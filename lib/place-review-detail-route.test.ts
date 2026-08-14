@@ -32,7 +32,7 @@ function historyRow(
   totalReviewCount: number,
   visitorReviewCount: number,
   blogReviewCount: number,
-  saveCount: string
+  saveCount: string | null
 ) {
   return {
     id: `history-${trackedDate}`,

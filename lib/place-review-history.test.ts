@@ -11,7 +11,7 @@ function row(
   total: number,
   visitor: number,
   blog: number,
-  save: string
+  save: string | null
 ) {
   return {
     id: trackedDate,
@@ -53,6 +53,21 @@ describe("place review daily history", () => {
       blogReviewDiff: null,
       saveCountDiff: null,
     });
+  });
+
+  it("does not invent a saved-count change when either day is unavailable", () => {
+    const history = buildPlaceReviewDailyHistory([
+      row("2026-07-28", 130, 90, 40, null),
+      row("2026-07-27", 120, 84, 36, "11,950"),
+    ]);
+
+    expect(history[0]).toMatchObject({
+      totalReviewDiff: 10,
+      visitorReviewDiff: 6,
+      blogReviewDiff: 4,
+      saveCountDiff: null,
+    });
+    expect(parsePlaceReviewCount(null)).toBeNull();
   });
 
   it("uses the hidden 31st row as the comparison for the 30th visible row", () => {
