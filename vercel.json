@@ -1,12 +1,36 @@
 {
   "crons": [
     {
-      "path": "/api/cron/place-tracking",
-      "schedule": "0 18 * * *"
+      "path": "/api/cron/place-tracking/1",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/place-tracking/2",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/place-tracking/3",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/place-tracking/4",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/place-tracking/5",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/place-tracking/6",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/place-tracking/7",
+      "schedule": "0 5 * * *"
     },
     {
       "path": "/api/cron/place-review-tracking",
-      "schedule": "0 18 * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/kakao-tracking",
@@ -18,23 +42,23 @@
     },
     {
       "path": "/api/cron/blog-analysis-light",
-      "schedule": "0 19 * * *"
+      "schedule": "0 13 * * *"
     },
     {
       "path": "/api/cron/blog-discovery-analyze",
-      "schedule": "30 18 * * *"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/blog-rank-snapshot",
-      "schedule": "0 19 * * 0"
+      "schedule": "0 11 * * 0"
     },
     {
       "path": "/api/cron/smartstore-plus-rank-tracking",
-      "schedule": "15 19 * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/place-analysis-registered-keywords",
-      "schedule": "0 18 * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }

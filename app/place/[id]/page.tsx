@@ -566,10 +566,13 @@ export default function PlaceDetailPage() {
           });
         }
 
-        map.get(key)!.values[keyword.id] = {
-          rank: history.rank,
-          historyId: history.id,
-        };
+        // histories는 최신순이므로 같은 날 수동/cron 저장이 여러 건이면 최신값 유지.
+        if (!map.get(key)!.values[keyword.id]) {
+          map.get(key)!.values[keyword.id] = {
+            rank: history.rank,
+            historyId: history.id,
+          };
+        }
       });
     });
 

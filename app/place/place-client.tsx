@@ -62,6 +62,10 @@ type Store = {
   y?: string;
   keywords: KeywordItem[];
   latestUpdatedAtText?: string;
+  trackingKeywordCount?: number;
+  todayTrackingSuccessCount?: number;
+  trackingUpdateStatus?: "OFF" | "PENDING" | "PARTIAL" | "COMPLETE";
+  trackingMode?: "OFF" | "MIXED" | "ON";
 
   placeMonthlyVolume?: number;
   placeMobileVolume?: number;
@@ -119,6 +123,11 @@ type PlaceItem = {
     rank: number;
     createdAt: string;
   }[];
+  latestUpdatedAtText?: string | null;
+  trackingKeywordCount?: number;
+  todayTrackingSuccessCount?: number;
+  trackingUpdateStatus?: "OFF" | "PENDING" | "PARTIAL" | "COMPLETE";
+  trackingMode?: "OFF" | "MIXED" | "ON";
 };
 
 const PAGE_SIZE = 15;
@@ -180,13 +189,6 @@ function formatKST(date: Date) {
 
 function computeLatestUpdatedAtText(place: PlaceItem): string | undefined {
   let maxMs = 0;
-
-  for (const k of place.keywords || []) {
-    const u = k.updatedAt;
-    if (!u) continue;
-    const t = new Date(u).getTime();
-    if (!Number.isNaN(t)) maxMs = Math.max(maxMs, t);
-  }
 
   for (const h of place.rankHistory || []) {
     if (!h?.createdAt) continue;
@@ -633,12 +635,13 @@ y: (place as any).y ? String((place as any).y) : undefined,
     placePcVolume: (place as any).placePcVolume ?? 0,
 
     latestUpdatedAtText:
+      String(place.latestUpdatedAtText ?? "").trim() ||
       computeLatestUpdatedAtText(place) ||
-      String(
-        (place as { latestUpdatedAtText?: string | null }).latestUpdatedAtText ??
-          ""
-      ).trim() ||
       undefined,
+    trackingKeywordCount: place.trackingKeywordCount,
+    todayTrackingSuccessCount: place.todayTrackingSuccessCount,
+    trackingUpdateStatus: place.trackingUpdateStatus,
+    trackingMode: place.trackingMode,
     isPinned: !!place.rankPinned,
 
     keywords: (place.keywords || []).map((keyword) => {
@@ -1623,7 +1626,14 @@ useEffect(() => {
       return;
     }
 
-    const nextValue = !store.keywords.every((k) => k.isTracking);
+    const trackingMode =
+      store.trackingMode ??
+      (store.keywords.every((keyword) => keyword.isTracking)
+        ? "ON"
+        : store.keywords.some((keyword) => keyword.isTracking)
+          ? "MIXED"
+          : "OFF");
+    const nextValue = trackingMode !== "ON";
 
     try {
       setTrackingLoadingKeywordId(store.dbId);
@@ -1655,6 +1665,8 @@ useEffect(() => {
                   ...keyword,
                   isTracking: nextValue,
                 })),
+                trackingKeywordCount: nextValue ? item.keywords.length : 0,
+                trackingMode: nextValue ? "ON" : "OFF",
               }
             : item
         )
@@ -1792,8 +1804,15 @@ useEffect(() => {
                     item.dbId === store.dbId
                 );
 
-                const summaryKeyword = store.keywords[0];
-                const trackingLabel = summaryKeyword?.isTracking ? "ON" : "OFF";
+                const trackingMode =
+                  store.trackingMode ??
+                  (store.keywords.every((keyword) => keyword.isTracking)
+                    ? "ON"
+                    : store.keywords.some((keyword) => keyword.isTracking)
+                      ? "MIXED"
+                      : "OFF");
+                const trackingLabel =
+                  trackingMode === "MIXED" ? "일부" : trackingMode;
                 const isTrackingLoading = trackingLoadingKeywordId === store.dbId;
                 const isChecking = checkingStoreIndex === realIndex;
                 const isDeleting = deletingStoreId === store.dbId;
@@ -1915,19 +1934,21 @@ useEffect(() => {
                                 onClick={() => handleToggleTrackingByStore(store)}
                                 disabled={isTrackingLoading}
                                 className={`flex h-10 min-w-0 flex-col justify-center rounded-[10px] border px-1.5 text-left transition active:scale-[0.98] md:hidden ${
-                                  trackingLabel === "ON"
+                                  trackingMode === "ON"
                                     ? "border-[#2563EB] bg-[#2563EB] text-white"
+                                    : trackingMode === "MIXED"
+                                      ? "border-[#f59e0b] bg-[#fffbeb] text-[#b45309]"
                                     : "border-[#e5e7eb] bg-[#f3f4f6] text-[#374151]"
                                 } ${isTrackingLoading ? "opacity-60" : ""}`}
                                 aria-label={`자동 추적 ${trackingLabel}`}
                               >
                                 <div className={`truncate text-[10px] font-semibold leading-none ${
-                                  trackingLabel === "ON" ? "text-white/85" : "text-[#4b5563]"
+                                  trackingMode === "ON" ? "text-white/85" : trackingMode === "MIXED" ? "text-[#b45309]" : "text-[#4b5563]"
                                 }`}>
                                   자동 추적
                                 </div>
                                 <div className={`mt-1 truncate text-sm font-semibold leading-none ${
-                                  trackingLabel === "ON" ? "text-white" : "text-[#111827]"
+                                  trackingMode === "ON" ? "text-white" : trackingMode === "MIXED" ? "text-[#92400e]" : "text-[#111827]"
                                 }`}>
                                   {trackingLabel}
                                 </div>
@@ -2080,8 +2101,10 @@ useEffect(() => {
                             onMouseLeave={() => setTrackingHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleTrackingMouseMove(e, rowId)}
                             className={`relative hidden h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:inline-flex md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${
-                              trackingLabel === "ON"
+                              trackingMode === "ON"
                                 ? "bg-[#2563EB] text-white"
+                                : trackingMode === "MIXED"
+                                  ? "border border-[#f59e0b] bg-[#fffbeb] text-[#b45309]"
                                 : trackingHover.id === rowId
                                   ? "bg-transparent border border-[#2563EB] text-white"
                                   : "bg-transparent border border-[#d1d5db] text-[#111827]"
@@ -2293,8 +2316,26 @@ useEffect(() => {
                       </div>
 
                       <div className="mt-3 flex justify-end text-[10px] text-[#9ca3af] md:text-[11px]">
-                        <div>
-                          마지막 업데이트:{" "}
+                        <div className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5">
+                          {(store.trackingKeywordCount ?? 0) > 0 ? (
+                            <span
+                              className={
+                                store.trackingUpdateStatus === "COMPLETE"
+                                  ? "font-semibold text-[#16a34a]"
+                                  : store.trackingUpdateStatus === "PARTIAL"
+                                    ? "font-semibold text-[#d97706]"
+                                    : "font-semibold text-[#9ca3af]"
+                              }
+                            >
+                              오늘 순위 저장 {store.todayTrackingSuccessCount ?? 0}/
+                              {store.trackingKeywordCount}
+                            </span>
+                          ) : null}
+                          <span>
+                            {(store.trackingKeywordCount ?? 0) > 0
+                              ? "· 최근 성공:"
+                              : "최근 성공:"}
+                          </span>
                           <span className="font-semibold text-[#6b7280]">
                             {store.latestUpdatedAtText || "-"}
                           </span>

@@ -226,19 +226,22 @@ model Place {
 }
 
 model PlaceKeyword {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   placeId           String
   keyword           String
   mobileVolume      Int?
   pcVolume          Int?
   totalVolume       Int?
-  sortOrder         Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  isTracking        Boolean  @default(false)
+  sortOrder         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  isTracking        Boolean   @default(false)
   volumeStatus      String?
-  volumeDebugReason String?  @db.Text
-  place             Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  volumeDebugReason String?   @db.Text
+  lastAttemptAt     DateTime?
+  lastSuccessAt     DateTime?
+  lastFailureCode   String?   @db.Text
+  place             Place     @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@unique([placeId, keyword])
   @@index([placeId])

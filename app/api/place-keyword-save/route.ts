@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getKeywordSearchVolume } from "@/lib/getKeywordSearchVolume";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/auth";
 
 const MAX_KEYWORDS_PER_STORE = 10;
+
+type SessionWithUserId = {
+  user?: {
+    id?: string | null;
+  } | null;
+} | null;
 
 function toNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -14,6 +22,16 @@ function toNullableNumber(value: unknown): number | null {
 
 export async function POST(req: Request) {
   try {
+    const session = (await getServerSession(authOptions)) as SessionWithUserId;
+    const userId = session?.user?.id;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "로그인이 필요합니다." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     const {
@@ -31,6 +49,22 @@ export async function POST(req: Request) {
       );
     }
 
+    const ownedPlace = await prisma.place.findFirst({
+      where: {
+        id: String(placeId),
+        userId,
+        type: "rank",
+      },
+      select: { id: true },
+    });
+
+    if (!ownedPlace) {
+      return NextResponse.json(
+        { error: "매장을 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
+
     // 🔥 기존 키워드 개수 체크
     const existingCount = await prisma.placeKeyword.count({
       where: { placeId },
@@ -44,6 +78,14 @@ export async function POST(req: Request) {
         },
       },
     });
+
+    const trackedSibling =
+      !exists && existingCount > 0
+        ? await prisma.placeKeyword.findFirst({
+            where: { placeId, isTracking: true },
+            select: { id: true },
+          })
+        : null;
 
     // 🔥 이미 있는 키워드는 허용 (업데이트니까)
     if (!exists && existingCount >= MAX_KEYWORDS_PER_STORE) {
@@ -105,6 +147,8 @@ export async function POST(req: Request) {
         mobileVolume: nextMobile,
         pcVolume: nextPc,
         totalVolume: nextTotal,
+        // 자동추적 중인 매장에 키워드를 추가하면 조용히 OFF로 빠지지 않게 한다.
+        isTracking: Boolean(trackedSibling),
       },
     });
 

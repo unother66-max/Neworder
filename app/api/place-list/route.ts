@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
+import { summarizePlaceRankTracking } from "@/lib/place-tracking-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -127,31 +128,12 @@ export async function GET() {
         }))
       );
 
-      const keywordLatestUpdatedAt =
-        [...place.keywords].sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        )[0]?.updatedAt ?? null;
-
-      const rankHistoryLatestMs = (place.rankHistory || []).reduce(
-        (acc, r) => {
-          const t = new Date(r.createdAt).getTime();
-          return Number.isNaN(t) ? acc : Math.max(acc, t);
-        },
-        0
-      );
-
-      const keywordLatestMs = keywordLatestUpdatedAt
-        ? new Date(keywordLatestUpdatedAt).getTime()
-        : 0;
-
-      const bestMs = Math.max(
-        Number.isFinite(keywordLatestMs) ? keywordLatestMs : 0,
-        rankHistoryLatestMs
-      );
-
-      const latestUpdatedAt =
-        bestMs > 0 ? new Date(bestMs) : keywordLatestUpdatedAt ?? null;
+      const trackingSummary = summarizePlaceRankTracking({
+        keywords: place.keywords,
+        histories: place.rankHistory || [],
+      });
+      // 키워드 편집/실패 시도도 updatedAt을 바꾸므로 성공 순위 이력만 사용한다.
+      const latestUpdatedAt = trackingSummary.latestSuccessAt;
 
       const placeMonthlyVolumeDb = toNumber(place.placeMonthlyVolume ?? 0);
       const placeMobileVolumeDb = toNumber(place.placeMobileVolume ?? 0);
@@ -172,6 +154,10 @@ export async function GET() {
         jibunAddress: (place as any).jibunAddress ?? null,
         latestUpdatedAt,
         latestUpdatedAtText: formatUpdatedAt(latestUpdatedAt),
+        trackingKeywordCount: trackingSummary.trackingKeywordCount,
+        todayTrackingSuccessCount: trackingSummary.todayTrackingSuccessCount,
+        trackingUpdateStatus: trackingSummary.trackingUpdateStatus,
+        trackingMode: trackingSummary.trackingMode,
         placeMonthlyVolume,
         placeMobileVolume,
         placePcVolume,

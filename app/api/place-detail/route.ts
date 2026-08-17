@@ -123,9 +123,10 @@ export async function GET(req: Request) {
       };
     });
 
+    // 키워드 편집/실패 시도가 아니라 실제 순위 저장 시각만 노출한다.
     const latestUpdatedAtRaw =
-      normalizedKeywords
-        .map((item) => item.updatedAt)
+      rankHistory
+        .map((item) => item.createdAt)
         .filter(Boolean)
         .sort(
           (a, b) =>
