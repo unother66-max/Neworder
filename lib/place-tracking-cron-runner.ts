@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { interleaveTrackedKeywordsByPlace } from "@/lib/place-tracking-cron";
 import { prisma } from "@/lib/prisma";
+import { utcRangeSeoulCalendarDay } from "@/lib/seoul-calendar";
 
 const CRON_NEW_CLAIM_CUTOFF_MS = 260_000;
 const CRON_CLEANUP_DEADLINE_MS = 285_000;
 const RANK_REQUEST_TIMEOUT_MS = 110_000;
-const ATTEMPT_ELIGIBILITY_MS = 20 * 60 * 60 * 1000;
 const GLOBAL_BLOCK_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 const GLOBAL_BLOCK_PREFIX = "GLOBAL_BLOCK:";
 const DEFAULT_REQUEST_PACE_MS = 1_000;
@@ -148,7 +148,12 @@ export async function runPlaceTrackingCron(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const eligibleBefore = new Date(startedAt - ATTEMPT_ELIGIBILITY_MS);
+    // UI의 "오늘 순위 저장"과 동일하게 KST 달력 날짜를 기준으로 중복을 막는다.
+    // rolling 시간 제한을 사용하면 전날 늦게 수동 저장한 키워드가 다음 날
+    // 모든 오전 슬롯에서 제외될 수 있다.
+    const { start: seoulDayStart } = utcRangeSeoulCalendarDay(
+      new Date(startedAt)
+    );
     const globalCooldownAfter = new Date(
       startedAt - GLOBAL_BLOCK_COOLDOWN_MS
     );
@@ -181,7 +186,7 @@ export async function runPlaceTrackingCron(
           ...trackedWhere,
           OR: [
             { lastAttemptAt: null },
-            { lastAttemptAt: { lt: eligibleBefore } },
+            { lastAttemptAt: { lt: seoulDayStart } },
           ],
         },
         include: { place: true },
@@ -191,10 +196,10 @@ export async function runPlaceTrackingCron(
           { id: "asc" },
         ],
       }),
-      // 배포 전 cron이나 직전 수동 저장은 cursor가 비어 있을 수 있으므로 이력으로도 중복 방지.
+      // 배포 전 cron이나 오늘 수동 저장은 cursor가 비어 있을 수 있으므로 이력으로도 중복 방지.
       prisma.rankHistory.findMany({
         where: {
-          createdAt: { gte: eligibleBefore },
+          createdAt: { gte: seoulDayStart },
           place: { type: "rank" },
         },
         select: {
@@ -284,7 +289,7 @@ export async function runPlaceTrackingCron(
           isTracking: true,
           OR: [
             { lastAttemptAt: null },
-            { lastAttemptAt: { lt: eligibleBefore } },
+            { lastAttemptAt: { lt: seoulDayStart } },
           ],
         },
         data: {

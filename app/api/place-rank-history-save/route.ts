@@ -55,6 +55,8 @@ export async function POST(req: Request) {
       );
     }
 
+    // 수동 업데이트는 cron의 KST 당일 eligibility와 무관하게 항상 허용한다.
+    // 여기서 cursor를 갱신하는 목적은 수동 저장 뒤 같은 날 cron 중복만 막는 것이다.
     const savedAt = new Date();
     await prisma.$transaction([
       prisma.rankHistory.create({

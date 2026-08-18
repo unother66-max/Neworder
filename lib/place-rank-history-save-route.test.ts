@@ -87,6 +87,45 @@ describe("place rank history save route", () => {
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
   });
 
+  it("allows repeated manual saves for a keyword already updated today", async () => {
+    const earlierToday = new Date("2026-08-18T00:30:00.000Z");
+    mocks.findFirst.mockResolvedValue({
+      id: "keyword-1",
+      placeId: "place-1",
+      keyword: "한남동 맛집",
+      isTracking: true,
+      lastAttemptAt: earlierToday,
+      lastSuccessAt: earlierToday,
+    });
+
+    const firstResponse = await POST(
+      new Request("http://localhost/api/place-rank-history-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeKeywordId: "keyword-1", rank: 15 }),
+      })
+    );
+    const secondResponse = await POST(
+      new Request("http://localhost/api/place-rank-history-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeKeywordId: "keyword-1", rank: 16 }),
+      })
+    );
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(mocks.rankHistoryCreate).toHaveBeenCalledTimes(2);
+    expect(mocks.rankHistoryCreate).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({ rank: 15, source: "manual" }),
+    });
+    expect(mocks.rankHistoryCreate).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({ rank: 16, source: "manual" }),
+    });
+    expect(mocks.keywordUpdate).toHaveBeenCalledTimes(2);
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects unauthenticated requests", async () => {
     mocks.getServerSession.mockResolvedValue(null);
 

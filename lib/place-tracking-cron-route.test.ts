@@ -73,7 +73,11 @@ describe("place tracking cron", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses the full function budget and selects eligible Naver rank keywords", async () => {
+  it("uses the KST calendar day to select eligible Naver rank keywords", async () => {
+    vi.useFakeTimers();
+    // 2026-08-18 02:00 KST. 오늘의 시작은 2026-08-17 15:00 UTC이다.
+    vi.setSystemTime(new Date("2026-08-17T17:00:00.000Z"));
+    const seoulDayStart = new Date("2026-08-17T15:00:00.000Z");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -94,7 +98,7 @@ describe("place tracking cron", () => {
         place: { type: "rank" },
         OR: [
           { lastAttemptAt: null },
-          { lastAttemptAt: { lt: expect.any(Date) } },
+          { lastAttemptAt: { lt: seoulDayStart } },
         ],
       },
       include: { place: true },
@@ -110,12 +114,22 @@ describe("place tracking cron", () => {
         isTracking: true,
         OR: [
           { lastAttemptAt: null },
-          { lastAttemptAt: { lt: expect.any(Date) } },
+          { lastAttemptAt: { lt: seoulDayStart } },
         ],
       },
       data: {
         lastAttemptAt: expect.any(Date),
         lastFailureCode: "IN_PROGRESS",
+      },
+    });
+    expect(mocks.rankHistoryFindMany).toHaveBeenCalledWith({
+      where: {
+        createdAt: { gte: seoulDayStart },
+        place: { type: "rank" },
+      },
+      select: {
+        placeId: true,
+        keyword: true,
       },
     });
   });
@@ -605,7 +619,7 @@ describe("place tracking cron", () => {
     });
   });
 
-  it("does not recheck a keyword with a successful history in the last 20 hours", async () => {
+  it("does not recheck a keyword with a successful history earlier today in KST", async () => {
     mocks.rankHistoryFindMany.mockResolvedValue([
       { placeId: "place-1", keyword: "평택 동물체험" },
     ]);
