@@ -1245,10 +1245,14 @@ async function buildRelatedKeywords(keyword: string) {
 }
 
 export async function POST(req: Request) {
+  const routeStartedAt = Date.now();
+  let timingKeyword: string | null = null;
+
   try {
     const body = await req.json();
     const rawKeyword = String(body.keyword || "").trim();
     const { normalized: keyword } = normalizePlaceSearchKeywordTypos(rawKeyword);
+    timingKeyword = keyword || rawKeyword || null;
 
     if (!keyword) {
       return NextResponse.json(
@@ -1567,6 +1571,12 @@ export async function POST(req: Request) {
     );
     const capped = regionFiltered;
     const baseRows = capped.map((item, index) => mapItemToListRow(item, index));
+    const listProcessingStartedAt = Date.now();
+    console.log("[place-rank-analyze timing]", {
+      stage: "business-list:start",
+      keyword,
+      itemCount: baseRows.length,
+    });
     const collectionSource: PlaceAnalysisCollectionSource =
       source === "mapAllSearch" ? "allsearch" : "pcmap-graphql";
     const rawGallant = items.find(
@@ -1608,8 +1618,16 @@ export async function POST(req: Request) {
     );
     let reviewSnapshotCircuitOpen = false;
     let reviewSnapshotCircuitReason: string | null = null;
+    let saveFallbackSkippedCount = 0;
     const registeredKeywordQueueTargets: RegisteredKeywordQueueTarget[] = [];
 
+    const reviewSnapshotStartedAt = Date.now();
+    console.log("[place-rank-analyze timing]", {
+      stage: "review-snapshots:start",
+      keyword,
+      itemCount: baseRows.length,
+      concurrency: PLACE_ANALYSIS_REVIEW_CONCURRENCY,
+    });
     const list = await mapWithConcurrency(
       baseRows,
       PLACE_ANALYSIS_REVIEW_CONCURRENCY,
@@ -1704,7 +1722,12 @@ export async function POST(req: Request) {
               x: _coords.x,
               y: _coords.y,
               collectRegisteredKeywords: false,
+              allowMissingSaveCount: true,
             });
+
+            if (snapshot.saveFallbackSkipped === true) {
+              saveFallbackSkippedCount += 1;
+            }
 
             visitor = snapshot.visitorReviewCount ?? visitor;
             blog = snapshot.blogReviewCount ?? blog;
@@ -1831,10 +1854,24 @@ export async function POST(req: Request) {
         };
       }
     );
+    const reviewSnapshotDurationMs = Date.now() - reviewSnapshotStartedAt;
+    console.log("[place-rank-analyze timing]", {
+      stage: "review-snapshots:end",
+      keyword,
+      itemCount: baseRows.length,
+      durationMs: reviewSnapshotDurationMs,
+      saveFallbackSkippedCount,
+    });
+    const registeredKeywordVolumeStartedAt = Date.now();
     const registeredKeywordVolumeCache =
       await loadRegisteredKeywordVolumeCache(
         list.flatMap((row) => row.registeredKeywords ?? [])
       );
+    console.log("[place-rank-analyze timing]", {
+      stage: "registered-keyword-volumes:end",
+      keyword,
+      durationMs: Date.now() - registeredKeywordVolumeStartedAt,
+    });
     const registeredKeywordVolumeBackfillTargets: RegisteredKeywordQueueTarget[] = [];
     const responseList = list.map((row) => {
       const registeredKeywords = buildRegisteredKeywordsWithVolumes(
@@ -1877,6 +1914,15 @@ export async function POST(req: Request) {
     const saveCountUnavailableCount = responseList.filter(
       (row) => row.review.save === null
     ).length;
+    console.log("[place-rank-analyze timing]", {
+      stage: "business-list:end",
+      keyword,
+      itemCount: responseList.length,
+      durationMs: Date.now() - listProcessingStartedAt,
+      reviewSnapshotDurationMs,
+      saveFallbackSkippedCount,
+      saveCountUnavailableCount,
+    });
     const finalGallant = responseList.find(
       (item) => normalizeText(item.name) === normalizeText("갈란트")
     );
@@ -1891,6 +1937,7 @@ export async function POST(req: Request) {
       resultCount: responseList.length,
       fallbackUsed,
       saveCountUnavailableCount,
+      saveFallbackSkippedCount,
       registeredKeywordVolumeUnavailableCount,
       registeredKeywordVolumePendingCount,
       primaryError,
@@ -1920,7 +1967,15 @@ export async function POST(req: Request) {
       graphqlErrors,
     });
 
+    const relatedKeywordVolumeStartedAt = Date.now();
     const related = await buildRelatedKeywords(keyword);
+    const relatedKeywordVolumeDurationMs =
+      Date.now() - relatedKeywordVolumeStartedAt;
+    console.log("[place-rank-analyze timing]", {
+      stage: "related-keyword-volumes:end",
+      keyword,
+      durationMs: relatedKeywordVolumeDurationMs,
+    });
     const registeredKeywordTargets = baseRows
       .map((row) => ({
         publicPlaceId: String(row.placeId || "").trim(),
@@ -1957,6 +2012,15 @@ export async function POST(req: Request) {
     }
 
     const diagOut = buildPlaceRankDiagnosticsPayload(diagnostics);
+    console.log("[place-rank-analyze timing]", {
+      stage: "route:end",
+      keyword,
+      durationMs: Date.now() - routeStartedAt,
+      reviewSnapshotDurationMs,
+      relatedKeywordVolumeDurationMs,
+      saveFallbackSkippedCount,
+      saveCountUnavailableCount,
+    });
 
     return NextResponse.json(
       {
@@ -1998,6 +2062,12 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("place-rank-analyze error:", error);
+    console.log("[place-rank-analyze timing]", {
+      stage: "route:error",
+      keyword: timingKeyword,
+      durationMs: Date.now() - routeStartedAt,
+      errorName: error instanceof Error ? error.name : "UNKNOWN_ERROR",
+    });
 
     return NextResponse.json(
       {

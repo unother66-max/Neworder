@@ -241,7 +241,7 @@ const SAMPLE_REVIEW_STORES: StoreItem[] = [
     displayName: "포스트랩스 성수 베이커리",
     category: "카페, 베이커리",
     address: "서울 성동구 성수이로 12",
-    imageUrl: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     searchVolume: 18400,
     mobileVolume: 15100,
     pcVolume: 3300,
@@ -261,7 +261,7 @@ const SAMPLE_REVIEW_STORES: StoreItem[] = [
     displayName: "포스트랩스 강남 클리닉",
     category: "병원, 의원",
     address: "서울 강남구 테헤란로 24",
-    imageUrl: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     searchVolume: 9600,
     mobileVolume: 8100,
     pcVolume: 1500,
@@ -783,7 +783,11 @@ export default function PlaceReviewPage() {
                           <img
                             src={store.imageUrl}
                             alt={store.name}
-                            className="h-full w-full object-cover"
+                            className={`h-full w-full ${
+                              store.id.startsWith("sample-review-")
+                                ? "bg-white object-contain p-1"
+                                : "object-cover"
+                            }`}
                           />
                         </div>
 

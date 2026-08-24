@@ -61,7 +61,7 @@ const SAMPLE_KAKAO_ANALYSIS_LIST: RankPlaceItem[] = [
     name: "포스트랩스 카페 성수",
     category: "카페",
     address: "서울 성동구 성수이로 7",
-    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     review: { total: 1284, rating: 4.7 },
   },
   {
@@ -70,7 +70,7 @@ const SAMPLE_KAKAO_ANALYSIS_LIST: RankPlaceItem[] = [
     name: "포스트랩스 브런치랩",
     category: "브런치",
     address: "서울 성동구 연무장길 18",
-    imageUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     review: { total: 932, rating: 4.6 },
   },
 ];
@@ -438,7 +438,11 @@ export default function KakaoAnalysisPage() {
                                 <img
                                   src={item.imageUrl}
                                   alt={item.name}
-                                  className="h-10 w-10 shrink-0 rounded-[10px] object-cover ring-1 ring-[#e5e7eb] md:h-[56px] md:w-[56px] md:rounded-[12px]"
+                                  className={`h-10 w-10 shrink-0 rounded-[10px] ring-1 ring-[#e5e7eb] md:h-[56px] md:w-[56px] md:rounded-[12px] ${
+                                    item.placeId?.startsWith("sample-kakao-analysis-")
+                                      ? "bg-white object-contain p-1"
+                                      : "object-cover"
+                                  }`}
                                   loading="lazy"
                                   referrerPolicy="no-referrer"
                                   onError={(e) => {

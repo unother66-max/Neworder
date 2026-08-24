@@ -140,7 +140,7 @@ const SAMPLE_PLACE_STORES: Store[] = [
     category: "카페, 베이커리",
     address: "서울 성동구 성수이로 12",
     placeId: "sample-place-1",
-    image: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=800&auto=format&fit=crop",
+    image: "/postlabs-preview-logo.png?v=20260824-3",
     mobilePlaceLink: "https://m.place.naver.com/",
     pcPlaceLink: "https://map.naver.com/",
     latestUpdatedAtText: "05/21 (목) 10:30",
@@ -159,7 +159,7 @@ const SAMPLE_PLACE_STORES: Store[] = [
     category: "병원, 의원",
     address: "서울 강남구 테헤란로 24",
     placeId: "sample-place-2",
-    image: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=800&auto=format&fit=crop",
+    image: "/postlabs-preview-logo.png?v=20260824-3",
     mobilePlaceLink: "https://m.place.naver.com/",
     pcPlaceLink: "https://map.naver.com/",
     latestUpdatedAtText: "05/21 (목) 09:45",
@@ -1830,7 +1830,11 @@ useEffect(() => {
                             <img
                               src={store.image}
                               alt={store.name}
-                              className="h-12 w-12 shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]"
+                              className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] ${
+                                store.dbId?.startsWith("sample-place-")
+                                  ? "bg-white object-contain p-1"
+                                  : "object-cover"
+                              }`}
                               loading="lazy"
                               referrerPolicy="no-referrer"
                               onError={(e) => {

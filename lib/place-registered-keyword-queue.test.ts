@@ -210,7 +210,11 @@ describe("place registered keyword durable queue", () => {
         ([input]) =>
           input.force === true &&
           input.collectRegisteredKeywords === true &&
-          input.registeredKeywordsOnly === true
+          input.registeredKeywordsOnly === true &&
+          !Object.prototype.hasOwnProperty.call(
+            input,
+            "allowMissingSaveCount"
+          )
       )
     ).toBe(true);
   });

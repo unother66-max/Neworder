@@ -85,7 +85,7 @@ const SAMPLE_KAKAO_STORES: KakaoStore[] = [
     category: "서비스, 마케팅",
     address: "서울 서초구 강남대로 1",
     kakaoUrl: "https://place.map.kakao.com/",
-    imageUrl: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     isPinned: true,
     isAutoTracking: true,
     latestUpdatedAt: "2026-05-21T10:30:00+09:00",
@@ -100,7 +100,7 @@ const SAMPLE_KAKAO_STORES: KakaoStore[] = [
     category: "카페",
     address: "서울 마포구 와우산로 23",
     kakaoUrl: "https://place.map.kakao.com/",
-    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     isPinned: false,
     isAutoTracking: false,
     latestUpdatedAt: "2026-05-21T09:40:00+09:00",
@@ -368,7 +368,7 @@ export default function KakaoRankingPage() {
                   <div className="px-3 py-2.5 md:px-6 md:py-4">
                     <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="flex min-w-0 gap-2.5 md:gap-4">
-                        {store.imageUrl ? <img src={store.imageUrl} alt={store.name} className="h-12 w-12 shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]" referrerPolicy="no-referrer" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] md:text-[12px]">이미지</div>}
+                        {store.imageUrl ? <img src={store.imageUrl} alt={store.name} className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] ${store.id.startsWith("sample-kakao-") ? "bg-white object-contain p-1" : "object-cover"}`} referrerPolicy="no-referrer" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] md:text-[12px]">이미지</div>}
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5 md:gap-2">
                             {store.isPinned && <Pin className="h-3.5 w-3.5 fill-[#2563EB] stroke-[#2563EB] md:h-[14px] md:w-[14px]" />}

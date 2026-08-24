@@ -22,6 +22,8 @@ export type ReviewSnapshot = {
   visitorReviewCount: number | null;
   blogReviewCount: number | null;
   saveCountText: string | null;
+  /** 일반 Place에서 리뷰 수가 확보되어 saveCount 전용 HTML fallback을 생략했는지 여부 */
+  saveFallbackSkipped?: boolean;
   /** 네이버 업체 정보(/information)의 업체 소개 키워드 */
   registeredKeywords: string[] | null;
   registeredKeywordsStatus: KeywordCollectionStatus;
@@ -48,6 +50,11 @@ export type GetReviewSnapshotInput = {
   collectRegisteredKeywords?: boolean;
   /** true면 리뷰 GraphQL을 건너뛰고 /information의 대표키워드만 수집한다. */
   registeredKeywordsOnly?: boolean;
+  /**
+   * true면 일반 Place에서 방문자/블로그 리뷰 수가 모두 확보된 경우
+   * saveCount가 없어도 saveCount 전용 HTML fallback을 생략한다. 기본값은 false다.
+   */
+  allowMissingSaveCount?: boolean;
 };
 
 const GRAPHQL_URL = "https://pcmap-api.place.naver.com/graphql";
@@ -637,6 +644,7 @@ export type ParsedTypeResult = {
   debugReason?: string | null;
   requestUrls?: string[];
   operationName?: string;
+  saveFallbackSkipped?: boolean;
 };
 
 export function chooseBestPlaceTypeResult<T extends ParsedTypeResult>(
@@ -950,6 +958,7 @@ async function fetchTypeAttempt(
   const collectRegisteredKeywords = input.collectRegisteredKeywords !== false;
   const placeName = String(input.placeName || "");
   const registeredKeywordsOnly = input.registeredKeywordsOnly === true;
+  const allowMissingSaveCount = input.allowMissingSaveCount === true;
   const graphql: GraphqlCountsResult = registeredKeywordsOnly
     ? {
         visitorReviewCount: null,
@@ -979,6 +988,7 @@ async function fetchTypeAttempt(
   const reviewFeatureKeywords = graphql.reviewFeatureKeywords;
   const reviewFeatureKeywordsStatus = graphql.reviewFeatureKeywordsStatus;
   let pageMetricCount = 0;
+  let saveFallbackSkipped = false;
   const debugReasons = graphql.debugReason ? [graphql.debugReason] : [];
 
   const finish = (blocked = false): ParsedTypeResult => {
@@ -1031,14 +1041,25 @@ async function fetchTypeAttempt(
         (blocked || !complete ? missingMetricsReason : null),
       requestUrls,
       operationName: graphql.operationName,
+      saveFallbackSkipped,
     };
   };
 
   const graphqlMetricsComplete = hasCompleteMetrics(finish());
+  const canSkipMissingSaveCountFallback =
+    !registeredKeywordsOnly &&
+    type === "place" &&
+    allowMissingSaveCount &&
+    saveCount === null &&
+    hasFreshReviewMetrics(finish());
   if (graphql.blocked) {
     return finish(graphql.blocked);
   }
-  if (graphqlMetricsComplete && !collectRegisteredKeywords) {
+  saveFallbackSkipped = canSkipMissingSaveCountFallback;
+  if (
+    !collectRegisteredKeywords &&
+    (graphqlMetricsComplete || canSkipMissingSaveCountFallback)
+  ) {
     return finish();
   }
 
@@ -1046,7 +1067,7 @@ async function fetchTypeAttempt(
     `https://pcmap.place.naver.com/${type}/${publicPlaceId}/information`;
   const urls = registeredKeywordsOnly
     ? [informationUrl]
-    : graphqlMetricsComplete
+    : graphqlMetricsComplete || canSkipMissingSaveCountFallback
       ? [informationUrl]
       : collectRegisteredKeywords
         ? [
@@ -1263,10 +1284,12 @@ async function fetchSnapshotCore(
         registeredKeywordsStatus: result.registeredKeywordsStatus,
         reviewFeatureKeywords: result.reviewFeatureKeywords,
         reviewFeatureKeywordsStatus: result.reviewFeatureKeywordsStatus,
+        saveFallbackSkipped: result.saveFallbackSkipped === true,
       })),
       visitorReviewCount: parsed?.visitorReviewCount ?? null,
       blogReviewCount: parsed?.blogReviewCount ?? null,
       saveCount: parsed?.saveCount ?? null,
+      saveFallbackSkipped: parsed?.saveFallbackSkipped === true,
       registeredKeywords: parsed?.registeredKeywords ?? null,
       registeredKeywordsStatus:
         parsed?.registeredKeywordsStatus ?? "UNAVAILABLE",
@@ -1296,6 +1319,7 @@ async function fetchSnapshotCore(
       visitorReviewCount: parsed?.visitorReviewCount ?? null,
       blogReviewCount: parsed?.blogReviewCount ?? null,
       saveCountText: parsed?.saveCount != null ? String(parsed.saveCount) : null,
+      saveFallbackSkipped: parsed?.saveFallbackSkipped === true,
       registeredKeywords: parsed?.registeredKeywords ?? null,
       registeredKeywordsStatus:
         parsed?.registeredKeywordsStatus ?? "UNAVAILABLE",
@@ -1341,7 +1365,8 @@ export async function getNaverPlaceReviewSnapshot(
   const force = normalized.force === true;
   // 등록 키워드 수집 여부로 key를 나누면 같은 업체의 GraphQL metric 요청이
   // 중복된다. /place-analysis가 DB lease로 keyword refresh 소유자를 정하므로
-  // 동일 업체 스냅샷은 기존처럼 하나의 in-flight 요청을 공유한다.
+  // 해당 모드는 기존처럼 공유하되, save fallback 정책은 기존 호출의 결과를
+  // 바꾸지 않도록 별도 in-flight 요청으로 분리한다.
   const key = [
     normalized.placeUrl,
     normalized.placeName ?? "",
@@ -1351,6 +1376,9 @@ export async function getNaverPlaceReviewSnapshot(
     normalized.pcmapUrl ?? "",
     normalized.x ?? "",
     normalized.y ?? "",
+    normalized.allowMissingSaveCount === true
+      ? "ALLOW_MISSING_SAVE_COUNT"
+      : "REQUIRE_SAVE_COUNT",
   ].join("|");
 
   if (force) {

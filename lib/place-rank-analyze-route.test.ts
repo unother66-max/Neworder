@@ -272,6 +272,7 @@ describe("place-rank-analyze route", () => {
       visitorReviewCount: 725,
       blogReviewCount: 900,
       saveCountText: null,
+      saveFallbackSkipped: false,
       registeredKeywords: null,
       registeredKeywordsStatus: "UNAVAILABLE",
       reviewFeatureKeywords: null,
@@ -403,9 +404,71 @@ describe("place-rank-analyze route", () => {
           `/restaurant/${newOrderClub.id}/home`
         ),
         collectRegisteredKeywords: false,
+        allowMissingSaveCount: true,
+      })
+    );
+    expect(body.debug.saveFallbackSkippedCount).toBe(0);
+    expect(console.log).toHaveBeenCalledWith(
+      "[place-rank-analyze timing]",
+      expect.objectContaining({
+        stage: "route:end",
+        keyword: FULL_KEYWORD,
+        saveFallbackSkippedCount: 0,
       })
     );
     expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("counts general-place save fallbacks skipped by the analysis-only policy", async () => {
+    const generalPlace = {
+      ...newOrderClub,
+      id: "place-without-save",
+      name: "저장 수 없는 일반 플레이스",
+      category: "필라테스",
+      businessCategory: "place",
+    };
+    mocks.getNaverPlaceReviewSnapshot.mockResolvedValue({
+      ok: false,
+      reason: "REVIEW_METRICS_INCOMPLETE",
+      debugReason: "place:SAVE_COUNT_UNAVAILABLE",
+      hintType: "place",
+      chosenType: "place",
+      triedTypes: ["place"],
+      requestUrls: ["https://pcmap-api.place.naver.com/graphql"],
+      cacheStatus: "MISS",
+      totalReviewCount: 1625,
+      visitorReviewCount: 725,
+      blogReviewCount: 900,
+      saveCountText: null,
+      saveFallbackSkipped: true,
+      registeredKeywords: null,
+      registeredKeywordsStatus: "UNAVAILABLE",
+      reviewFeatureKeywords: null,
+      reviewFeatureKeywordsStatus: "UNAVAILABLE",
+      keywordList: null,
+      keywordListStatus: "UNAVAILABLE",
+    });
+
+    const response = await POST(
+      analyzeRequest({
+        businessesGraphqlKeyword: FULL_KEYWORD,
+        businessesGraphqlBatch: placeListBatch(1, [generalPlace]),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.debug).toMatchObject({
+      saveFallbackSkippedCount: 1,
+      saveCountUnavailableCount: 1,
+    });
+    expect(console.log).toHaveBeenCalledWith(
+      "[place-rank-analyze timing]",
+      expect.objectContaining({
+        stage: "review-snapshots:end",
+        saveFallbackSkippedCount: 1,
+      })
+    );
   });
 
   it("maps pcmap newOpening without changing rank or review metrics", async () => {
@@ -1056,6 +1119,7 @@ describe("place-rank-analyze route", () => {
       expect.objectContaining({
         placeId: newOrderClub.id,
         collectRegisteredKeywords: false,
+        allowMissingSaveCount: true,
       })
     );
   });
@@ -1166,6 +1230,7 @@ describe("place-rank-analyze route", () => {
       expect.objectContaining({
         placeId: newOrderClub.id,
         collectRegisteredKeywords: false,
+        allowMissingSaveCount: true,
       })
     );
     expect(body.list[1]).toMatchObject({
@@ -1179,7 +1244,9 @@ describe("place-rank-analyze route", () => {
     });
     expect(
       mocks.getNaverPlaceReviewSnapshot.mock.calls.every(
-        ([input]) => input.collectRegisteredKeywords === false
+        ([input]) =>
+          input.collectRegisteredKeywords === false &&
+          input.allowMissingSaveCount === true
       )
     ).toBe(true);
     expect(mocks.after).toHaveBeenCalledTimes(1);
@@ -1316,7 +1383,9 @@ describe("place-rank-analyze route", () => {
     expect(snapshotInputs.length).toBeGreaterThanOrEqual(2);
     expect(
       snapshotInputs.every(
-        (input) => input.collectRegisteredKeywords === false
+        (input) =>
+          input.collectRegisteredKeywords === false &&
+          input.allowMissingSaveCount === true
       )
     ).toBe(true);
   });

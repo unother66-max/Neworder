@@ -146,6 +146,15 @@ describe("place-review-track POST", () => {
       2,
       expect.objectContaining({ category: "필라테스", force: false })
     );
+    expect(
+      mocks.getSnapshot.mock.calls.every(
+        ([input]) =>
+          !Object.prototype.hasOwnProperty.call(
+            input,
+            "allowMissingSaveCount"
+          )
+      )
+    ).toBe(true);
     expect(mocks.historyUpsert).not.toHaveBeenCalled();
     expect(mocks.placeUpdate).not.toHaveBeenCalled();
     expect(mocks.getVolume).not.toHaveBeenCalled();

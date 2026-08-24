@@ -17,6 +17,51 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function createReviewMetricsFetchMock({
+  type = "place",
+  placeId,
+  placeName,
+  visitorReviewCount,
+  blogReviewCount,
+  saveCount,
+  html,
+}: {
+  type?: "place" | "restaurant";
+  placeId: string;
+  placeName: string;
+  visitorReviewCount: number | null;
+  blogReviewCount: number | null;
+  saveCount: number | null;
+  html: string;
+}) {
+  return vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url === "https://pcmap-api.place.naver.com/graphql") {
+      const business = {
+        id: placeId,
+        name: placeName,
+        visitorReviewCount,
+        blogCafeReviewCount: blogReviewCount,
+        saveCount,
+      };
+      const data =
+        type === "restaurant"
+          ? { restaurants: { businesses: { items: [business] } } }
+          : { places: { businesses: { items: [business] } } };
+
+      return new Response(JSON.stringify([{ data }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(html, {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    });
+  });
+}
+
 describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
   it("parses restaurant microReview and distinguishes an available empty value", () => {
     expect(
@@ -405,7 +450,7 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     expect(result.chosen).toMatchObject({ type: "place", saveCount: 300 });
   });
 
-  it("keeps an unavailable save count null when visitor and blog counts exist", async () => {
+  it("runs the existing HTML fallback when save is null and allowMissingSaveCount is false", async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
@@ -468,6 +513,8 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
       businessType: "place",
       x: "127.0005",
       y: "37.53455",
+      collectRegisteredKeywords: false,
+      allowMissingSaveCount: false,
       force: true,
     });
 
@@ -484,7 +531,22 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
     expect(snapshot.debugReason).not.toContain(
       "SAVE_COUNT_UNAVAILABLE_NORMALIZED_TO_ZERO"
     );
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes("/place/10001/home")
+      )
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes("/place/10001/review/visitor")
+      )
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes("map.naver.com/p/entry/place/10001")
+      )
+    ).toBe(true);
     const graphqlCalls = fetchMock.mock.calls.filter(
       ([input]) => String(input) === "https://pcmap-api.place.naver.com/graphql"
     );
@@ -493,6 +555,124 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
       String(graphqlCalls[0]?.[1]?.body || "[]")
     ) as Array<{ operationName?: string }>;
     expect(graphqlPayload[0]?.operationName).toBe("getPlacesList");
+  });
+
+  it("skips HTML fallback for a general place when only save is missing and the option is enabled", async () => {
+    const fetchMock = createReviewMetricsFetchMock({
+      placeId: "allow-missing-save",
+      placeName: "저장 수 없는 일반 플레이스",
+      visitorReviewCount: 725,
+      blogReviewCount: 900,
+      saveCount: null,
+      html: "<html><body>HTML fallback must not run</body></html>",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const snapshot = await getNaverPlaceReviewSnapshot({
+      placeUrl:
+        "https://m.place.naver.com/place/allow-missing-save/home",
+      placeId: "allow-missing-save",
+      placeName: "저장 수 없는 일반 플레이스",
+      businessType: "place",
+      collectRegisteredKeywords: false,
+      allowMissingSaveCount: true,
+      force: true,
+    });
+
+    expect(snapshot).toMatchObject({
+      ok: false,
+      chosenType: "place",
+      visitorReviewCount: 725,
+      blogReviewCount: 900,
+      totalReviewCount: 1625,
+      saveCountText: null,
+      saveFallbackSkipped: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://pcmap-api.place.naver.com/graphql"
+    );
+  });
+
+  it.each([
+    { visitorReviewCount: null, blogReviewCount: 20 },
+    { visitorReviewCount: 100, blogReviewCount: null },
+  ])(
+    "still runs HTML fallback when a review metric is missing: %o",
+    async ({ visitorReviewCount, blogReviewCount }) => {
+      const fetchMock = createReviewMetricsFetchMock({
+        placeId: "missing-review-metric",
+        placeName: "리뷰 수 누락 플레이스",
+        visitorReviewCount,
+        blogReviewCount,
+        saveCount: 300,
+        html: `<script>{"visitorReviewCount":100,"blogCafeReviewCount":20}</script>`,
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      const snapshot = await getNaverPlaceReviewSnapshot({
+        placeUrl:
+          "https://m.place.naver.com/place/missing-review-metric/home",
+        placeId: "missing-review-metric",
+        placeName: "리뷰 수 누락 플레이스",
+        businessType: "place",
+        collectRegisteredKeywords: false,
+        allowMissingSaveCount: true,
+        force: true,
+      });
+
+      expect(snapshot).toMatchObject({
+        ok: true,
+        visitorReviewCount: 100,
+        blogReviewCount: 20,
+        saveCountText: "300",
+        saveFallbackSkipped: false,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+        "/place/missing-review-metric/home"
+      );
+    }
+  );
+
+  it("keeps restaurant save-count HTML fallback when the option is enabled", async () => {
+    const fetchMock = createReviewMetricsFetchMock({
+      type: "restaurant",
+      placeId: "restaurant-missing-save",
+      placeName: "저장 수 없는 음식점",
+      visitorReviewCount: 100,
+      blogReviewCount: 20,
+      saveCount: null,
+      html: `<script>{"saveCount":345}</script>`,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const snapshot = await getNaverPlaceReviewSnapshot({
+      placeUrl:
+        "https://m.place.naver.com/restaurant/restaurant-missing-save/home",
+      placeId: "restaurant-missing-save",
+      placeName: "저장 수 없는 음식점",
+      businessType: "restaurant",
+      collectRegisteredKeywords: false,
+      allowMissingSaveCount: true,
+      force: true,
+    });
+
+    expect(snapshot).toMatchObject({
+      ok: true,
+      chosenType: "restaurant",
+      visitorReviewCount: 100,
+      blogReviewCount: 20,
+      saveCountText: "345",
+      saveFallbackSkipped: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+      "/restaurant/restaurant-missing-save/home"
+    );
   });
 
   it("collects getPlacesList registered keywords from information HTML without refetching review pages", async () => {
@@ -702,6 +882,7 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
       placeName: "캐시된 일반 플레이스",
       businessType: "place",
       collectRegisteredKeywords: false,
+      allowMissingSaveCount: true,
       force: true,
     });
 
@@ -710,6 +891,7 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
       visitorReviewCount: 11,
       blogReviewCount: 3,
       saveCountText: "40",
+      saveFallbackSkipped: false,
       registeredKeywords: null,
       registeredKeywordsStatus: "UNAVAILABLE",
     });
@@ -787,6 +969,87 @@ describe("getNaverPlaceReviewSnapshot parsing helpers", () => {
       cacheStatus: "IN_FLIGHT_DEDUPE",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not dedupe in-flight snapshots across different missing-save policies", async () => {
+    let releaseGraphql!: () => void;
+    const graphqlGate = new Promise<void>((resolve) => {
+      releaseGraphql = resolve;
+    });
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url === "https://pcmap-api.place.naver.com/graphql") {
+          await graphqlGate;
+          return new Response(
+            JSON.stringify([
+              {
+                data: {
+                  places: {
+                    businesses: {
+                      items: [
+                        {
+                          id: "place-policy-in-flight",
+                          name: "정책 분리 플레이스",
+                          visitorReviewCount: 12,
+                          blogCafeReviewCount: 4,
+                          saveCount: null,
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            ]),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response("<html><body>metrics unavailable</body></html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        });
+      }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const baseInput = {
+      placeUrl:
+        "https://m.place.naver.com/place/place-policy-in-flight/home",
+      placeId: "place-policy-in-flight",
+      placeName: "정책 분리 플레이스",
+      businessType: "place",
+      collectRegisteredKeywords: false,
+    } as const;
+    const requireSave = getNaverPlaceReviewSnapshot(baseInput);
+    const allowMissingSave = getNaverPlaceReviewSnapshot({
+      ...baseInput,
+      allowMissingSaveCount: true,
+    });
+    releaseGraphql();
+
+    const [required, allowed] = await Promise.all([
+      requireSave,
+      allowMissingSave,
+    ]);
+    expect(required.saveFallbackSkipped).toBe(false);
+    expect(required.requestUrls).toHaveLength(4);
+    expect(allowed).toMatchObject({
+      cacheStatus: "MISS",
+      saveFallbackSkipped: true,
+      visitorReviewCount: 12,
+      blogReviewCount: 4,
+      saveCountText: null,
+    });
+    expect(allowed.requestUrls).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) =>
+          String(input) === "https://pcmap-api.place.naver.com/graphql"
+      )
+    ).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("keeps getRestaurantsPcmap microReview separate and still fetches registered keywords", async () => {

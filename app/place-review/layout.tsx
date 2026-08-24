@@ -12,7 +12,19 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: url },
   robots: { index: true, follow: true },
-  openGraph: { title, description, url, type: "website" },
+  openGraph: {
+    title,
+    description,
+    url,
+    type: "website",
+    images: [{ url: "/postlabs-preview-logo.png?v=20260824-3", width: 1254, height: 1254, alt: "PostLabs" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+    images: ["/postlabs-preview-logo.png?v=20260824-3"],
+  },
 };
 
 export default function PlaceReviewLayout({

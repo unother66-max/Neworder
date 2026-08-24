@@ -147,7 +147,7 @@ const SAMPLE_PLACE_ANALYSIS_LIST: RankPlaceItem[] = [
     name: "포스트랩스 카페 성수",
     category: "카페",
     address: "서울 성동구 성수이로 7",
-    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     keywords: ["성수 카페", "서울숲 카페"],
     review: { total: 1284, visitor: 932, blog: 352, save: "2,410" },
   },
@@ -157,7 +157,7 @@ const SAMPLE_PLACE_ANALYSIS_LIST: RankPlaceItem[] = [
     name: "포스트랩스 브런치랩",
     category: "브런치",
     address: "서울 성동구 연무장길 18",
-    imageUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     keywords: ["성수 브런치", "성수 맛집"],
     review: { total: 932, visitor: 701, blog: 231, save: "1,870" },
   },
@@ -1357,7 +1357,11 @@ export default function PlaceAnalysisPage() {
                               <img
                                 src={item.imageUrl}
                                 alt={item.name}
-                                className="h-9 w-9 shrink-0 rounded-[9px] object-cover ring-1 ring-[#e5e7eb] md:h-[56px] md:w-[56px] md:rounded-[12px]"
+                                className={`h-9 w-9 shrink-0 rounded-[9px] ring-1 ring-[#e5e7eb] md:h-[56px] md:w-[56px] md:rounded-[12px] ${
+                                  item.placeId?.startsWith("sample-place-analysis-")
+                                    ? "bg-white object-contain p-1"
+                                    : "object-cover"
+                                }`}
                                 loading="lazy"
                                 referrerPolicy="no-referrer"
                               />

@@ -59,7 +59,7 @@ const SAMPLE_KAKAO_PLACE_STORES: KakaoPlaceStore[] = [
     category: "카페",
     address: "서울 성동구 성수이로 7",
     kakaoUrl: "https://place.map.kakao.com/",
-    imageUrl: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     isPinned: true,
     isAutoTracking: true,
     latestUpdatedAt: "05/21 10:30",
@@ -75,7 +75,7 @@ const SAMPLE_KAKAO_PLACE_STORES: KakaoPlaceStore[] = [
     category: "병원, 의원",
     address: "서울 강남구 테헤란로 24",
     kakaoUrl: "https://place.map.kakao.com/",
-    imageUrl: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=800&auto=format&fit=crop",
+    imageUrl: "/postlabs-preview-logo.png?v=20260824-3",
     isPinned: false,
     isAutoTracking: false,
     latestUpdatedAt: "05/21 09:45",
@@ -608,7 +608,11 @@ export default function KakaoPlacePage() {
                         {store.imageUrl ? (
                           <img
                             src={store.imageUrl} alt={store.name}
-                            className="h-12 w-12 shrink-0 rounded-[12px] object-cover ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]"
+                            className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] ${
+                              store.id.startsWith("sample-kakao-place-")
+                                ? "bg-white object-contain p-1"
+                                : "object-cover"
+                            }`}
                             loading="lazy" referrerPolicy="no-referrer"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                           />
