@@ -284,7 +284,7 @@ export async function GET(request: Request) {
       }
     }
 
-    if (results.length > 0 && failedKeywords.length === results.length) {
+    if (failedKeywords.length > 0 && merged.size === 0) {
       return failure(
         502,
         "가격 후보 조회에 실패했습니다.",
@@ -465,6 +465,15 @@ export async function GET(request: Request) {
           a.metrics.totalPrice - b.metrics.totalPrice
       )
       .map((result) => result.candidate);
+
+    if (candidates.length === 0 && failedKeywords.length > 0) {
+      return failure(
+        502,
+        "가격 후보 조회에 실패했습니다.",
+        failedKeywords.join(" / "),
+        context
+      );
+    }
 
     return success(
       candidates,

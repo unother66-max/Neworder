@@ -110,6 +110,44 @@ function portalPayload(items: ShoppingItemFixture[]) {
   };
 }
 
+function normalNaverSearchPage(content = "") {
+  return `<html><head><title>테스트 상품 : 네이버 검색</title></head><body><div id="container">${content}</div></body></html>`;
+}
+
+function priceComparisonPage({
+  title,
+  link,
+  image,
+  price,
+  mallName,
+  shippingFee,
+}: {
+  title: string;
+  link: string;
+  image: string;
+  price: number;
+  mallName: string;
+  shippingFee: number;
+}) {
+  return normalNaverSearchPage(`
+    <section data-slog-container="shp_dui">
+      <ul>
+        <li>
+          <a href="${link}"><img src="${image}" /></a>
+          <div>
+            <a href="${link}"><span>${title}</span></a>
+            <div>
+              <span>${price.toLocaleString("ko-KR")}</span><span>원</span>
+              <div><span class="blind">배송비</span>${shippingFee.toLocaleString("ko-KR")}원</div>
+            </div>
+            <div><a href="https://smartstore.naver.com/example">${mallName}</a></div>
+          </div>
+        </li>
+      </ul>
+    </section>
+  `);
+}
+
 describe("NewOrder price search route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -222,8 +260,16 @@ describe("NewOrder price search route", () => {
   it("네이버 API 키 없이도 쇼핑 검색 경로를 사용한다", async () => {
     vi.stubEnv("NAVER_CLIENT_ID", "");
     vi.stubEnv("NAVER_CLIENT_SECRET", "");
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(portalPayload([])), { status: 200 })
+    const fetchMock = vi.fn(
+      (...args: [RequestInfo | URL, RequestInit?]) => {
+        const [input] = args;
+        const url = new URL(String(input));
+        return Promise.resolve(
+          url.hostname === "ns-portal.shopping.naver.com"
+            ? new Response(JSON.stringify(portalPayload([])), { status: 200 })
+            : new Response(normalNaverSearchPage(), { status: 200 })
+        );
+      }
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -236,7 +282,9 @@ describe("NewOrder price search route", () => {
       candidates: [],
       message: null,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(item.naverSearchKeywords.length);
+    expect(fetchMock).toHaveBeenCalledTimes(
+      item.naverSearchKeywords.length * 2
+    );
     expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty(
       "X-Naver-Client-Id"
     );
@@ -258,14 +306,20 @@ describe("NewOrder price search route", () => {
   });
 
   it("returns a successful empty candidate list when no result exists", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      return Promise.resolve(
+        url.hostname === "ns-portal.shopping.naver.com"
+          ? new Response(JSON.stringify(portalPayload([])), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            })
+          : new Response(normalNaverSearchPage(), { status: 200 })
+      );
+    });
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(portalPayload([])), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
-      )
+      fetchMock
     );
 
     const response = await GET(request());
@@ -277,6 +331,65 @@ describe("NewOrder price search route", () => {
       candidates: [],
       message: null,
     });
+    expect(fetchMock).toHaveBeenCalledTimes(
+      item.naverSearchKeywords.length * 2
+    );
+  });
+
+  it("빈 슬롯이면 네이버 가격비교 섹션의 실제 후보를 반환한다", async () => {
+    const query = "몬트레이팜 페퍼잭 907";
+    const candidateLink =
+      "https://cr3.shopping.naver.com/v2/bridge/searchGate?nv_mid=61020226094";
+    mocks.findShippingOverrides.mockResolvedValue([
+      {
+        productUrl: candidateLink,
+        shippingFee: 3000,
+        shippingUnitCount: 1,
+        shippingStatus: "PAID",
+        shippingNote: "배송비 3,000원",
+        shippingCondition: "배송비 3,000원",
+        shippingNeedsConfirmation: false,
+      },
+    ]);
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.hostname === "ns-portal.shopping.naver.com") {
+        return Promise.resolve(
+          new Response(JSON.stringify(portalPayload([])), { status: 200 })
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          priceComparisonPage({
+            title: "몬트레이 팜 페퍼잭 치즈 907g",
+            link: candidateLink,
+            image:
+              "https://shopping-phinf.pstatic.net/main_6102022/61020226094.jpg",
+            price: 19_270,
+            mallName: "네이버 가격비교",
+            shippingFee: 3000,
+          }),
+          { status: 200 }
+        )
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(request("", query));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.ok).toBe(true);
+    expect(data.candidates).toHaveLength(1);
+    expect(data.candidates[0]).toMatchObject({
+      title: "몬트레이 팜 페퍼잭 치즈 907g",
+      productId: "61020226094",
+      productUrl: candidateLink,
+      itemPrice: 19_270,
+      mallName: "네이버 가격비교",
+      shippingFee: 3000,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("네이버 배송비 부과 기준과 반영 배송비를 후보에 포함한다", async () => {
@@ -494,6 +607,40 @@ describe("NewOrder price search route", () => {
       message: "가격 후보 조회에 실패했습니다.",
     });
     expect(data.reason).toContain("응답 본문이 비어 있습니다.");
+  });
+
+  it("일부 검색어 fetch가 실패하고 나머지도 0건이면 실패로 구분한다", async () => {
+    const failedKeyword = item.naverSearchKeywords[0];
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const query = url.searchParams.get("query");
+      if (
+        url.hostname === "ns-portal.shopping.naver.com" &&
+        query === failedKeyword
+      ) {
+        return Promise.resolve(new Response("", { status: 200 }));
+      }
+      if (url.hostname === "ns-portal.shopping.naver.com") {
+        return Promise.resolve(
+          new Response(JSON.stringify(portalPayload([])), { status: 200 })
+        );
+      }
+      return Promise.resolve(
+        new Response(normalNaverSearchPage(), { status: 200 })
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(request());
+    const data = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(data).toMatchObject({
+      ok: false,
+      candidates: [],
+      message: "가격 후보 조회에 실패했습니다.",
+    });
+    expect(data.reason).toContain(failedKeyword);
   });
 
   it("keeps the candidate with safe defaults when product parsing fails", async () => {
