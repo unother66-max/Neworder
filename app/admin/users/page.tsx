@@ -149,7 +149,7 @@ const QUICK_LINKS = [
   { href: "/place-review", label: "리뷰추적", icon: ClipboardList },
   { href: "/smartstore", label: "스마트스토어", icon: Store },
   { href: "/kakao-place", label: "카카오맵", icon: Navigation },
-  { href: "#collect-status", label: "수집·크론", icon: RefreshCw },
+  { href: "/admin/cron-runs", label: "크론 실행 기록", icon: RefreshCw },
 ] as const;
 
 export default async function AdminUsersPage() {
@@ -679,17 +679,19 @@ export default async function AdminUsersPage() {
               <div className="mb-2 flex items-center gap-2">
                 <Database className="h-4 w-4 text-slate-400" aria-hidden />
                 <h2 className="text-[13px] font-bold text-slate-900">
-                  수집·크론 상태
+                  크론 실행 기록
                 </h2>
               </div>
               <p className="text-[11px] leading-relaxed text-slate-500">
-                플레이스·리뷰·스마트스토어·카카오맵 수집 상태 연동 준비 중입니다.
-                크론은 Vercel에서 스케줄만 호출되는 구조이며 별도 로그 테이블이 생기면
-                이 영역에 반영합니다.
+                플레이스 순위 추적 크론의 실행 요약과 키워드별 성공·실패 원인을
+                확인할 수 있습니다.
               </p>
-              <span className="mt-3 inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                준비 중
-              </span>
+              <Link
+                href="/admin/cron-runs"
+                className="mt-3 inline-flex items-center rounded-lg bg-slate-900 px-3 py-1.5 text-[10px] font-bold text-white transition hover:bg-slate-700"
+              >
+                실행 기록 열기
+              </Link>
             </section>
           </div>
         </div>

@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   keywordUpdate: vi.fn(),
   keywordUpdateMany: vi.fn(),
   transaction: vi.fn(),
+  startCronRun: vi.fn(),
+  finishCronRun: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -29,6 +31,11 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/place-tracking-cron-store", () => ({
+  startPlaceTrackingCronRun: mocks.startCronRun,
+  finishPlaceTrackingCronRun: mocks.finishCronRun,
+}));
+
 import { GET, maxDuration } from "@/app/api/cron/place-tracking/route";
 import { GET as GET_SLOT } from "@/app/api/cron/place-tracking/[slot]/route";
 import { interleaveTrackedKeywordsByPlace } from "@/lib/place-tracking-cron";
@@ -39,6 +46,7 @@ describe("place tracking cron", () => {
     vi.stubEnv("PLACE_TRACKING_CRON_PACE_MS", "0");
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.count.mockResolvedValue(1);
     mocks.findFirst.mockResolvedValue(null);
@@ -64,6 +72,8 @@ describe("place tracking cron", () => {
     mocks.transaction.mockImplementation(async (operations) =>
       Promise.all(operations)
     );
+    mocks.startCronRun.mockResolvedValue("cron-run-1");
+    mocks.finishCronRun.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -146,6 +156,19 @@ describe("place tracking cron", () => {
     expect(response.status).toBe(503);
     expect(mocks.count).not.toHaveBeenCalled();
     expect(mocks.findMany).not.toHaveBeenCalled();
+    expect(mocks.startCronRun).not.toHaveBeenCalled();
+  });
+
+  it("does not create a diagnostic run for an unauthorized request", async () => {
+    const response = await GET(
+      new NextRequest("http://localhost/api/cron/place-tracking", {
+        headers: { authorization: "Bearer wrong-secret" },
+      })
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.startCronRun).not.toHaveBeenCalled();
+    expect(mocks.count).not.toHaveBeenCalled();
   });
 
   it("round-robins keywords across places instead of exhausting one place first", () => {
@@ -391,6 +414,24 @@ describe("place tracking cron", () => {
       deferredCount: 2,
     });
     expect(mocks.keywordUpdateMany).not.toHaveBeenCalled();
+    const keywordDiagnostics = vi
+      .mocked(console.log)
+      .mock.calls.filter(
+        ([message]) => message === "[place-tracking-cron][keyword-result]"
+      )
+      .map(([, payload]) => payload as Record<string, unknown>);
+    expect(keywordDiagnostics).toEqual([
+      expect.objectContaining({
+        keywordId: "keyword-1",
+        status: "DEADLINE_SKIP",
+        errorMessage: "CRON_CLAIM_DEADLINE",
+      }),
+      expect.objectContaining({
+        keywordId: "keyword-2",
+        status: "DEADLINE_SKIP",
+        errorMessage: "CRON_CLAIM_DEADLINE",
+      }),
+    ]);
   });
 
   it("leaves the deadline tail unclaimed so the next slot can continue it", async () => {
@@ -504,6 +545,160 @@ describe("place tracking cron", () => {
     });
   });
 
+  it("logs a structured keyword result and cron summary after a successful save", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({ ok: true, canSaveRank: true, rank: "6" })
+      )
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cron/place-tracking", {
+        headers: { authorization: "Bearer test-cron-secret" },
+      })
+    );
+    const body = await response.json();
+    const keywordDiagnostics = vi
+      .mocked(console.log)
+      .mock.calls.filter(
+        ([message]) => message === "[place-tracking-cron][keyword-result]"
+      )
+      .map(([, payload]) => payload as Record<string, unknown>);
+    const summaries = vi
+      .mocked(console.log)
+      .mock.calls.filter(
+        ([message]) => message === "[place-tracking-cron][summary]"
+      )
+      .map(([, payload]) => payload as Record<string, unknown>);
+
+    expect(body).toMatchObject({
+      attemptedCount: 1,
+      successCount: 1,
+      failCount: 0,
+    });
+    expect(keywordDiagnostics).toHaveLength(1);
+    expect(keywordDiagnostics[0]).toMatchObject({
+      cronStartedAt: expect.any(String),
+      trigger: "primary",
+      keywordId: "keyword-1",
+      placeId: "place-1",
+      placeName: "소풍동물원",
+      keyword: "평택 동물체험",
+      status: "SUCCESS",
+      rank: 6,
+      errorMessage: null,
+      httpStatus: 200,
+      durationMs: expect.any(Number),
+    });
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      total: 1,
+      success: 1,
+      outOfRange: 0,
+      ncaptcha: 0,
+      http429: 0,
+      timeout: 0,
+      cooldownSkip: 0,
+      error: 0,
+      statusCounts: { SUCCESS: 1 },
+    });
+    expect(mocks.startCronRun).toHaveBeenCalledWith({
+      trigger: "primary",
+      startedAt: expect.any(Date),
+    });
+    expect(mocks.finishCronRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "cron-run-1",
+        status: "COMPLETED",
+        finishedAt: expect.any(Date),
+        diagnostics: [
+          expect.objectContaining({
+            keywordId: "keyword-1",
+            status: "SUCCESS",
+            rank: 6,
+          }),
+        ],
+        summary: expect.objectContaining({
+          total: 1,
+          success: 1,
+          error: 0,
+        }),
+      })
+    );
+  });
+
+  it("marks an authorized cron as failed when core setup throws", async () => {
+    mocks.count.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cron/place-tracking", {
+        headers: { authorization: "Bearer test-cron-secret" },
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocks.startCronRun).toHaveBeenCalledTimes(1);
+    expect(mocks.finishCronRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "cron-run-1",
+        status: "FAILED",
+        errorMessage: "database unavailable",
+        diagnostics: [],
+        summary: expect.objectContaining({ error: 1 }),
+      })
+    );
+  });
+
+  it("keeps the original rank-save response when diagnostic finalization fails", async () => {
+    mocks.finishCronRun.mockRejectedValueOnce(
+      new Error("diagnostic database unavailable")
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({ ok: true, canSaveRank: true, rank: "4" })
+      )
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cron/place-tracking", {
+        headers: { authorization: "Bearer test-cron-secret" },
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ successCount: 1, failCount: 0 });
+    expect(mocks.rankHistoryCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the original rank-save response when diagnostic run creation fails", async () => {
+    mocks.startCronRun.mockRejectedValueOnce(
+      new Error("diagnostic database unavailable")
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({ ok: true, canSaveRank: true, rank: "5" })
+      )
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cron/place-tracking", {
+        headers: { authorization: "Bearer test-cron-secret" },
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ successCount: 1, failCount: 0 });
+    expect(mocks.rankHistoryCreate).toHaveBeenCalledTimes(1);
+    expect(mocks.finishCronRun).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: null, status: "COMPLETED" })
+    );
+  });
+
   it("records out-of-range as an observed attempt without a fake rank", async () => {
     vi.stubGlobal(
       "fetch",
@@ -536,6 +731,144 @@ describe("place tracking cron", () => {
       outOfRangeCount: 1,
       failCount: 0,
     });
+    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+      "[place-tracking-cron][keyword-result]",
+      expect.objectContaining({
+        status: "OUT_OF_RANGE",
+        rank: null,
+        errorMessage: null,
+        httpStatus: 200,
+      })
+    );
+  });
+
+  it("distinguishes NCAPTCHA without changing the existing global block behavior", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          ok: true,
+          canSaveRank: false,
+          rank: "-",
+          failureCode: "PCMAP_GRAPHQL_FAILED",
+          message: "현재 조회 차단됨 / 마지막 저장 순위 유지",
+          diagnostics: {
+            captchaDetected: true,
+            cooldownDetected: false,
+            debugReason: "HTML_CONFIRMED_NCAPTCHA",
+          },
+        })
+      )
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cron/place-tracking", {
+        headers: { authorization: "Bearer test-cron-secret" },
+      })
+    );
+    const body = await response.json();
+
+    expect(body).toMatchObject({
+      attemptedCount: 1,
+      failCount: 1,
+      blockedReason: "NCAPTCHA",
+    });
+    expect(mocks.keywordUpdate).toHaveBeenCalledWith({
+      where: { id: "keyword-1" },
+      data: { lastFailureCode: "GLOBAL_BLOCK:NCAPTCHA" },
+    });
+    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+      "[place-tracking-cron][keyword-result]",
+      expect.objectContaining({
+        status: "NCAPTCHA",
+        rank: null,
+        httpStatus: 200,
+      })
+    );
+    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+      "[place-tracking-cron][summary]",
+      expect.objectContaining({
+        total: 1,
+        ncaptcha: 1,
+        http429: 0,
+        cooldownSkip: 0,
+        error: 0,
+      })
+    );
+  });
+
+  it("distinguishes request timeout from a fetch error in keyword diagnostics", async () => {
+    mocks.count.mockResolvedValue(2);
+    mocks.findMany.mockResolvedValue([
+      {
+        id: "timeout-keyword",
+        placeId: "timeout-place",
+        keyword: "타임아웃 키워드",
+        isTracking: true,
+        lastAttemptAt: null,
+        place: { name: "타임아웃 업체", category: null, x: null, y: null },
+      },
+      {
+        id: "fetch-keyword",
+        placeId: "fetch-place",
+        keyword: "통신 오류 키워드",
+        isTracking: true,
+        lastAttemptAt: null,
+        place: { name: "통신 오류 업체", category: null, x: null, y: null },
+      },
+    ]);
+    const timeoutError = new Error("rank lookup timed out");
+    timeoutError.name = "TimeoutError";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(timeoutError)
+        .mockRejectedValueOnce(new TypeError("fetch failed"))
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cron/place-tracking", {
+        headers: { authorization: "Bearer test-cron-secret" },
+      })
+    );
+    const body = await response.json();
+    const keywordDiagnostics = vi
+      .mocked(console.log)
+      .mock.calls.filter(
+        ([message]) => message === "[place-tracking-cron][keyword-result]"
+      )
+      .map(([, payload]) => payload as Record<string, unknown>);
+
+    expect(body).toMatchObject({
+      attemptedCount: 2,
+      successCount: 0,
+      failCount: 2,
+    });
+    expect(mocks.rankHistoryCreate).not.toHaveBeenCalled();
+    expect(keywordDiagnostics).toEqual([
+      expect.objectContaining({
+        keywordId: "timeout-keyword",
+        status: "TIMEOUT",
+        errorMessage: "rank lookup timed out",
+        httpStatus: null,
+      }),
+      expect.objectContaining({
+        keywordId: "fetch-keyword",
+        status: "FETCH_ERROR",
+        errorMessage: "fetch failed",
+        httpStatus: null,
+      }),
+    ]);
+    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+      "[place-tracking-cron][summary]",
+      expect.objectContaining({
+        total: 2,
+        timeout: 1,
+        error: 1,
+        statusCounts: { TIMEOUT: 1, FETCH_ERROR: 1 },
+      })
+    );
   });
 
   it("stops the batch on a global cooldown and leaves the tail unclaimed", async () => {
@@ -591,6 +924,33 @@ describe("place tracking cron", () => {
       where: { id: "blocked-keyword" },
       data: { lastFailureCode: "GLOBAL_BLOCK:HTTP_429" },
     });
+    const keywordDiagnostics = vi
+      .mocked(console.log)
+      .mock.calls.filter(
+        ([message]) => message === "[place-tracking-cron][keyword-result]"
+      )
+      .map(([, payload]) => payload as Record<string, unknown>);
+    expect(keywordDiagnostics).toEqual([
+      expect.objectContaining({
+        keywordId: "blocked-keyword",
+        status: "HTTP_429",
+        httpStatus: 200,
+      }),
+      expect.objectContaining({
+        keywordId: "tail-keyword",
+        status: "GLOBAL_COOLDOWN_SKIP",
+        httpStatus: null,
+      }),
+    ]);
+    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+      "[place-tracking-cron][summary]",
+      expect.objectContaining({
+        total: 2,
+        http429: 1,
+        cooldownSkip: 1,
+        error: 0,
+      })
+    );
   });
 
   it("honors a persisted global block cooldown in the next cron slot", async () => {
@@ -659,6 +1019,14 @@ describe("place tracking cron", () => {
       attemptedCount: 0,
       claimLostCount: 1,
     });
+    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+      "[place-tracking-cron][keyword-result]",
+      expect.objectContaining({
+        keywordId: "keyword-1",
+        status: "CLAIM_LOST",
+        errorMessage: "KEYWORD_CLAIM_NOT_ACQUIRED",
+      })
+    );
   });
 
   it("continues past a lost claim to the next eligible keyword", async () => {

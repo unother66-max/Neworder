@@ -192,6 +192,58 @@ model AdminAlert {
   @@index([level])
 }
 
+model CronRun {
+  id            String       @id @default(cuid())
+  job           String       @db.VarChar(80)
+  trigger       String       @db.VarChar(80)
+  status        String       @default("RUNNING") @db.VarChar(32)
+  startedAt     DateTime
+  finishedAt    DateTime?
+  durationMs    Int?
+  trackedTotal  Int?
+  eligibleTotal Int?
+  total         Int          @default(0)
+  success       Int          @default(0)
+  outOfRange    Int          @default(0)
+  ncaptcha      Int          @default(0)
+  http429       Int          @default(0)
+  timeout       Int          @default(0)
+  cooldownSkip  Int          @default(0)
+  error         Int          @default(0)
+  errorMessage  String?      @db.VarChar(500)
+  createdAt     DateTime     @default(now())
+  expiresAt     DateTime
+  results       CronResult[]
+
+  @@index([startedAt])
+  @@index([job, startedAt])
+  @@index([status, startedAt])
+  @@index([expiresAt])
+}
+
+model CronResult {
+  id           String   @id @default(cuid())
+  runId        String
+  keywordId    String   @db.VarChar(191)
+  placeId      String   @db.VarChar(191)
+  placeName    String   @db.VarChar(500)
+  keyword      String   @db.VarChar(500)
+  status       String   @db.VarChar(40)
+  rank         Int?
+  errorMessage String?  @db.VarChar(500)
+  httpStatus   Int?
+  durationMs   Int?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  run          CronRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, keywordId])
+  @@index([runId])
+  @@index([status])
+  @@index([runId, status])
+  @@index([expiresAt])
+}
+
 // --- 🚨 기존 기능 모델 (오류 방지를 위해 모두 포함) ---
 
 model Place {

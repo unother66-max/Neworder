@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { interleaveTrackedKeywordsByPlace } from "@/lib/place-tracking-cron";
+import {
+  finishPlaceTrackingCronRun,
+  startPlaceTrackingCronRun,
+  type PlaceTrackingCronDiagnostic as KeywordDiagnostic,
+  type PlaceTrackingCronDiagnosticStatus as TrackingDiagnosticStatus,
+  type PlaceTrackingCronSummary,
+} from "@/lib/place-tracking-cron-store";
 import { prisma } from "@/lib/prisma";
 import { utcRangeSeoulCalendarDay } from "@/lib/seoul-calendar";
 
@@ -32,6 +39,7 @@ type RankResponse = {
   displayRank?: string | null;
   checkedCount?: number | null;
   failureCode?: string | null;
+  message?: string | null;
   diagnostics?: {
     completedPages?: number | null;
     debugReason?: string | null;
@@ -48,6 +56,9 @@ type TrackingResult = {
   reason: string;
   blocked: boolean;
 };
+
+const KEYWORD_DIAGNOSTIC_LOG = "[place-tracking-cron][keyword-result]";
+const SUMMARY_DIAGNOSTIC_LOG = "[place-tracking-cron][summary]";
 
 function clampInteger(
   raw: string | undefined,
@@ -74,6 +85,100 @@ function sleep(ms: number): Promise<void> {
 function boundedReason(value: unknown, fallback: string): string {
   const normalized = String(value ?? "").trim() || fallback;
   return normalized.slice(0, 500);
+}
+
+function diagnosticStatusForBlock(
+  reason: string | null
+): TrackingDiagnosticStatus | null {
+  const normalized = String(reason ?? "").toUpperCase();
+  if (/HTTP_429/.test(normalized)) return "HTTP_429";
+  if (/NCAPTCHA|CAPTCHA|CE_EMPTY_TOKEN/.test(normalized)) return "NCAPTCHA";
+  return null;
+}
+
+function diagnosticStatusForRankFailure(
+  response: Response,
+  data: RankResponse | null,
+  detectedBlock: string | null
+): TrackingDiagnosticStatus {
+  const failureText = [
+    detectedBlock,
+    data?.failureCode,
+    data?.diagnostics?.debugReason,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  const blockStatus = diagnosticStatusForBlock(failureText);
+  if (blockStatus) return blockStatus;
+  if (/TIMEOUT|TIMED_OUT|ABORT/.test(failureText)) return "TIMEOUT";
+  if (
+    !response.ok ||
+    /FETCH|NETWORK|GRAPHQL_FAILED|NON_JSON_RESPONSE|HTTP_\d{3}|ECONN/.test(
+      failureText
+    )
+  ) {
+    return "FETCH_ERROR";
+  }
+
+  return "UNKNOWN_ERROR";
+}
+
+function rankFailureMessage(
+  data: RankResponse | null,
+  fallback: string
+): string {
+  const details = [
+    data?.message,
+    data?.failureCode,
+    data?.diagnostics?.debugReason,
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  return boundedReason(details.join(" | "), fallback);
+}
+
+function errorMessage(error: unknown): string {
+  return boundedReason(
+    error instanceof Error ? error.message : error,
+    "UNKNOWN_ERROR"
+  );
+}
+
+function summarizeDiagnostics(
+  diagnostics: readonly KeywordDiagnostic[],
+  total: number,
+  runErrorMessage: string | null = null
+) {
+  const count = (status: TrackingDiagnosticStatus) =>
+    diagnostics.filter((diagnostic) => diagnostic.status === status).length;
+  const success = count("SUCCESS");
+  const outOfRange = count("OUT_OF_RANGE");
+  const ncaptcha = count("NCAPTCHA");
+  const http429 = count("HTTP_429");
+  const timeout = count("TIMEOUT");
+  const cooldownSkip = count("GLOBAL_COOLDOWN_SKIP");
+  const categorized =
+    success + outOfRange + ncaptcha + http429 + timeout + cooldownSkip;
+
+  return {
+    total,
+    success,
+    outOfRange,
+    ncaptcha,
+    http429,
+    timeout,
+    cooldownSkip,
+    error: Math.max(total - categorized, runErrorMessage ? 1 : 0),
+    statusCounts: diagnostics.reduce<Record<string, number>>(
+      (acc, diagnostic) => {
+        acc[diagnostic.status] = (acc[diagnostic.status] ?? 0) + 1;
+        return acc;
+      },
+      {}
+    ),
+  };
 }
 
 function globalBlockReason(
@@ -130,6 +235,120 @@ export async function runPlaceTrackingCron(
   trigger = "primary"
 ) {
   const startedAt = Date.now();
+  const cronStartedAt = new Date(startedAt).toISOString();
+  const diagnostics: KeywordDiagnostic[] = [];
+  const diagnosedKeywordIds = new Set<string>();
+  let diagnosticKeywords: TrackedKeyword[] = [];
+  let diagnosticTrackedTotal: number | null = null;
+  let authorizedRun = false;
+  let summaryLogged = false;
+  let cronRunId: string | null = null;
+
+  const logKeywordDiagnostic = (
+    keyword: TrackedKeyword,
+    input: {
+      status: TrackingDiagnosticStatus;
+      rank?: number | null;
+      errorMessage?: string | null;
+      httpStatus?: number | null;
+      durationMs: number;
+    }
+  ) => {
+    if (diagnosedKeywordIds.has(keyword.id)) return;
+
+    const diagnostic: KeywordDiagnostic = {
+      cronStartedAt,
+      trigger,
+      keywordId: keyword.id,
+      placeId: keyword.placeId,
+      placeName: keyword.place?.name ?? "",
+      keyword: keyword.keyword,
+      status: input.status,
+      rank: input.rank ?? null,
+      errorMessage: input.errorMessage
+        ? boundedReason(input.errorMessage, "UNKNOWN_ERROR")
+        : null,
+      httpStatus: input.httpStatus ?? null,
+      durationMs: Math.max(0, Math.round(input.durationMs)),
+    };
+
+    diagnosedKeywordIds.add(keyword.id);
+    diagnostics.push(diagnostic);
+    console.log(KEYWORD_DIAGNOSTIC_LOG, diagnostic);
+  };
+
+  const logSummary = (input: {
+    trackedTotal: number | null;
+    eligibleTotal: number;
+    durationMs: number;
+    runErrorMessage?: string | null;
+  }): PlaceTrackingCronSummary | null => {
+    if (summaryLogged) return null;
+    summaryLogged = true;
+
+    const runErrorMessage = input.runErrorMessage
+      ? boundedReason(input.runErrorMessage, "UNKNOWN_ERROR")
+      : null;
+    const durationMs = Math.max(0, Math.round(input.durationMs));
+    const counts = summarizeDiagnostics(
+      diagnostics,
+      input.eligibleTotal,
+      runErrorMessage
+    );
+    const summary: PlaceTrackingCronSummary = {
+      trackedTotal: input.trackedTotal,
+      eligibleTotal: input.eligibleTotal,
+      durationMs,
+      total: counts.total,
+      success: counts.success,
+      outOfRange: counts.outOfRange,
+      ncaptcha: counts.ncaptcha,
+      http429: counts.http429,
+      timeout: counts.timeout,
+      cooldownSkip: counts.cooldownSkip,
+      error: counts.error,
+    };
+
+    console.log(SUMMARY_DIAGNOSTIC_LOG, {
+      cronStartedAt,
+      trigger,
+      ...summary,
+      statusCounts: counts.statusCounts,
+      runErrorMessage,
+    });
+
+    return summary;
+  };
+
+  const finishDiagnosticRun = async (
+    status: "COMPLETED" | "FAILED",
+    input: {
+      trackedTotal: number | null;
+      eligibleTotal: number;
+      durationMs: number;
+      runErrorMessage?: string | null;
+    }
+  ) => {
+    const summary = logSummary(input);
+    if (!summary) return;
+
+    try {
+      await finishPlaceTrackingCronRun({
+        runId: cronRunId,
+        status,
+        finishedAt: new Date(startedAt + summary.durationMs),
+        diagnostics,
+        summary,
+        errorMessage: input.runErrorMessage ?? null,
+      });
+    } catch (error) {
+      console.error("[place-tracking-cron][db] 실행 기록 종료 실패", {
+        runId: cronRunId,
+        status,
+        error: errorMessage(error),
+      });
+    }
+  };
 
   try {
     const authHeader = req.headers.get("authorization");
@@ -146,6 +365,18 @@ export async function runPlaceTrackingCron(
 
     if (!isValidSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    authorizedRun = true;
+    try {
+      cronRunId = await startPlaceTrackingCronRun({
+        trigger,
+        startedAt: new Date(startedAt),
+      });
+    } catch (error) {
+      console.error("[place-tracking-cron][db] 실행 기록 시작 실패", {
+        error: errorMessage(error),
+      });
     }
 
     // UI의 "오늘 순위 저장"과 동일하게 KST 달력 날짜를 기준으로 중복을 막는다.
@@ -224,6 +455,8 @@ export async function runPlaceTrackingCron(
     const eligibleKeywords = interleaveTrackedKeywordsByPlace(
       attemptCandidates
     );
+    diagnosticTrackedTotal = trackedTotal;
+    diagnosticKeywords = eligibleKeywords;
     const requestPaceMs = resolvePlaceTrackingCronPaceMs();
     const concurrency = 1;
 
@@ -239,6 +472,19 @@ export async function runPlaceTrackingCron(
         trigger,
         blockedReason,
         cooldownUntil,
+      });
+
+      for (const keyword of eligibleKeywords) {
+        logKeywordDiagnostic(keyword, {
+          status: "GLOBAL_COOLDOWN_SKIP",
+          errorMessage: `GLOBAL_COOLDOWN:${blockedReason}; cooldownUntil=${cooldownUntil.toISOString()}`,
+          durationMs: 0,
+        });
+      }
+      await finishDiagnosticRun("COMPLETED", {
+        trackedTotal,
+        eligibleTotal: eligibleKeywords.length,
+        durationMs: Date.now() - startedAt,
       });
 
       return NextResponse.json({
@@ -271,17 +517,26 @@ export async function runPlaceTrackingCron(
     let claimLostCount = 0;
     let nextRequestAllowedAt = 0;
     let blockedReason: string | null = null;
+    let deferredReason: string | null = null;
 
     for (const keyword of eligibleKeywords) {
       if (blockedReason) break;
 
       const paceWaitMs = Math.max(0, nextRequestAllowedAt - Date.now());
-      if (claimCutoffAt - Date.now() < paceWaitMs) break;
+      if (claimCutoffAt - Date.now() < paceWaitMs) {
+        deferredReason =
+          paceWaitMs > 0 ? "CRON_PACE_DEADLINE" : "CRON_CLAIM_DEADLINE";
+        break;
+      }
 
       await sleep(paceWaitMs);
 
-      if (Date.now() > claimCutoffAt) break;
+      if (Date.now() > claimCutoffAt) {
+        deferredReason = "CRON_CLAIM_DEADLINE";
+        break;
+      }
 
+      const keywordStartedAt = Date.now();
       const claimStartedAt = new Date();
       const claim = await prisma.placeKeyword.updateMany({
         where: {
@@ -300,6 +555,11 @@ export async function runPlaceTrackingCron(
 
       if (claim.count !== 1) {
         claimLostCount += 1;
+        logKeywordDiagnostic(keyword, {
+          status: "CLAIM_LOST",
+          errorMessage: "KEYWORD_CLAIM_NOT_ACQUIRED",
+          durationMs: Date.now() - keywordStartedAt,
+        });
         continue;
       }
 
@@ -318,8 +578,16 @@ export async function runPlaceTrackingCron(
           reason,
           blocked: false,
         });
+        logKeywordDiagnostic(keyword, {
+          status: "UNKNOWN_ERROR",
+          errorMessage: reason,
+          durationMs: Date.now() - keywordStartedAt,
+        });
         continue;
       }
+
+      let rankRes: Response | null = null;
+      let processingStage: "FETCH" | "RESPONSE" | "PERSIST" = "FETCH";
 
       try {
         const remainingMs = cleanupDeadlineAt - Date.now();
@@ -327,7 +595,7 @@ export async function runPlaceTrackingCron(
           1,
           Math.min(RANK_REQUEST_TIMEOUT_MS, remainingMs)
         );
-        const rankRes = await fetch(`${origin}/api/check-place-rank`, {
+        rankRes = await fetch(`${origin}/api/check-place-rank`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -346,6 +614,7 @@ export async function runPlaceTrackingCron(
         });
 
         const text = await rankRes.text();
+        processingStage = "RESPONSE";
         // 한 키워드 응답이 끝난 뒤 여유 간격을 둬 Naver 조회 버스트를 막는다.
         nextRequestAllowedAt = Date.now() + requestPaceMs;
         let rankData: RankResponse | null = null;
@@ -371,6 +640,14 @@ export async function runPlaceTrackingCron(
             observed: false,
             reason,
             blocked: Boolean(detectedBlock),
+          });
+          logKeywordDiagnostic(keyword, {
+            status:
+              diagnosticStatusForBlock(detectedBlock) ??
+              (rankRes.ok ? "UNKNOWN_ERROR" : "FETCH_ERROR"),
+            errorMessage: reason,
+            httpStatus: rankRes.status,
+            durationMs: Date.now() - keywordStartedAt,
           });
           continue;
         }
@@ -403,6 +680,20 @@ export async function runPlaceTrackingCron(
             reason,
             blocked: Boolean(detectedBlock),
           });
+          logKeywordDiagnostic(keyword, {
+            status: isOutOfRange
+              ? "OUT_OF_RANGE"
+              : diagnosticStatusForRankFailure(
+                  rankRes,
+                  rankData,
+                  detectedBlock
+                ),
+            errorMessage: isOutOfRange
+              ? null
+              : rankFailureMessage(rankData, reason),
+            httpStatus: rankRes.status,
+            durationMs: Date.now() - keywordStartedAt,
+          });
           continue;
         }
 
@@ -419,9 +710,16 @@ export async function runPlaceTrackingCron(
             reason,
             blocked: false,
           });
+          logKeywordDiagnostic(keyword, {
+            status: "UNKNOWN_ERROR",
+            errorMessage: reason,
+            httpStatus: rankRes.status,
+            durationMs: Date.now() - keywordStartedAt,
+          });
           continue;
         }
 
+        processingStage = "PERSIST";
         const successAt = new Date();
         await prisma.$transaction([
           prisma.rankHistory.create({
@@ -461,6 +759,12 @@ export async function runPlaceTrackingCron(
           reason: "SAVED",
           blocked: false,
         });
+        logKeywordDiagnostic(keyword, {
+          status: "SUCCESS",
+          rank: numericRank,
+          httpStatus: rankRes.status,
+          durationMs: Date.now() - keywordStartedAt,
+        });
       } catch (error) {
         nextRequestAllowedAt = Date.now() + requestPaceMs;
         const reason = isTimeoutError(error)
@@ -475,7 +779,31 @@ export async function runPlaceTrackingCron(
           reason,
           blocked: false,
         });
+        logKeywordDiagnostic(keyword, {
+          status: isTimeoutError(error)
+            ? "TIMEOUT"
+            : processingStage === "PERSIST"
+              ? "UNKNOWN_ERROR"
+              : "FETCH_ERROR",
+          errorMessage: errorMessage(error),
+          httpStatus: rankRes?.status ?? null,
+          durationMs: Date.now() - keywordStartedAt,
+        });
       }
+    }
+
+    for (const keyword of eligibleKeywords) {
+      if (diagnosedKeywordIds.has(keyword.id)) continue;
+
+      logKeywordDiagnostic(keyword, {
+        status: blockedReason
+          ? "GLOBAL_COOLDOWN_SKIP"
+          : "DEADLINE_SKIP",
+        errorMessage: blockedReason
+          ? `GLOBAL_COOLDOWN:${blockedReason}`
+          : deferredReason || "CRON_DEFERRED",
+        durationMs: 0,
+      });
     }
 
     const attemptedCount = results.length;
@@ -496,6 +824,12 @@ export async function runPlaceTrackingCron(
       },
       {}
     );
+
+    await finishDiagnosticRun("COMPLETED", {
+      trackedTotal,
+      eligibleTotal: eligibleKeywords.length,
+      durationMs,
+    });
 
     console.log("✅ place tracking cron 배치 완료:", {
       trigger,
@@ -538,6 +872,23 @@ export async function runPlaceTrackingCron(
       reasonCounts,
     });
   } catch (error) {
+    const runErrorMessage = errorMessage(error);
+    if (authorizedRun) {
+      for (const keyword of diagnosticKeywords) {
+        if (diagnosedKeywordIds.has(keyword.id)) continue;
+        logKeywordDiagnostic(keyword, {
+          status: "UNKNOWN_ERROR",
+          errorMessage: `CRON_RUN_ERROR:${runErrorMessage}`,
+          durationMs: 0,
+        });
+      }
+      await finishDiagnosticRun("FAILED", {
+        trackedTotal: diagnosticTrackedTotal,
+        eligibleTotal: diagnosticKeywords.length,
+        durationMs: Date.now() - startedAt,
+        runErrorMessage,
+      });
+    }
     console.error("place-tracking cron error", error);
     return NextResponse.json(
       { error: "자동 업데이트 중 오류가 발생했습니다." },
