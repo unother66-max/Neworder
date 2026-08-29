@@ -6,27 +6,27 @@
     },
     {
       "path": "/api/cron/place-tracking/2",
-      "schedule": "0 19 * * *"
+      "schedule": "0 18 * * *"
     },
     {
       "path": "/api/cron/place-tracking/3",
-      "schedule": "0 21 * * *"
+      "schedule": "0 19 * * *"
     },
     {
       "path": "/api/cron/place-tracking/4",
-      "schedule": "0 23 * * *"
+      "schedule": "0 20 * * *"
     },
     {
       "path": "/api/cron/place-tracking/5",
-      "schedule": "0 1 * * *"
+      "schedule": "0 21 * * *"
     },
     {
       "path": "/api/cron/place-tracking/6",
-      "schedule": "0 3 * * *"
+      "schedule": "0 22 * * *"
     },
     {
       "path": "/api/cron/place-tracking/7",
-      "schedule": "0 5 * * *"
+      "schedule": "0 23 * * *"
     },
     {
       "path": "/api/cron/place-review-tracking",

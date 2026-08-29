@@ -234,7 +234,7 @@ export default async function AdminCronRunDetailPage({
             </div>
             <div>
               <dt className="text-[10px] font-semibold text-slate-500">
-                추적 / 이번 실행 대상
+                추적 / 전체 후보
               </dt>
               <dd className="mt-0.5 font-medium tabular-nums text-slate-800">
                 {formatCronNumber(run.trackedTotal)} /{" "}
@@ -244,7 +244,7 @@ export default async function AdminCronRunDetailPage({
           </dl>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <SummaryValue label="전체 결과" value={run.total} />
+            <SummaryValue label="이번 선택·결과" value={run.total} />
             <SummaryValue
               label="저장 성공"
               value={run.success}

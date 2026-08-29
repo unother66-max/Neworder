@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { interleaveTrackedKeywordsByPlace } from "@/lib/place-tracking-cron";
 import {
   finishPlaceTrackingCronRun,
@@ -13,6 +14,8 @@ import { utcRangeSeoulCalendarDay } from "@/lib/seoul-calendar";
 const CRON_NEW_CLAIM_CUTOFF_MS = 260_000;
 const CRON_CLEANUP_DEADLINE_MS = 285_000;
 const RANK_REQUEST_TIMEOUT_MS = 110_000;
+const CRON_SLOT_BATCH_LIMIT = 60;
+const INITIAL_READ_RETRY_BACKOFF_MS = [300, 900] as const;
 const GLOBAL_BLOCK_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 const GLOBAL_BLOCK_PREFIX = "GLOBAL_BLOCK:";
 const DEFAULT_REQUEST_PACE_MS = 1_000;
@@ -80,6 +83,40 @@ export function resolvePlaceTrackingCronPaceMs(
 function sleep(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function prismaErrorCode(error: unknown): string | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code;
+  }
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    return error.errorCode ?? null;
+  }
+  return null;
+}
+
+async function runInitialReadWithRetry<T>(
+  queryName: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      const backoffMs = INITIAL_READ_RETRY_BACKOFF_MS[attempt - 1];
+      if (prismaErrorCode(error) !== "P1001" || backoffMs === undefined) {
+        throw error;
+      }
+
+      console.warn("[place-tracking-cron][db-read-retry]", {
+        queryName,
+        attempt: attempt + 1,
+        backoffMs,
+        code: "P1001",
+      });
+      await sleep(backoffMs);
+    }
+  }
 }
 
 function boundedReason(value: unknown, fallback: string): string {
@@ -243,6 +280,7 @@ export async function runPlaceTrackingCron(
   let authorizedRun = false;
   let summaryLogged = false;
   let cronRunId: string | null = null;
+  let diagnosticEligibleTotal = 0;
 
   const logKeywordDiagnostic = (
     keyword: TrackedKeyword,
@@ -280,6 +318,7 @@ export async function runPlaceTrackingCron(
   const logSummary = (input: {
     trackedTotal: number | null;
     eligibleTotal: number;
+    selectedTotal: number;
     durationMs: number;
     runErrorMessage?: string | null;
   }): PlaceTrackingCronSummary | null => {
@@ -292,7 +331,7 @@ export async function runPlaceTrackingCron(
     const durationMs = Math.max(0, Math.round(input.durationMs));
     const counts = summarizeDiagnostics(
       diagnostics,
-      input.eligibleTotal,
+      input.selectedTotal,
       runErrorMessage
     );
     const summary: PlaceTrackingCronSummary = {
@@ -325,6 +364,7 @@ export async function runPlaceTrackingCron(
     input: {
       trackedTotal: number | null;
       eligibleTotal: number;
+      selectedTotal: number;
       durationMs: number;
       runErrorMessage?: string | null;
     }
@@ -399,45 +439,53 @@ export async function runPlaceTrackingCron(
       trackedKeywords,
       recentSuccessfulHistories,
     ] = await Promise.all([
-      prisma.placeKeyword.count({ where: trackedWhere }),
-      prisma.placeKeyword.findFirst({
-        where: {
-          place: { type: "rank" },
-          lastAttemptAt: { gte: globalCooldownAfter },
-          lastFailureCode: { startsWith: GLOBAL_BLOCK_PREFIX },
-        },
-        orderBy: { lastAttemptAt: "desc" },
-        select: {
-          lastAttemptAt: true,
-          lastFailureCode: true,
-        },
-      }),
-      prisma.placeKeyword.findMany({
-        where: {
-          ...trackedWhere,
-          OR: [
-            { lastAttemptAt: null },
-            { lastAttemptAt: { lt: seoulDayStart } },
+      runInitialReadWithRetry("placeKeyword.count", () =>
+        prisma.placeKeyword.count({ where: trackedWhere })
+      ),
+      runInitialReadWithRetry("placeKeyword.findFirst.globalBlock", () =>
+        prisma.placeKeyword.findFirst({
+          where: {
+            place: { type: "rank" },
+            lastAttemptAt: { gte: globalCooldownAfter },
+            lastFailureCode: { startsWith: GLOBAL_BLOCK_PREFIX },
+          },
+          orderBy: { lastAttemptAt: "desc" },
+          select: {
+            lastAttemptAt: true,
+            lastFailureCode: true,
+          },
+        })
+      ),
+      runInitialReadWithRetry("placeKeyword.findMany.candidates", () =>
+        prisma.placeKeyword.findMany({
+          where: {
+            ...trackedWhere,
+            OR: [
+              { lastAttemptAt: null },
+              { lastAttemptAt: { lt: seoulDayStart } },
+            ],
+          },
+          include: { place: true },
+          orderBy: [
+            { lastAttemptAt: { sort: "asc", nulls: "first" } },
+            { createdAt: "asc" },
+            { id: "asc" },
           ],
-        },
-        include: { place: true },
-        orderBy: [
-          { lastAttemptAt: { sort: "asc", nulls: "first" } },
-          { createdAt: "asc" },
-          { id: "asc" },
-        ],
-      }),
+        })
+      ),
       // 배포 전 cron이나 오늘 수동 저장은 cursor가 비어 있을 수 있으므로 이력으로도 중복 방지.
-      prisma.rankHistory.findMany({
-        where: {
-          createdAt: { gte: seoulDayStart },
-          place: { type: "rank" },
-        },
-        select: {
-          placeId: true,
-          keyword: true,
-        },
-      }),
+      runInitialReadWithRetry("rankHistory.findMany.today", () =>
+        prisma.rankHistory.findMany({
+          where: {
+            createdAt: { gte: seoulDayStart },
+            place: { type: "rank" },
+          },
+          select: {
+            placeId: true,
+            keyword: true,
+          },
+        })
+      ),
     ]);
 
     const recentlySuccessfulKeys = new Set(
@@ -455,8 +503,12 @@ export async function runPlaceTrackingCron(
     const eligibleKeywords = interleaveTrackedKeywordsByPlace(
       attemptCandidates
     );
+    // 업체별 공정한 순서를 만든 뒤 이번 slot의 작업량만 제한한다.
+    // 선택되지 않은 꼬리는 claim하지 않아 다음 slot의 후보로 그대로 남는다.
+    const selectedKeywords = eligibleKeywords.slice(0, CRON_SLOT_BATCH_LIMIT);
     diagnosticTrackedTotal = trackedTotal;
-    diagnosticKeywords = eligibleKeywords;
+    diagnosticEligibleTotal = eligibleKeywords.length;
+    diagnosticKeywords = selectedKeywords;
     const requestPaceMs = resolvePlaceTrackingCronPaceMs();
     const concurrency = 1;
 
@@ -474,7 +526,7 @@ export async function runPlaceTrackingCron(
         cooldownUntil,
       });
 
-      for (const keyword of eligibleKeywords) {
+      for (const keyword of selectedKeywords) {
         logKeywordDiagnostic(keyword, {
           status: "GLOBAL_COOLDOWN_SKIP",
           errorMessage: `GLOBAL_COOLDOWN:${blockedReason}; cooldownUntil=${cooldownUntil.toISOString()}`,
@@ -484,6 +536,7 @@ export async function runPlaceTrackingCron(
       await finishDiagnosticRun("COMPLETED", {
         trackedTotal,
         eligibleTotal: eligibleKeywords.length,
+        selectedTotal: selectedKeywords.length,
         durationMs: Date.now() - startedAt,
       });
 
@@ -493,13 +546,17 @@ export async function runPlaceTrackingCron(
         total: trackedTotal,
         eligibleTotal: eligibleKeywords.length,
         candidateCount: eligibleKeywords.length,
-        selectedCount: 0,
+        selectedCount: selectedKeywords.length,
         consideredCount: 0,
         attemptedCount: 0,
         successCount: 0,
         outOfRangeCount: 0,
         failCount: 0,
         deferredCount: eligibleKeywords.length,
+        batchDeferredCount: Math.max(
+          0,
+          eligibleKeywords.length - selectedKeywords.length
+        ),
         claimLostCount: 0,
         blockedReason,
         cooldownUntil,
@@ -519,7 +576,7 @@ export async function runPlaceTrackingCron(
     let blockedReason: string | null = null;
     let deferredReason: string | null = null;
 
-    for (const keyword of eligibleKeywords) {
+    for (const keyword of selectedKeywords) {
       if (blockedReason) break;
 
       const paceWaitMs = Math.max(0, nextRequestAllowedAt - Date.now());
@@ -792,7 +849,7 @@ export async function runPlaceTrackingCron(
       }
     }
 
-    for (const keyword of eligibleKeywords) {
+    for (const keyword of selectedKeywords) {
       if (diagnosedKeywordIds.has(keyword.id)) continue;
 
       logKeywordDiagnostic(keyword, {
@@ -816,6 +873,10 @@ export async function runPlaceTrackingCron(
       0,
       eligibleKeywords.length - attemptedCount - claimLostCount
     );
+    const batchDeferredCount = Math.max(
+      0,
+      eligibleKeywords.length - selectedKeywords.length
+    );
     const durationMs = Date.now() - startedAt;
     const reasonCounts = results.reduce<Record<string, number>>(
       (acc, result) => {
@@ -828,6 +889,7 @@ export async function runPlaceTrackingCron(
     await finishDiagnosticRun("COMPLETED", {
       trackedTotal,
       eligibleTotal: eligibleKeywords.length,
+      selectedTotal: selectedKeywords.length,
       durationMs,
     });
 
@@ -836,13 +898,14 @@ export async function runPlaceTrackingCron(
       trackedTotal,
       eligibleTotal: eligibleKeywords.length,
       candidateCount: eligibleKeywords.length,
-      selectedCount: eligibleKeywords.length,
+      selectedCount: selectedKeywords.length,
       consideredCount: attemptedCount + claimLostCount,
       attemptedCount,
       successCount,
       outOfRangeCount,
       failCount,
       deferredCount,
+      batchDeferredCount,
       claimLostCount,
       blockedReason,
       concurrency,
@@ -857,13 +920,14 @@ export async function runPlaceTrackingCron(
       total: trackedTotal,
       eligibleTotal: eligibleKeywords.length,
       candidateCount: eligibleKeywords.length,
-      selectedCount: eligibleKeywords.length,
+      selectedCount: selectedKeywords.length,
       consideredCount: attemptedCount + claimLostCount,
       attemptedCount,
       successCount,
       outOfRangeCount,
       failCount,
       deferredCount,
+      batchDeferredCount,
       claimLostCount,
       blockedReason,
       concurrency,
@@ -884,7 +948,8 @@ export async function runPlaceTrackingCron(
       }
       await finishDiagnosticRun("FAILED", {
         trackedTotal: diagnosticTrackedTotal,
-        eligibleTotal: diagnosticKeywords.length,
+        eligibleTotal: diagnosticEligibleTotal,
+        selectedTotal: diagnosticKeywords.length,
         durationMs: Date.now() - startedAt,
         runErrorMessage,
       });

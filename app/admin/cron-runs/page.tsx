@@ -315,8 +315,9 @@ export default async function AdminCronRunsPage({
                       <td className="px-4 py-3 font-semibold text-slate-900">
                         {cronJobLabel(run.job)}
                         <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
-                          추적 {formatCronNumber(run.trackedTotal)} · 대상{" "}
-                          {formatCronNumber(run.eligibleTotal)}
+                          추적 {formatCronNumber(run.trackedTotal)} · 후보{" "}
+                          {formatCronNumber(run.eligibleTotal)} · 선택{" "}
+                          {formatCronNumber(run.total)}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-mono text-[11px] text-slate-600">
