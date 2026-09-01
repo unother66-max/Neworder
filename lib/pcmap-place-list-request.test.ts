@@ -73,6 +73,17 @@ describe("pcmap placeList request payload", () => {
     });
   });
 
+  it("adds TOP300 display fields only when requested", () => {
+    const payload = buildPcmapPlaceListRequestPayload({
+      businessType: "restaurant",
+      keyword: "한남동 맛집",
+      includeDisplayFields: true,
+    });
+
+    expect(payload.query).toContain("imageUrl");
+    expect(payload.query).toContain("visitorReviewScore");
+  });
+
   it("rejects a missing keyword instead of emitting an undefined query", () => {
     expect(() =>
       buildPcmapPlaceListRequestPayload({

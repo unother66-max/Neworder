@@ -22,6 +22,7 @@ query __OPERATION_NAME__($input: PlaceListInput) {
         blogCafeReviewCount
         saveCount
         newOpening
+        __DISPLAY_FIELDS__
         __FEATURE_FIELDS__
         __typename
       }
@@ -39,6 +40,7 @@ export type PcmapPlaceListRequestParams = {
   y?: unknown;
   start?: unknown;
   display?: unknown;
+  includeDisplayFields?: boolean;
 };
 
 export type PcmapPlaceListRequestPayload = {
@@ -104,6 +106,10 @@ export function buildPcmapPlaceListRequestPayload(
     operationName
   )
     .replace("__ALIAS__", alias)
+    .replace(
+      "__DISPLAY_FIELDS__",
+      params.includeDisplayFields ? "imageUrl\n        visitorReviewScore" : ""
+    )
     .replace(
       "__FEATURE_FIELDS__",
       businessType === "restaurant" ? "microReview" : ""

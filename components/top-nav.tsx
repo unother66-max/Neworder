@@ -40,7 +40,8 @@ const getActiveMobileSectionKey = (path: string): MobileMenuSectionKey | null =>
   if (
     path.startsWith("/place") ||
     path.startsWith("/place-analysis") ||
-    path.startsWith("/place-review")
+    path.startsWith("/place-review") ||
+    path.startsWith("/web-analysis")
   ) {
     return "place";
   }
@@ -273,7 +274,8 @@ const TopNav = (_props: TopNavProps) => {
   
   const isSmartStoreActive = pathname.startsWith("/smartstore");
   const isBlogActive = pathname.startsWith("/top-blog") || pathname.startsWith("/blog-analysis");
-  const isPlaceActive = pathname.startsWith("/place");
+  const isPlaceActive =
+    pathname.startsWith("/place") || pathname.startsWith("/web-analysis");
   const isKakaoActive =
     pathname.startsWith("/kakao-place") ||
     pathname.startsWith("/kakao-analysis") ||
@@ -287,7 +289,9 @@ const TopNav = (_props: TopNavProps) => {
 
   const isPlaceRankActive = pathname === "/place" || pathname.startsWith("/place/");
   const isPlaceAnalysisActive = pathname.startsWith("/place-analysis");
+  const isPlaceTop300Active = pathname.startsWith("/place-rank-analysis");
   const isPlaceReviewActive = pathname.startsWith("/place-review");
+  const isWebAnalysisActive = pathname.startsWith("/web-analysis");
 
   const isSmartstorePriceActive = pathname === "/smartstore";
   const isSmartstoreReviewActive = pathname.startsWith("/smartstore/review-track");
@@ -412,11 +416,18 @@ const TopNav = (_props: TopNavProps) => {
       key: "place" as const,
       label: "네이버 지도",
       iconSrc: "/icons/map-icon.png",
-      active: isPlaceActive || isPlaceAnalysisActive || isPlaceReviewActive,
+      active:
+        isPlaceActive ||
+        isPlaceAnalysisActive ||
+        isPlaceTop300Active ||
+        isPlaceReviewActive ||
+        isWebAnalysisActive,
       links: [
         { href: "/place", label: "순위 추적", active: isPlaceRankActive },
         { href: "/place-review", label: "리뷰 분석", active: isPlaceReviewActive },
         { href: "/place-analysis", label: "키워드 분석", active: isPlaceAnalysisActive },
+        { href: "/place-rank-analysis", label: "순위분석 TOP300", active: isPlaceTop300Active },
+        { href: "/web-analysis", label: "웹 분석", active: isWebAnalysisActive },
       ],
     },
     {
@@ -821,6 +832,46 @@ const TopNav = (_props: TopNavProps) => {
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
                       황금 키워드 발굴 도구
+                    </span>
+                  </Link>
+                  <Link
+                    href="/place-rank-analysis"
+                    aria-current={isPlaceTop300Active ? "page" : undefined}
+                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                      isPlaceTop300Active ? "bg-blue-50/40 pl-6" : ""
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-bold ${
+                        isPlaceTop300Active
+                          ? "text-[#0051FF]"
+                          : "text-slate-800 group-hover/item:text-[#0051FF]"
+                      }`}
+                    >
+                      순위분석 TOP300
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                      키워드별 플레이스 TOP 300 조회
+                    </span>
+                  </Link>
+                  <Link
+                    href="/web-analysis"
+                    aria-current={isWebAnalysisActive ? "page" : undefined}
+                    className={`group/item flex flex-col px-5 py-3 rounded-2xl transition-all duration-200 hover:bg-blue-50/40 hover:pl-6 ${
+                      isWebAnalysisActive ? "bg-blue-50/40 pl-6" : ""
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-bold ${
+                        isWebAnalysisActive
+                          ? "text-[#0051FF]"
+                          : "text-slate-800 group-hover/item:text-[#0051FF]"
+                      }`}
+                    >
+                      웹 분석
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                      네이버 웹문서 분석
                     </span>
                   </Link>
                 </div>
