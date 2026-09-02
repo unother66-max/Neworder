@@ -1,10 +1,19 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useSession } from "next-auth/react";
 
 import { GlobalLoading } from "@/components/global-loading";
+import {
+  LoginRequiredModal,
+  PublicPreviewBanner,
+  useLoginRequiredPreview,
+} from "@/components/login-required-preview";
 import { PostlabsSlideHoverButton } from "@/components/postlabs-slide-hover-button";
 import TopNav from "@/components/top-nav";
+import WebAnalysisMobileResultItem, {
+  WebAnalysisMobileResultHeader,
+} from "@/components/web-analysis-mobile-result-item";
 
 type WebAnalysisRow = {
   collectedIndex: number;
@@ -29,6 +38,97 @@ type WebAnalysisResponse = {
   results: WebAnalysisRow[];
 };
 
+const SAMPLE_WEB_ANALYSIS: WebAnalysisResponse = {
+  ok: true,
+  keyword: "플레이스 마케팅",
+  requestedPages: [2, 3, 4, 5, 6, 7, 8, 9, 10],
+  successfulPages: [2, 3, 4, 5, 6, 7, 8, 9, 10],
+  failedPages: [],
+  totalResults: 8,
+  results: [
+    {
+      collectedIndex: 1,
+      page: 2,
+      positionInPage: 1,
+      title: "플레이스 검색 노출을 확인하는 실전 체크리스트",
+      url: "https://example.com/postlabs/place-marketing-guide",
+      domain: "example.com",
+      source: "웹사이트",
+      snippet: "매장 정보와 검색 노출 상태를 점검하는 예시 웹문서입니다.",
+    },
+    {
+      collectedIndex: 2,
+      page: 2,
+      positionInPage: 2,
+      title: "성수동 매장 운영자가 정리한 플레이스 관리 후기",
+      url: "https://blog.naver.com/postlabs/sample-web-01",
+      domain: "blog.naver.com",
+      source: "네이버 블로그",
+      snippet: "플레이스 정보 관리와 리뷰 응대 과정을 정리한 샘플 결과입니다.",
+    },
+    {
+      collectedIndex: 3,
+      page: 2,
+      positionInPage: 3,
+      title: "지역 기반 검색 마케팅 데이터 읽는 법",
+      url: "https://example.org/insight/local-search-data",
+      domain: "example.org",
+      source: "인사이트",
+      snippet: "지역 검색 결과를 비교할 때 살펴볼 지표를 소개합니다.",
+    },
+    {
+      collectedIndex: 4,
+      page: 3,
+      positionInPage: 1,
+      title: "소상공인을 위한 네이버 플레이스 운영 가이드",
+      url: "https://example.net/guides/naver-place",
+      domain: "example.net",
+      source: "가이드",
+      snippet: "매장 정보 최적화와 검색 키워드 관리 방법을 다룹니다.",
+    },
+    {
+      collectedIndex: 5,
+      page: 3,
+      positionInPage: 2,
+      title: "우리 매장 검색 순위를 기록해 본 한 달",
+      url: "https://m.blog.naver.com/postlabs/sample-web-02",
+      domain: "m.blog.naver.com",
+      source: "네이버 블로그",
+      snippet: "검색 순위 변화를 기록하고 비교한 샘플 블로그 문서입니다.",
+    },
+    {
+      collectedIndex: 6,
+      page: 4,
+      positionInPage: 1,
+      title: "로컬 비즈니스 검색 트렌드 리포트",
+      url: "https://example.com/reports/local-business-search",
+      domain: "example.com",
+      source: "리포트",
+      snippet: "업종별 검색 행동 변화를 요약한 예시 리포트입니다.",
+    },
+    {
+      collectedIndex: 7,
+      page: 5,
+      positionInPage: 1,
+      title: "리뷰 데이터로 매장 경쟁력을 파악하는 방법",
+      url: "https://example.org/articles/review-data",
+      domain: "example.org",
+      source: "웹문서",
+      snippet: "방문자 리뷰와 블로그 리뷰 지표를 비교하는 방법을 설명합니다.",
+    },
+    {
+      collectedIndex: 8,
+      page: 6,
+      positionInPage: 1,
+      title: "검색 결과 분석으로 콘텐츠 주제 찾기",
+      url: "https://example.net/articles/search-content",
+      domain: "example.net",
+      source: "웹문서",
+      snippet: "웹검색 결과에서 반복되는 주제를 찾는 샘플 문서입니다.",
+    },
+  ],
+};
+
 function formatCount(value: number): string {
   return value.toLocaleString("ko-KR");
 }
@@ -44,20 +144,27 @@ function isNaverBlogResult(row: WebAnalysisRow): boolean {
 }
 
 export default function WebAnalysisPage() {
+  const { status } = useSession();
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState<WebAnalysisResponse | null>(null);
   const [excludeNaverBlog, setExcludeNaverBlog] = useState(false);
+  const isPreview = status === "unauthenticated";
+  const { guardAction, loginRequiredOpen, closeLoginRequired } =
+    useLoginRequiredPreview(isPreview);
+  const displayedAnalysis = isPreview ? SAMPLE_WEB_ANALYSIS : analysis;
 
-  const displayedResults = analysis
+  const displayedResults = displayedAnalysis
     ? excludeNaverBlog
-      ? analysis.results.filter((row) => !isNaverBlogResult(row))
-      : analysis.results
+      ? displayedAnalysis.results.filter((row) => !isNaverBlogResult(row))
+      : displayedAnalysis.results
     : [];
 
   const handleAnalyze = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (status === "loading") return;
+    if (guardAction(event)) return;
     if (loading) return;
 
     const trimmed = keyword.trim();
@@ -121,14 +228,18 @@ export default function WebAnalysisPage() {
 
       <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111827] md:pt-24">
         <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
+          {isPreview ? (
+            <PublicPreviewBanner message="비로그인 미리보기 화면입니다. 샘플 데이터와 화면 구성을 확인할 수 있으며, 실제 웹 분석은 로그인 후 이용 가능합니다." />
+          ) : null}
           <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="flex flex-col gap-2.5 md:gap-4">
               <div className="min-w-0">
                 <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
-                  웹 분석
+                  네이버 웹문서 분석
                 </h1>
                 <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">
-                  네이버 웹검색 2~10페이지의 문서를 분석합니다.
+                  키워드별 네이버 웹검색 결과를 분석하고 홈페이지, 블로그, SNS,
+                  외부 사이트의 검색 노출을 확인합니다.
                 </p>
               </div>
 
@@ -164,7 +275,7 @@ export default function WebAnalysisPage() {
                   <PostlabsSlideHoverButton
                     type="submit"
                     variant="primary"
-                    disabled={loading}
+                    disabled={loading || status === "loading"}
                     className="h-[40px] min-w-[96px] shrink-0 rounded-[12px] bg-[#333333] px-4 text-[12px] font-bold text-white disabled:opacity-60 md:h-[54px] md:min-w-[116px] md:rounded-[16px] md:px-7 md:text-[15px]"
                   >
                     {loading ? "분석 중..." : "웹 분석"}
@@ -195,7 +306,7 @@ export default function WebAnalysisPage() {
             </div>
           </div>
 
-          {analysis ? (
+          {displayedAnalysis ? (
             <>
               <div className="mt-3 grid grid-cols-2 gap-2 md:mt-4 md:grid-cols-3 md:gap-3 lg:grid-cols-5">
                 <div className="rounded-[16px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.03)] md:rounded-[20px] md:p-4">
@@ -203,7 +314,7 @@ export default function WebAnalysisPage() {
                     분석 키워드
                   </div>
                   <div className="mt-1 truncate text-[14px] font-black text-[#111827] md:text-[16px]">
-                    {analysis.keyword}
+                    {displayedAnalysis.keyword}
                   </div>
                 </div>
                 <div className="rounded-[16px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.03)] md:rounded-[20px] md:p-4">
@@ -219,7 +330,7 @@ export default function WebAnalysisPage() {
                     전체 수집 문서
                   </div>
                   <div className="mt-1 text-[14px] font-black text-[#111827] md:text-[16px]">
-                    {formatCount(analysis.totalResults)}건
+                    {formatCount(displayedAnalysis.totalResults)}건
                   </div>
                 </div>
                 <div className="rounded-[16px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.03)] md:rounded-[20px] md:p-4">
@@ -235,11 +346,11 @@ export default function WebAnalysisPage() {
                     성공
                   </div>
                   <div className="mt-1 text-[14px] font-black text-[#111827] md:text-[16px]">
-                    {analysis.successfulPages.length} / {analysis.requestedPages.length} 페이지
+                    {displayedAnalysis.successfulPages.length} / {displayedAnalysis.requestedPages.length} 페이지
                   </div>
-                  {analysis.failedPages.length > 0 ? (
+                  {displayedAnalysis.failedPages.length > 0 ? (
                     <div className="mt-1 text-[10px] font-semibold text-red-600 md:text-[11px]">
-                      실패 페이지 {analysis.failedPages.join(", ")}
+                      실패 페이지 {displayedAnalysis.failedPages.join(", ")}
                     </div>
                   ) : null}
                 </div>
@@ -252,7 +363,36 @@ export default function WebAnalysisPage() {
                   </h2>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div
+                  data-mobile-web-analysis-results
+                  className="md:hidden"
+                >
+                  <WebAnalysisMobileResultHeader />
+                  {displayedResults.length > 0 ? (
+                    <div
+                      role="list"
+                      aria-label="모바일 웹문서 수집 결과"
+                      className="divide-y divide-[#f0f2f5]"
+                    >
+                      {displayedResults.map((row) => (
+                        <WebAnalysisMobileResultItem
+                          key={`${row.page}-${row.positionInPage}-${row.url}`}
+                          row={row}
+                          isPreview={isPreview}
+                          onLoginRequired={(event) => void guardAction(event)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-12 text-center text-[12px] text-[#6b7280]">
+                      {excludeNaverBlog
+                        ? "네이버 블로그를 제외한 웹문서가 없습니다."
+                        : "수집된 웹문서가 없습니다."}
+                    </div>
+                  )}
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full min-w-[860px] border-collapse">
                     <thead className="bg-[#f9fafb]">
                       <tr>
@@ -292,10 +432,17 @@ export default function WebAnalysisPage() {
                               <div className="flex min-w-0 items-center gap-2.5">
                                 {row.thumbnail ? (
                                   <a
-                                    href={row.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    aria-label={`${row.title} 열기`}
+                                    href={isPreview ? "#login-required" : row.url}
+                                    target={isPreview ? undefined : "_blank"}
+                                    rel={isPreview ? undefined : "noopener noreferrer"}
+                                    onClick={
+                                      isPreview
+                                        ? (event) => void guardAction(event)
+                                        : undefined
+                                    }
+                                    aria-label={`${row.title}${
+                                      isPreview ? " (로그인 필요)" : " 열기"
+                                    }`}
                                     className="h-10 w-10 shrink-0 overflow-hidden rounded-[8px] bg-[#f3f4f6]"
                                   >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -311,9 +458,17 @@ export default function WebAnalysisPage() {
                                 ) : null}
                                 <div className="min-w-0 flex-1">
                                   <a
-                                    href={row.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                    href={isPreview ? "#login-required" : row.url}
+                                    target={isPreview ? undefined : "_blank"}
+                                    rel={isPreview ? undefined : "noopener noreferrer"}
+                                    onClick={
+                                      isPreview
+                                        ? (event) => void guardAction(event)
+                                        : undefined
+                                    }
+                                    aria-label={`${row.title}${
+                                      isPreview ? " (로그인 필요)" : " 열기"
+                                    }`}
                                     title={row.title}
                                     className="block truncate text-[13px] font-bold leading-5 text-[#111827] transition hover:text-[#2563eb] md:text-[14px]"
                                   >
@@ -324,9 +479,17 @@ export default function WebAnalysisPage() {
                             </td>
                             <td className="max-w-[320px] px-4 py-2.5 align-middle">
                               <a
-                                href={row.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                                href={isPreview ? "#login-required" : row.url}
+                                target={isPreview ? undefined : "_blank"}
+                                rel={isPreview ? undefined : "noopener noreferrer"}
+                                onClick={
+                                  isPreview
+                                    ? (event) => void guardAction(event)
+                                    : undefined
+                                }
+                                aria-label={`${row.url}${
+                                  isPreview ? " (로그인 필요)" : " 열기"
+                                }`}
                                 title={row.url}
                                 className="block truncate text-[11px] font-semibold text-[#4b5563] underline decoration-[#d1d5db] underline-offset-4 transition hover:text-[#2563eb] md:text-[12px]"
                               >
@@ -358,6 +521,10 @@ export default function WebAnalysisPage() {
           ) : null}
         </section>
       </main>
+      <LoginRequiredModal
+        open={loginRequiredOpen}
+        onClose={closeLoginRequired}
+      />
     </>
   );
 }

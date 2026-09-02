@@ -8,6 +8,8 @@ const title = "네이버 플레이스 순위조회·키워드 추적 | 포스트
 const description =
   "네이버 플레이스의 지역 키워드 검색 순위, 검색량, 순위 변화를 확인하고 매장별 노출 흐름을 지속적으로 관리하세요.";
 const url = "https://postlabs.co.kr/place";
+const imageUrl = "https://postlabs.co.kr/images/place-og.png";
+const imageAlt = "포스트랩스 네이버 플레이스 순위조회·키워드 추적";
 
 export const metadata: Metadata = {
   title,
@@ -19,13 +21,29 @@ export const metadata: Metadata = {
     description,
     url,
     type: "website",
-    images: [{ url: "/postlabs-preview-logo.png?v=20260824-3", width: 1254, height: 1254, alt: "PostLabs" }],
+    images: [
+      {
+        url: imageUrl,
+        width: 1200,
+        height: 630,
+        alt: imageAlt,
+        type: "image/png",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title,
     description,
-    images: ["/postlabs-preview-logo.png?v=20260824-3"],
+    images: [
+      {
+        url: imageUrl,
+        width: 1200,
+        height: 630,
+        alt: imageAlt,
+        type: "image/png",
+      },
+    ],
   },
 };
 

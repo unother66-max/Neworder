@@ -103,9 +103,6 @@ const TopNav = (_props: TopNavProps) => {
   } | null>(null);
   const [canAccessNewOrder, setCanAccessNewOrder] = useState(false);
 
-  // 🚨 [추가] 로그인 버튼 호버 및 마우스 위치 추적 상태
-  const [isLoginHovered, setIsLoginHovered] = useState(false);
-  const [loginMousePos, setLoginMousePos] = useState({ x: 0, y: 0 });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [drawerAnimatingOpen, setDrawerAnimatingOpen] = useState(false);
   const [mobileExpandedSection, setMobileExpandedSection] =
@@ -114,13 +111,6 @@ const TopNav = (_props: TopNavProps) => {
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileMenuFrameRef = useRef<number | null>(null);
   const mobileMenuCloseTimerRef = useRef<number | null>(null);
-
-  const handleLoginMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setLoginMousePos({ x, y });
-  };
 
   const sessionKey = session ? getUserQuotaSessionKey(session) : null;
 
@@ -1025,10 +1015,13 @@ const TopNav = (_props: TopNavProps) => {
 
         </div>
 
-        {/* 🚨 우측 상단 (로그인 / 사용자 정보 분기) */}
+        {/* 우측 상단 (로그인 / 사용자 정보 분기) */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {status === "loading" ? (
-            <div className="h-8 w-8"></div>
+            <div
+              aria-hidden="true"
+              className="h-9 w-[60px] rounded-full border border-slate-200/80 bg-white/70"
+            />
           ) : session ? (
             // ✅ 로그인 된 상태
             <>
@@ -1147,53 +1140,13 @@ const TopNav = (_props: TopNavProps) => {
               </button>
             </>
           ) : (
-           // 🚨 [여기를 교체해주세요] 파란색 스와이프 로그인 버튼
-           <button
-           onClick={() => router.push("/login")}
-           onMouseEnter={() => setIsLoginHovered(true)}
-           onMouseLeave={() => setIsLoginHovered(false)}
-           onMouseMove={handleLoginMouseMove}
-           className={`
-		             relative isolate z-20 inline-flex min-h-10 items-center rounded-full px-3 py-1.5 text-xs font-bold tracking-wide sm:min-h-0 sm:px-6 sm:py-2 sm:text-[13px]
-             bg-transparent border-2 transition-colors duration-300 ease-in-out overflow-hidden
-             ${isLoginHovered ? 'border-[#2563EB]' : 'border-black'}
-           `}
-         >
-           {/* 글씨 (호버 시 흰색) */}
-           <span className="relative z-30 transition-colors duration-300" style={{ color: isLoginHovered ? "#FFFFFF" : "#000000" }}>
-             로그인
-           </span>
-
-           {/* 🌊 파란색 스와이프 배경 (#2563EB) */}
-           <div
-             className="pointer-events-none absolute inset-0 w-full h-full z-0"
-             style={{
-               transformOrigin: "left",
-               transform: isLoginHovered ? "scaleX(1)" : "scaleX(0)",
-               transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)",
-               backgroundColor: "#2563EB",
-             }}
-           />
-
-           {/* ✨ 무료로 시작하기 버튼과 100% 동일한 빛 효과 */}
-           <div
-             className={`
-               absolute -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full blur-2xl
-               transition-opacity duration-200 ease-out
-               ${isLoginHovered ? "opacity-100" : "opacity-0"}
-             `}
-             style={{
-               left: `${loginMousePos.x}px`,
-               top: `${loginMousePos.y}px`,
-               pointerEvents: "none",
-               zIndex: 25,
-               backgroundImage:
-                 "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)",
-               mixBlendMode: "soft-light",
-               filter: "saturate(1.1) brightness(1.02) drop-shadow(0 0 8px rgba(255,255,255,0.15))",
-             }}
-           />
-         </button>
+            <button
+              type="button"
+              onClick={() => router.push("/login")}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200/80 bg-white/70 px-3.5 !text-[12px] !font-semibold !leading-none tracking-[-0.01em] text-slate-700 transition-colors duration-200 hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/25 focus-visible:ring-offset-2 sm:px-4"
+            >
+              로그인
+            </button>
           )}
           <button
             type="button"
@@ -1402,6 +1355,11 @@ const TopNav = (_props: TopNavProps) => {
               )}
             </div>
 
+            {status === "loading" ? (
+              <div className="my-3 border-t border-slate-200 pt-4" aria-hidden="true">
+                <div className="h-10 w-full rounded-full border border-slate-200 bg-white/70" />
+              </div>
+            ) : session ? (
             <div className="my-2 pt-1">
               <div className="flex flex-col gap-0.5">
                 <button
@@ -1473,6 +1431,20 @@ const TopNav = (_props: TopNavProps) => {
                 </button>
               </div>
             </div>
+            ) : (
+              <div className="my-3 border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeMobileMenu();
+                    router.push("/login");
+                  }}
+                  className="inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-300 bg-white text-[14px] font-bold text-slate-800 transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/30"
+                >
+                  로그인
+                </button>
+              </div>
+            )}
           </nav>
         </aside>
       </div>

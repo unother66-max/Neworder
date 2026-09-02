@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  requireAuth: vi.fn(),
   validateKeyword: vi.fn(),
   collectResults: vi.fn(),
+}));
+
+vi.mock("@/lib/require-auth-api", () => ({
+  requireAuthApi: mocks.requireAuth,
 }));
 
 vi.mock("@/lib/web-analysis", () => ({
@@ -15,10 +20,36 @@ import { POST, maxDuration } from "@/app/api/web-analysis/route";
 describe("web analysis route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.requireAuth.mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    });
     mocks.validateKeyword.mockReturnValue({
       ok: true,
       keyword: "뉴오더클럽한남",
     });
+  });
+
+  it("rejects a guest before validating or collecting web results", async () => {
+    mocks.requireAuth.mockResolvedValue({
+      ok: false,
+      response: Response.json(
+        { ok: false, error: "로그인이 필요한 기능입니다." },
+        { status: 401 }
+      ),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/web-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: "뉴오더클럽한남" }),
+      })
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.validateKeyword).not.toHaveBeenCalled();
+    expect(mocks.collectResults).not.toHaveBeenCalled();
   });
 
   it("returns a friendly 502 response when every page fails", async () => {

@@ -18,6 +18,7 @@ import {
   PublicPreviewBanner,
   useLoginRequiredPreview,
 } from "@/components/login-required-preview";
+import PlaceReviewMobileHistory from "@/components/place-review-mobile-history";
 
 const TopNav = dynamic(() => import("@/components/top-nav"), {
   ssr: false,
@@ -936,14 +937,17 @@ export default function PlaceReviewPage() {
                         <button
                           type="button"
                           onClick={() => handleTogglePin(store.id)}
-                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f9fafb] md:h-[42px] md:w-[42px] md:rounded-[14px]`}
-                          aria-label="핀 고정"
+                          data-place-review-pin
+                          data-pinned={store.isPinned ? "true" : "false"}
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-transparent transition hover:bg-[#f3f4f6] active:bg-[#e5e7eb] md:h-[42px] md:w-[42px] md:rounded-[14px] md:bg-white md:hover:bg-[#f9fafb] md:active:bg-[#f9fafb]"
+                          aria-label={store.isPinned ? "핀 고정 해제" : "핀 고정"}
+                          aria-pressed={!!store.isPinned}
                         >
                           <Pin
-                            className={`h-4 w-4 transition md:h-[20px] md:w-[20px] ${
+                            className={`h-[18px] w-[18px] transition md:h-[20px] md:w-[20px] ${
                               store.isPinned
                                 ? "fill-[#2563EB] stroke-[#2563EB]"
-                                : "stroke-[#6b7280]"
+                                : "fill-none stroke-[#94a3b8] md:stroke-[#6b7280]"
                             }`}
                             strokeWidth={2}
                           />
@@ -1090,7 +1094,12 @@ export default function PlaceReviewPage() {
 
                   <div className="px-3 py-3 md:px-6 md:py-5">
                     <div className="overflow-hidden rounded-[12px] border border-[#e5e7eb] md:rounded-[18px]">
-                      <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <PlaceReviewMobileHistory rows={store.history.slice(0, 3)} />
+
+                      <div
+                        data-desktop-place-review-history
+                        className="hidden overflow-x-auto overscroll-x-contain [scrollbar-width:none] md:block [&::-webkit-scrollbar]:hidden"
+                      >
                         <table className="w-full table-fixed border-collapse md:min-w-full md:table-auto">
                           <colgroup>
                             <col className="w-[18%] md:w-auto" />

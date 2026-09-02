@@ -319,6 +319,21 @@ model RankHistory {
   @@index([placeId, keyword, source, createdAt])
 }
 
+/**
+ * 순위분석 TOP300의 공용 일별 스냅샷.
+ * Asia/Seoul 날짜별로 순위 순서의 placeId 배열만 저장한다.
+ */
+model PlaceRankTop300Snapshot {
+  id             String   @id @default(cuid())
+  keyword        String
+  snapshotDate   String
+  rankedPlaceIds Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([keyword, snapshotDate])
+}
+
 model KakaoRankHistory {
   id           String   @id @default(cuid())
   placeId      String

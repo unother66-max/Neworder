@@ -13,6 +13,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/smartstore/keyword-analyze", priority: 0.85 },
     { path: "/place-analysis", priority: 0.85 },
     { path: "/place-review", priority: 0.85 },
+    { path: "/place-rank-analysis", priority: 0.85 },
+    { path: "/web-analysis", priority: 0.85 },
     { path: "/kakao-ranking", priority: 0.85 },
     { path: "/kakao-analysis", priority: 0.85 },
   ];

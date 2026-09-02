@@ -4,6 +4,16 @@ import {
   collectNaverPlaceTop300,
   validateTop300Keyword,
 } from "@/lib/place-rank-top300";
+import {
+  buildTop300SnapshotCalendar,
+  type Top300RankHistory,
+} from "@/lib/place-rank-top300-history";
+import {
+  savePlaceRankTop300Snapshot,
+  TOP300_PARTIAL_SNAPSHOT_MESSAGE,
+  TOP300_SNAPSHOT_SAVE_FAILED_MESSAGE,
+} from "@/lib/place-rank-top300-snapshot";
+import { requireAuthApi } from "@/lib/require-auth-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +24,9 @@ const noStoreHeaders = {
 };
 
 export async function POST(request: Request) {
+  const auth = await requireAuthApi();
+  if (!auth.ok) return auth.response;
+
   let body: unknown;
 
   try {
@@ -52,8 +65,42 @@ export async function POST(request: Request) {
       partial: analysis.partial,
     });
 
+    const snapshotReference = new Date();
+    const rankHistory: Top300RankHistory = {
+      currentDate: buildTop300SnapshotCalendar(snapshotReference).currentDate,
+      snapshots: [],
+    };
+    let snapshotSaved = false;
+    let snapshotWarning: string | undefined;
+
+    if (analysis.partial) {
+      snapshotWarning = TOP300_PARTIAL_SNAPSHOT_MESSAGE;
+    } else {
+      try {
+        const savedHistory = await savePlaceRankTop300Snapshot(
+          {
+            keyword: analysis.keyword,
+            results: analysis.results,
+          },
+          { reference: snapshotReference }
+        );
+        rankHistory.currentDate = savedHistory.currentDate;
+        rankHistory.snapshots = savedHistory.snapshots;
+        snapshotSaved = true;
+      } catch (snapshotError) {
+        console.error("[rank-analysis TOP300 snapshot]", snapshotError);
+        snapshotWarning = TOP300_SNAPSHOT_SAVE_FAILED_MESSAGE;
+      }
+    }
+
     return NextResponse.json(
-      { ok: true, ...analysis },
+      {
+        ok: true,
+        ...analysis,
+        rankHistory,
+        snapshotSaved,
+        ...(snapshotWarning ? { snapshotWarning } : null),
+      },
       { headers: noStoreHeaders }
     );
   } catch (error) {

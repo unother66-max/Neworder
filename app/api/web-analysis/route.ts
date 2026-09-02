@@ -4,12 +4,16 @@ import {
   collectNaverWebResults,
   validateWebAnalysisKeyword,
 } from "@/lib/web-analysis";
+import { requireAuthApi } from "@/lib/require-auth-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
+  const auth = await requireAuthApi();
+  if (!auth.ok) return auth.response;
+
   let body: unknown;
 
   try {
