@@ -18,7 +18,10 @@ import {
   PublicPreviewBanner,
   useLoginRequiredPreview,
 } from "@/components/login-required-preview";
-import PlaceReviewMobileHistory from "@/components/place-review-mobile-history";
+import PlaceReviewMobileHistory, {
+  mobileReviewDateLabel,
+  mobileReviewSaveCount,
+} from "@/components/place-review-mobile-history";
 
 const TopNav = dynamic(() => import("@/components/top-nav"), {
   ssr: false,
@@ -279,7 +282,7 @@ const SAMPLE_REVIEW_STORES: StoreItem[] = [
 function DiffText({ value }: { value?: number | null }) {
   if (value === null || value === undefined || value === 0) {
     return (
-      <span className="block text-[10px] font-semibold text-[#9ca3af] md:ml-2 md:inline md:text-[12px]">-</span>
+      <span className="block text-[10px] font-semibold text-[#9ca3af] md:ml-1.5 md:inline-flex md:whitespace-nowrap md:text-[12px]">-</span>
     );
   }
 
@@ -287,11 +290,11 @@ function DiffText({ value }: { value?: number | null }) {
 
   return (
     <span
-      className={`block text-[10px] font-bold md:ml-2 md:inline-flex md:items-center md:text-[12px] ${
+      className={`block text-[10px] font-bold md:ml-1.5 md:inline-flex md:items-center md:whitespace-nowrap md:text-[12px] ${
         isUp ? "text-[#ef4444]" : "text-[#2563eb]"
       }`}
     >
-      {isUp ? "▲" : "▼"} {formatNumber(Math.abs(value))}
+      {`${isUp ? "▲" : "▼"}${formatNumber(Math.abs(value))}`}
     </span>
   );
 }
@@ -645,12 +648,12 @@ export default function PlaceReviewPage() {
         onClickCapture={previewCapture}
       >
         {isPreview ? <PublicPreviewBanner /> : null}
-        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
-          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-4 lg:px-8">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-5 md:py-3 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2.5 md:gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[22px]">
                     플레이스 리뷰 추적
                   </h1>
 
@@ -668,16 +671,16 @@ export default function PlaceReviewPage() {
                 </p>
               </div>
 
-              <div className="flex w-full flex-col gap-2 sm:flex-row md:gap-3 lg:w-auto lg:items-center">
+              <div className="flex w-full flex-col gap-2 sm:flex-row md:gap-2 lg:w-auto lg:items-center">
               <div className="relative hidden w-full sm:block sm:w-[320px]">
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="등록된 매장 검색"
-                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white md:h-[44px] md:rounded-[14px] md:px-4 md:pr-11 md:text-[13px]"
+                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563EB] focus:bg-white md:h-[40px] md:rounded-[12px] md:px-3 md:pr-10 md:text-[13px]"
                   />
                   <Search
-                    className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#6b7280] md:right-4 md:h-4 md:w-4"
+                    className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#6b7280] md:right-3 md:h-4 md:w-4"
                     strokeWidth={2.2}
                   />
                 </div>
@@ -687,7 +690,7 @@ export default function PlaceReviewPage() {
                   onMouseLeave={() => setIsAddHovered(false)}
                   onMouseMove={handleMouseMove}
                   onClick={() => setOpenRegister(true)}
-                  className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]"
+                  className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[40px] md:min-w-[100px] md:rounded-[12px] md:px-3 md:text-[13px]"
                 >
                   <span className="relative z-30 pointer-events-none">매장 등록</span>
                   <div
@@ -721,7 +724,7 @@ export default function PlaceReviewPage() {
               </div>
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:mt-3 md:gap-2 md:pt-3">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:mt-2 md:gap-1.5 md:pt-2">
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-[15px] font-black tracking-[-0.02em] text-[#111827] md:text-[17px]">
@@ -733,13 +736,13 @@ export default function PlaceReviewPage() {
 
                   <button
                     type="button"
-                    className="ml-0 inline-flex h-8 items-center justify-center rounded-[10px] bg-[#f3f4f6] px-3 text-[11px] font-bold text-[#374151] transition hover:bg-[#e5e7eb] md:ml-1 md:h-[36px] md:rounded-[12px] md:px-4 md:text-[12px]"
+                    className="ml-0 inline-flex h-8 items-center justify-center rounded-[10px] bg-[#f3f4f6] px-3 text-[11px] font-bold text-[#374151] transition hover:bg-[#e5e7eb] md:ml-1 md:h-[36px] md:rounded-[12px] md:px-3 md:text-[12px]"
                   >
                     매장 관리
                   </button>
                 </div>
 
-                <p className="mt-1 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
+                <p className="mt-1 text-[11px] text-[#6b7280] md:mt-1 md:text-[12px]">
                   {pageLoading
                     ? "📍 리뷰 데이터 불러오는 중..."
                     : "📍 리뷰/저장수 변화 조회중"}
@@ -752,7 +755,7 @@ export default function PlaceReviewPage() {
             </div>
           </div>
 
-          <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
+          <div className="mt-2.5 space-y-3 md:mt-4 md:space-y-3">
             {pageLoading ? (
               <div className="rounded-[18px] border border-dashed border-[#d1d5db] bg-white px-4 py-10 text-center shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:rounded-[22px] md:px-6 md:py-14 md:shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
                 <p className="text-[15px] font-bold text-[#111827] md:text-[18px]">
@@ -777,10 +780,10 @@ export default function PlaceReviewPage() {
                   key={store.id}
                   className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-6 md:py-4">
-                    <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="flex min-w-0 gap-2.5 md:gap-4">
-                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[12px] bg-[#f3f4f6] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px]">
+                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-5 md:py-3">
+                    <div className="flex flex-col gap-2.5 md:gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="flex min-w-0 gap-2.5 md:gap-3">
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[12px] bg-[#f3f4f6] ring-1 ring-[#e5e7eb] md:h-[64px] md:w-[64px] md:rounded-[16px]">
                           <img
                             src={store.imageUrl}
                             alt={store.name}
@@ -795,7 +798,7 @@ export default function PlaceReviewPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-start justify-between gap-2">
                             <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-wrap md:gap-2">
-                              <h3 className="min-w-0 flex-1 truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:flex-none md:text-[20px]">
+                              <h3 className="min-w-0 flex-1 truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:flex-none md:text-[18px]">
                                 {store.name}
                               </h3>
 
@@ -840,21 +843,21 @@ export default function PlaceReviewPage() {
                             </div>
                           </div>
 
-                          <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:mt-1.5 md:text-[13px] md:text-[#6b7280]">
+                          <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">
                             {store.address}
                           </p>
 
-                          <div className="mt-1.5 grid grid-cols-4 gap-1.5 md:mt-3 md:flex md:flex-wrap md:gap-2">
-                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                          <div className="mt-1.5 grid grid-cols-4 gap-1.5 md:mt-2 md:flex md:flex-wrap md:gap-1.5">
+                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-2.5 md:py-1.5">
                               <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
                                 검색량
                               </div>
-                              <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[15px] md:font-black">
+                              <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-black">
                                 {formatNumber(store.searchVolume)}
                               </div>
                             </div>
 
-                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-2.5 md:py-1.5">
                               <div className="flex items-center gap-0.5 truncate text-[10px] font-semibold leading-none text-[#6b7280] md:gap-1">
                                 <Smartphone className="h-3 w-3 md:h-3.5 md:w-3.5" />
                                 모바일
@@ -864,7 +867,7 @@ export default function PlaceReviewPage() {
                               </div>
                             </div>
 
-                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                            <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-2.5 md:py-1.5">
                               <div className="flex items-center gap-0.5 truncate text-[10px] font-semibold leading-none text-[#6b7280] md:gap-1">
                                 <Monitor className="h-3 w-3 md:h-3.5 md:w-3.5" />
                                 PC
@@ -896,7 +899,7 @@ export default function PlaceReviewPage() {
                               </div>
                             </button>
 
-                            <div className="hidden h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:flex md:h-auto md:rounded-[12px] md:px-3 md:py-2">
+                            <div className="hidden h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:flex md:h-auto md:rounded-[12px] md:px-2.5 md:py-1.5">
                               <div className="text-[10px] font-semibold text-[#6b7280]">
                                 자동 추적
                               </div>
@@ -906,7 +909,7 @@ export default function PlaceReviewPage() {
                             </div>
                           </div>
 
-                          <div className="mt-2 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-3 md:flex md:gap-2 md:text-[12px]">
+                          <div className="mt-2 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-2 md:flex md:gap-1.5 md:text-[12px]">
                             <span className="inline-flex items-center gap-1 font-semibold text-[#6b7280]">
                               <MapPin className="h-3.5 w-3.5" />
                               매장 바로가기
@@ -916,7 +919,7 @@ export default function PlaceReviewPage() {
                               href={store.mobileUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
+                              className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-1"
                             >
                               모바일
                             </a>
@@ -925,7 +928,7 @@ export default function PlaceReviewPage() {
                               href={store.pcUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
+                              className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-1"
                             >
                               PC
                             </a>
@@ -933,18 +936,18 @@ export default function PlaceReviewPage() {
                         </div>
                       </div>
 
-                      <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-2 xl:overflow-visible">
+                      <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-1.5 xl:overflow-visible">
                         <button
                           type="button"
                           onClick={() => handleTogglePin(store.id)}
                           data-place-review-pin
                           data-pinned={store.isPinned ? "true" : "false"}
-                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-transparent transition hover:bg-[#f3f4f6] active:bg-[#e5e7eb] md:h-[42px] md:w-[42px] md:rounded-[14px] md:bg-white md:hover:bg-[#f9fafb] md:active:bg-[#f9fafb]"
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-transparent transition hover:bg-[#f3f4f6] active:bg-[#e5e7eb] md:h-[36px] md:w-[36px] md:rounded-[12px] md:bg-white md:hover:bg-[#f9fafb] md:active:bg-[#f9fafb]"
                           aria-label={store.isPinned ? "핀 고정 해제" : "핀 고정"}
                           aria-pressed={!!store.isPinned}
                         >
                           <Pin
-                            className={`h-[18px] w-[18px] transition md:h-[20px] md:w-[20px] ${
+                            className={`h-[18px] w-[18px] transition md:h-[18px] md:w-[18px] ${
                               store.isPinned
                                 ? "fill-[#2563EB] stroke-[#2563EB]"
                                 : "fill-none stroke-[#94a3b8] md:stroke-[#6b7280]"
@@ -960,7 +963,7 @@ export default function PlaceReviewPage() {
                           onMouseEnter={() => setUpdateHover({ id: store.id, x: updateHover.x, y: updateHover.y })}
                           onMouseLeave={() => setUpdateHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleUpdateMouseMove(e, store.id)}
-                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]"
+                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[36px] md:flex-none md:shrink-0 md:rounded-[12px] md:px-3 md:text-[13px]"
                         >
                           <span className="relative z-30 pointer-events-none">
                             {updatingStoreId === store.id ? "업데이트 중..." : "업데이트"}
@@ -1000,7 +1003,7 @@ export default function PlaceReviewPage() {
                           onMouseEnter={() => setViewChangesHover({ id: store.id, x: viewChangesHover.x, y: viewChangesHover.y })}
                           onMouseLeave={() => setViewChangesHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleViewChangesMouseMove(e, store.id)}
-                          className={`relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px] ${viewChangesHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                          className={`relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[36px] md:flex-none md:shrink-0 md:rounded-[12px] md:px-3 md:text-[13px] ${viewChangesHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                         >
                           <span className="relative z-30 pointer-events-none md:hidden">리뷰변화</span>
                           <span className="relative z-30 pointer-events-none hidden md:inline">리뷰변화보기</span>
@@ -1040,7 +1043,7 @@ export default function PlaceReviewPage() {
                           onMouseEnter={() => setTrackingHover({ id: store.id, x: trackingHover.x, y: trackingHover.y })}
                           onMouseLeave={() => setTrackingHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleTrackingMouseMove(e, store.id)}
-                          className={`relative hidden h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:inline-flex ${
+                          className={`relative hidden h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:inline-flex md:h-[36px] md:rounded-[12px] md:px-3 md:text-[13px] ${
                             store.isAutoTracking
                               ? "bg-[#2563EB] text-white"
                               : trackingHover.id === store.id
@@ -1083,7 +1086,7 @@ export default function PlaceReviewPage() {
                         <button
                           type="button"
                           onClick={() => handleDeleteStore(store.id, store.name)}
-                          className="hidden h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6] md:inline-flex"
+                          className="hidden h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-white transition hover:bg-[#f3f4f6] md:inline-flex md:h-[36px] md:w-[36px] md:rounded-[12px]"
                           aria-label="삭제"
                         >
                           <Trash2 className="h-[18px] w-[18px] stroke-[#111827]" strokeWidth={2} />
@@ -1092,7 +1095,7 @@ export default function PlaceReviewPage() {
                     </div>
                   </div>
 
-                  <div className="px-3 py-3 md:px-6 md:py-5">
+                  <div className="px-3 py-3 md:px-5 md:py-4">
                     <div className="overflow-hidden rounded-[12px] border border-[#e5e7eb] md:rounded-[18px]">
                       <PlaceReviewMobileHistory rows={store.history.slice(0, 3)} />
 
@@ -1100,33 +1103,33 @@ export default function PlaceReviewPage() {
                         data-desktop-place-review-history
                         className="hidden overflow-x-auto overscroll-x-contain [scrollbar-width:none] md:block [&::-webkit-scrollbar]:hidden"
                       >
-                        <table className="w-full table-fixed border-collapse md:min-w-full md:table-auto">
+                        <table className="w-full min-w-[900px] table-fixed border-collapse">
                           <colgroup>
-                            <col className="w-[18%] md:w-auto" />
-                            <col className="w-[18%] md:w-auto" />
-                            <col className="w-[18%] md:w-auto" />
-                            <col className="w-[18%] md:w-auto" />
-                            <col className="w-[12%] md:w-auto" />
-                            <col className="w-[16%] md:w-auto" />
+                            <col className="w-[12%]" />
+                            <col className="w-[15%]" />
+                            <col className="w-[17%]" />
+                            <col className="w-[17%]" />
+                            <col className="w-[15%]" />
+                            <col className="w-[24%]" />
                           </colgroup>
                           <thead className="bg-[#f9fafb]">
                             <tr>
-                              <th className="px-1 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-5 md:py-3.5 md:text-[12px]">
+                              <th scope="col" className="whitespace-nowrap px-5 py-2.5 text-left text-[12px] font-extrabold text-[#6b7280]">
                                 날짜
                               </th>
-                              <th className="px-1 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-3.5 md:text-[12px]">
-                                전체 리뷰수
+                              <th scope="col" className="whitespace-nowrap px-4 py-2.5 text-left text-[12px] font-extrabold text-[#6b7280]">
+                                전체 리뷰
                               </th>
-                              <th className="px-1 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-3.5 md:text-[12px]">
+                              <th scope="col" className="whitespace-nowrap px-4 py-2.5 text-left text-[12px] font-extrabold text-[#6b7280]">
                                 방문자 리뷰
                               </th>
-                              <th className="px-1 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-3.5 md:text-[12px]">
+                              <th scope="col" className="whitespace-nowrap px-4 py-2.5 text-left text-[12px] font-extrabold text-[#6b7280]">
                                 블로그 리뷰
                               </th>
-                              <th className="px-1 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-4 md:py-3.5 md:text-[12px]">
+                              <th scope="col" className="whitespace-nowrap px-4 py-2.5 text-left text-[12px] font-extrabold text-[#6b7280]">
                                 저장수
                               </th>
-                              <th className="px-1 py-2 text-left text-[10px] font-extrabold text-[#6b7280] md:px-5 md:py-3.5 md:text-[12px]">
+                              <th scope="col" className="whitespace-nowrap px-5 py-2.5 text-left text-[12px] font-extrabold text-[#6b7280]">
                                 키워드
                               </th>
                             </tr>
@@ -1137,7 +1140,7 @@ export default function PlaceReviewPage() {
                               <tr>
                                 <td
                                   colSpan={6}
-                                  className="px-3 py-6 text-center text-[12px] text-[#9ca3af] md:px-5 md:py-10 md:text-[14px]"
+                                  className="px-5 py-8 text-center text-[14px] text-[#9ca3af]"
                                 >
                                   아직 리뷰 추적 데이터가 없습니다.
                                 </td>
@@ -1146,34 +1149,47 @@ export default function PlaceReviewPage() {
                               store.history.slice(0, 3).map((row) => (
                                 <tr
                                   key={row.id}
-                                  className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
+                                  className="h-12 border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
                                 >
-                                  <td className="whitespace-pre-line px-1 py-2.5 text-[11px] font-bold leading-[1.35] text-[#374151] md:px-5 md:py-4 md:text-[14px] md:leading-[1.4]">
-                                    {row.dateLabel}
+                                  <td className="whitespace-nowrap px-5 py-2.5 text-[13px] font-bold text-[#374151]">
+                                    {mobileReviewDateLabel(row.dateLabel)}
                                   </td>
 
-                                  <td className="px-1 py-2.5 text-[11px] font-semibold text-[#111827] md:px-4 md:py-4 md:text-[14px]">
-                                    {formatNumber(row.totalReviewCount)}
-                                    <DiffText value={row.totalReviewDiff} />
+                                  <td className="px-4 py-2.5 text-[14px] font-semibold text-[#111827]">
+                                    <div className="flex items-center whitespace-nowrap tabular-nums">
+                                      <span>{formatNumber(row.totalReviewCount)}</span>
+                                      <DiffText value={row.totalReviewDiff} />
+                                    </div>
                                   </td>
 
-                                  <td className="px-1 py-2.5 text-[11px] font-semibold text-[#111827] md:px-4 md:py-4 md:text-[14px]">
-                                    {formatNumber(row.visitorReviewCount)}
-                                    <DiffText value={row.visitorReviewDiff} />
+                                  <td className="px-4 py-2.5 text-[14px] font-semibold text-[#111827]">
+                                    <div className="flex items-center whitespace-nowrap tabular-nums">
+                                      <span>{formatNumber(row.visitorReviewCount)}</span>
+                                      <DiffText value={row.visitorReviewDiff} />
+                                    </div>
                                   </td>
 
-                                  <td className="px-1 py-2.5 text-[11px] font-semibold text-[#111827] md:px-4 md:py-4 md:text-[14px]">
-                                    {formatNumber(row.blogReviewCount)}
-                                    <DiffText value={row.blogReviewDiff} />
+                                  <td className="px-4 py-2.5 text-[14px] font-semibold text-[#111827]">
+                                    <div className="flex items-center whitespace-nowrap tabular-nums">
+                                      <span>{formatNumber(row.blogReviewCount)}</span>
+                                      <DiffText value={row.blogReviewDiff} />
+                                    </div>
                                   </td>
 
-                                  <td className="px-1 py-2.5 text-[11px] font-semibold text-[#111827] md:px-4 md:py-4 md:text-[14px]">
-                                    {row.saveCount || "-"}
-                                    <DiffText value={row.saveCountDiff} />
+                                  <td className="px-4 py-2.5 text-[14px] font-semibold text-[#111827]">
+                                    <div className="flex items-center whitespace-nowrap tabular-nums">
+                                      <span>{mobileReviewSaveCount(row.saveCount)}</span>
+                                      <DiffText value={row.saveCountDiff} />
+                                    </div>
                                   </td>
 
-                                  <td className="truncate px-1 py-2.5 text-[11px] font-semibold leading-[1.4] text-[#374151] md:px-5 md:py-4 md:text-[14px] md:leading-[1.5]">
-                                    {row.keywords.join(", ")}
+                                  <td className="min-w-0 px-5 py-2.5">
+                                    <div
+                                      title={row.keywords.join(", ") || "-"}
+                                      className="min-w-0 truncate whitespace-nowrap text-[13px] font-semibold text-[#374151]"
+                                    >
+                                      {row.keywords.join(", ") || "-"}
+                                    </div>
                                   </td>
                                 </tr>
                               ))
@@ -1183,7 +1199,7 @@ export default function PlaceReviewPage() {
                       </div>
                     </div>
 
-                    <div className="mt-2 flex justify-end text-[10px] text-[#9ca3af] md:mt-3 md:text-[11px]">
+                    <div className="mt-2 flex justify-end text-[10px] text-[#9ca3af] md:mt-2 md:text-[11px]">
                       <div>
                         최근 업데이트:{" "}
                         <span className="font-semibold text-[#6b7280]">

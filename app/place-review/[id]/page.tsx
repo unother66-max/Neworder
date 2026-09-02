@@ -69,6 +69,32 @@ function formatHistoryDateLabel(
   return formatDateLabel(fallback);
 }
 
+function formatDesktopHistoryDateLabel(
+  trackedDate: string | undefined,
+  fallback: string
+) {
+  const normalized = String(trackedDate ?? "");
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+    ? new Date(`${normalized}T00:00:00+09:00`)
+    : new Date(fallback);
+
+  if (Number.isNaN(date.getTime())) {
+    return formatHistoryDateLabel(trackedDate, fallback);
+  }
+
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(date);
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
+
+  return `${month}/${day}(${weekday})`;
+}
+
 function formatDateTimeLabel(value: string) {
   const date = new Date(value);
   return new Intl.DateTimeFormat("ko-KR", {
@@ -101,6 +127,25 @@ function ReviewMetricCell({
     <td className="px-4 py-4 md:px-5">
       <div className="flex items-center gap-2">
         <span className="text-[14px] font-bold tabular-nums text-[#111827] md:text-[15px]">
+          {formatNumber(value)}
+        </span>
+        <PlaceReviewDeltaBadge value={diff} />
+      </div>
+    </td>
+  );
+}
+
+function DesktopReviewMetricCell({
+  value,
+  diff,
+}: {
+  value: number | string | null;
+  diff?: number | null;
+}) {
+  return (
+    <td className="whitespace-nowrap px-4 py-2.5 text-[13px]">
+      <div className="flex items-center gap-1.5 whitespace-nowrap">
+        <span className="font-bold tabular-nums text-[#111827]">
           {formatNumber(value)}
         </span>
         <PlaceReviewDeltaBadge value={diff} />
@@ -636,7 +681,7 @@ export default function PlaceReviewDetailPage() {
               </div>
 
               <div className="rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                <div className="border-b border-[#f3f4f6] px-5 py-4 md:px-6">
+                <div className="border-b border-[#f3f4f6] px-5 py-4 md:px-5 md:py-3">
                   <h2 className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
                     리뷰 히스토리
                   </h2>
@@ -648,7 +693,7 @@ export default function PlaceReviewDetailPage() {
                   role="region"
                   aria-label="날짜별 리뷰 히스토리"
                   tabIndex={0}
-                  className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563EB]"
+                  className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563EB] md:hidden"
                 >
                   <table className="min-w-[760px] border-collapse">
                     <caption className="sr-only">
@@ -724,8 +769,106 @@ export default function PlaceReviewDetailPage() {
                     </tbody>
                   </table>
                 </div>
+
+                <div
+                  role="region"
+                  aria-label="날짜별 리뷰 히스토리"
+                  tabIndex={0}
+                  data-desktop-place-review-detail-history
+                  className="hidden overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563EB] md:block"
+                >
+                  <table className="w-full min-w-[900px] table-fixed border-collapse">
+                    <caption className="sr-only">
+                      날짜별 전체, 방문자, 블로그 리뷰와 저장 수, 키워드 및 전일 대비 증감
+                    </caption>
+                    <colgroup>
+                      <col className="w-[12%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[32%]" />
+                    </colgroup>
+                    <thead className="bg-[#f9fafb]">
+                      <tr className="h-10">
+                        {[
+                          "날짜",
+                          "전체 리뷰",
+                          "방문자 리뷰",
+                          "블로그 리뷰",
+                          "저장수",
+                          "키워드",
+                        ].map((heading) => (
+                          <th
+                            key={heading}
+                            scope="col"
+                            className="whitespace-nowrap px-4 py-2.5 text-left text-[12px] font-extrabold text-[#6b7280]"
+                          >
+                            {heading}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(place.reviewHistory || []).length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-5 py-10 text-center text-[13px] text-[#9ca3af]"
+                          >
+                            아직 저장된 리뷰 이력이 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        place.reviewHistory.map((row) => {
+                          const keywordText =
+                            (row.keywords || []).join(", ") || "-";
+
+                          return (
+                            <tr
+                              key={row.id}
+                              data-desktop-place-review-detail-row={row.id}
+                              className="h-12 border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
+                            >
+                              <td className="whitespace-nowrap px-4 py-2.5 text-[13px] font-bold text-[#374151]">
+                                {formatDesktopHistoryDateLabel(
+                                  row.trackedDate,
+                                  row.updatedAt || row.createdAt
+                                )}
+                              </td>
+                              <DesktopReviewMetricCell
+                                value={row.totalReviewCount}
+                                diff={row.totalReviewDiff}
+                              />
+                              <DesktopReviewMetricCell
+                                value={row.visitorReviewCount}
+                                diff={row.visitorReviewDiff}
+                              />
+                              <DesktopReviewMetricCell
+                                value={row.blogReviewCount}
+                                diff={row.blogReviewDiff}
+                              />
+                              <DesktopReviewMetricCell
+                                value={row.saveCount || "-"}
+                                diff={row.saveCountDiff}
+                              />
+                              <td className="min-w-0 px-4 py-2.5 text-[13px] font-semibold text-[#374151]">
+                                <span
+                                  title={keywordText}
+                                  className="block min-w-0 truncate whitespace-nowrap"
+                                >
+                                  {keywordText}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
                 {place.reviewHistoryHasMore || historyLoadMoreError ? (
-                  <div className="border-t border-[#f3f4f6] px-5 py-4 text-center md:px-6">
+                  <div className="border-t border-[#f3f4f6] px-5 py-4 text-center md:px-5 md:py-3">
                     {historyLoadMoreError ? (
                       <p
                         role="alert"
@@ -739,7 +882,7 @@ export default function PlaceReviewDetailPage() {
                         type="button"
                         onClick={loadMoreHistory}
                         disabled={historyLoadingMore}
-                        className="inline-flex h-[42px] min-w-[160px] items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[13px] font-bold text-[#111827] transition hover:border-[#2563EB] hover:bg-[#eff6ff] hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex h-[42px] min-w-[160px] items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[13px] font-bold text-[#111827] transition hover:border-[#2563EB] hover:bg-[#eff6ff] hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60 md:h-[38px] md:rounded-[12px] md:px-4"
                       >
                         {historyLoadingMore
                           ? "불러오는 중..."
