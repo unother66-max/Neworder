@@ -66,5 +66,47 @@ describe("fetchPcmapPlaceListGraphql", () => {
       targetName: "소풍동물원",
     });
   });
-});
 
+  it("uses placeId before an HTML-encoded registered name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            data: {
+              placeList: {
+                businesses: {
+                  total: 200,
+                  items: [
+                    {
+                      id: "1908590687",
+                      name: "TM광택&스팀세차",
+                      category: "스팀세차",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPcmapPlaceListGraphql({
+      keyword: "안산 광택",
+      targetName: "TM광택&amp;스팀세차",
+      targetPlaceId: "1908590687",
+      start: 141,
+      maxPages: 4,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      status: "FOUND",
+      rank: 141,
+      parsedCount: 1,
+      targetName: "TM광택&amp;스팀세차",
+    });
+  });
+});

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { PlaceReviewDeltaBadge } from "@/components/place-review-delta-badge";
+import { decodeHtmlText } from "@/lib/html-text";
 import { parsePlaceReviewCount } from "@/lib/place-review-history";
 import {
   LineChart,
@@ -50,6 +51,17 @@ type PlaceDetail = {
   chartReviewHistory?: ReviewHistoryRow[];
   chartDays?: number;
 };
+
+function normalizePlaceDisplayText(place: PlaceDetail): PlaceDetail {
+  return {
+    ...place,
+    name: decodeHtmlText(place.name),
+    address: place.address ? decodeHtmlText(place.address) : place.address,
+    jibunAddress: place.jibunAddress
+      ? decodeHtmlText(place.jibunAddress)
+      : place.jibunAddress,
+  };
+}
 
 function formatDateLabel(value: string) {
   const date = new Date(value);
@@ -148,7 +160,7 @@ function DesktopReviewMetricCell({
         <span className="font-bold tabular-nums text-[#111827]">
           {formatNumber(value)}
         </span>
-        <PlaceReviewDeltaBadge value={diff} />
+        <PlaceReviewDeltaBadge value={diff} compact />
       </div>
     </td>
   );
@@ -183,7 +195,7 @@ export default function PlaceReviewDetailPage() {
     if (!res.ok || !data?.ok) {
       throw new Error(data?.message || "상세 조회 실패");
     }
-    setPlace(data.place as PlaceDetail);
+    setPlace(normalizePlaceDisplayText(data.place as PlaceDetail));
     setHistoryLoadMoreError("");
   }, [id]);
 

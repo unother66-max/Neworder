@@ -445,7 +445,11 @@ export default function KakaoPlacePage() {
         const res = await fetch("/api/place-keyword-save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ placeId: kwModalStore.id, keyword: kw }),
+          body: JSON.stringify({
+            placeId: kwModalStore.id,
+            keyword: kw,
+            type: "kakao-place",
+          }),
         });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || `${kw} 저장 실패`);

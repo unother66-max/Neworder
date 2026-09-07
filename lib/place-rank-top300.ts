@@ -26,6 +26,14 @@ export type PlaceRankTop300Row = {
   visitorReviewCount: number | null;
   blogReviewCount: number | null;
   saveCount: string | null;
+  saveCountValue: number | null;
+  saveCountIsApproximate: boolean | null;
+};
+
+export type Top300SaveCountMetric = {
+  display: string | null;
+  value: number | null;
+  isApproximate: boolean | null;
 };
 
 export type PlaceRankTop300Result = {
@@ -78,13 +86,29 @@ function ratingField(value: unknown): string | null {
     : null;
 }
 
-function saveCountField(value: unknown): string | null {
+export function parseTop300SaveCount(
+  value: unknown
+): Top300SaveCountMetric {
   const raw = textField(value);
-  if (!raw) return null;
-  if (/^\d+$/.test(raw)) {
-    return `${Number(raw).toLocaleString("ko-KR")}+`;
+  if (!raw) {
+    return { display: null, value: null, isApproximate: null };
   }
-  return raw;
+
+  const normalized = raw.replace(/,/g, "").replace(/^~/, "").replace(/\+$/, "");
+  const numeric = /^\d+$/.test(normalized) ? Number(normalized) : Number.NaN;
+  const parsedValue = Number.isFinite(numeric)
+    ? Math.max(0, Math.floor(numeric))
+    : null;
+  const display = /^\d+$/.test(raw)
+    ? `${Number(raw).toLocaleString("ko-KR")}+`
+    : raw;
+
+  return {
+    display,
+    value: parsedValue,
+    isApproximate:
+      parsedValue === null ? null : raw.startsWith("~") || raw.endsWith("+"),
+  };
 }
 
 function firstImageUrl(item: JsonRecord): string {
@@ -143,6 +167,7 @@ function mapTop300Row(
     textField(item.category) || textField(item.businessCategory);
   const thumbnail = firstImageUrl(item);
   const address = textField(item.roadAddress) || textField(item.address);
+  const saveCount = parseTop300SaveCount(item.saveCount);
 
   return {
     rank,
@@ -158,7 +183,9 @@ function mapTop300Row(
     blogReviewCount: parseNullableNaverReviewCountField(
       item.blogCafeReviewCount
     ),
-    saveCount: saveCountField(item.saveCount),
+    saveCount: saveCount.display,
+    saveCountValue: saveCount.value,
+    saveCountIsApproximate: saveCount.isApproximate,
   };
 }
 

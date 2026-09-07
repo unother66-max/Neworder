@@ -49,9 +49,11 @@ export function getReviewDeltaPresentation(
 export function PlaceReviewDeltaBadge({
   value,
   className = "",
+  compact = false,
 }: {
   value?: number | null;
   className?: string;
+  compact?: boolean;
 }) {
   const presentation = getReviewDeltaPresentation(value);
   const toneClass =
@@ -67,7 +69,7 @@ export function PlaceReviewDeltaBadge({
       aria-label={presentation.accessibleLabel}
       className={`inline-flex w-fit items-center whitespace-nowrap text-[13px] font-extrabold leading-none tabular-nums md:text-[14px] ${toneClass} ${className}`}
     >
-      {presentation.label}
+      {compact ? presentation.label.replace(/\s+/g, "") : presentation.label}
     </span>
   );
 }

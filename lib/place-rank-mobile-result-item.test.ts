@@ -7,6 +7,7 @@ import PlaceRankMobileResultItem, {
   PlaceRankMobileResultHeader,
   type MobilePlaceRankResult,
 } from "@/components/place-rank-mobile-result-item";
+import type { Top300SnapshotMetric } from "@/lib/place-rank-top300-history";
 
 const baseRow = {
   rank: 1,
@@ -22,10 +23,17 @@ const baseRow = {
 
 function renderMobileRow(
   previousRanks: ReadonlyMap<string, number> | null,
-  row: MobilePlaceRankResult & { saveCount?: string } = baseRow
+  row: MobilePlaceRankResult & { saveCount?: string } = baseRow,
+  previousMetrics: ReadonlyMap<string, Top300SnapshotMetric> | null = null,
+  comparisonActive = false
 ) {
   return renderToStaticMarkup(
-    createElement(PlaceRankMobileResultItem, { row, previousRanks })
+    createElement(PlaceRankMobileResultItem, {
+      row,
+      previousRanks,
+      previousMetrics,
+      comparisonActive,
+    })
   );
 }
 
@@ -102,5 +110,58 @@ describe("place rank mobile result item", () => {
     expect($("[data-mobile-place-rank-cell='rating']").text()).toBe("-");
     expect($("[data-mobile-place-rank-cell='visitor']").text()).toBe("-");
     expect($("[data-mobile-place-rank-cell='blog']").text()).toBe("-");
+  });
+
+  it("adds compact comparison deltas without changing the six-column row", () => {
+    const previousMetrics = new Map<string, Top300SnapshotMetric>([
+      [
+        baseRow.placeId,
+        {
+          placeId: baseRow.placeId,
+          rank: 3,
+          rating: 4.84,
+          visitorReviewCount: 19_135,
+          blogReviewCount: 4_848,
+          saveCount: 12_000,
+          saveCountIsApproximate: true,
+        },
+      ],
+    ]);
+    const html = renderMobileRow(
+      new Map([[baseRow.placeId, 3]]),
+      baseRow,
+      previousMetrics,
+      true
+    );
+    const $ = cheerio.load(html);
+
+    expect($("[data-mobile-place-rank-cell]")).toHaveLength(6);
+    expect($("[data-mobile-place-rank-cell='rating']").text()).toBe(
+      "4.85▲0.01"
+    );
+    expect($("[data-mobile-place-rank-cell='visitor']").text()).toBe(
+      "19,144▲9"
+    );
+    expect($("[data-mobile-place-rank-cell='blog']").text()).toBe(
+      "4,844▼4"
+    );
+    expect(html).toContain('data-metric-movement="up"');
+    expect(html).toContain('data-metric-movement="down"');
+  });
+
+  it("shows neutral unavailable deltas for a legacy rank-only snapshot", () => {
+    const html = renderMobileRow(
+      new Map([[baseRow.placeId, 3]]),
+      baseRow,
+      new Map(),
+      true
+    );
+    const $ = cheerio.load(html);
+
+    expect($("[data-mobile-place-rank-cell='rating']").text()).toBe("4.85-");
+    expect($("[data-mobile-place-rank-cell='visitor']").text()).toBe(
+      "19,144-"
+    );
+    expect($("[data-mobile-place-rank-cell='blog']").text()).toBe("4,844-");
   });
 });

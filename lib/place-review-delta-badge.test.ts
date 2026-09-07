@@ -42,4 +42,13 @@ describe("place review delta badge", () => {
     expect(html).not.toContain("rounded-full");
     expect(html).not.toContain("border");
   });
+
+  it("can render the desktop compact form without spacing inside the delta", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(PlaceReviewDeltaBadge, { value: -12, compact: true })
+    );
+
+    expect(html).toContain("▼12");
+    expect(html).not.toContain("▼ 12");
+  });
 });

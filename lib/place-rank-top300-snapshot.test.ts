@@ -3,19 +3,35 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   savePlaceRankTop300Snapshot,
   type Top300SnapshotDelegate,
+  type Top300TrackedRankDelegate,
 } from "@/lib/place-rank-top300-snapshot";
+import type { Top300SnapshotMetrics } from "@/lib/place-rank-top300-history";
 
 type MemoryRow = {
   keyword: string;
   snapshotDate: string;
   rankedPlaceIds: string[];
+  metrics?: Top300SnapshotMetrics;
+  updatedAt?: Date;
 };
+
+function cloneMetrics(
+  metrics: Top300SnapshotMetrics | undefined
+): Top300SnapshotMetrics | undefined {
+  return metrics
+    ? { version: 1, rows: metrics.rows.map((row) => [...row]) }
+    : undefined;
+}
 
 function createMemoryDelegate(initialRows: MemoryRow[] = []) {
   const rows = new Map(
     initialRows.map((row) => [
       `${row.keyword}\u0000${row.snapshotDate}`,
-      { ...row, rankedPlaceIds: [...row.rankedPlaceIds] },
+      {
+        ...row,
+        rankedPlaceIds: [...row.rankedPlaceIds],
+        ...(row.metrics ? { metrics: cloneMetrics(row.metrics) } : null),
+      },
     ])
   );
   const upsertCalls: Parameters<Top300SnapshotDelegate["upsert"]>[0][] = [];
@@ -30,6 +46,7 @@ function createMemoryDelegate(initialRows: MemoryRow[] = []) {
         keyword: args.create.keyword,
         snapshotDate: args.create.snapshotDate,
         rankedPlaceIds: [...args.update.rankedPlaceIds],
+        metrics: cloneMetrics(args.update.metrics),
       });
       return { id: key };
     },
@@ -46,6 +63,8 @@ function createMemoryDelegate(initialRows: MemoryRow[] = []) {
         .map((row) => ({
           snapshotDate: row.snapshotDate,
           rankedPlaceIds: [...row.rankedPlaceIds],
+          ...(row.updatedAt ? { updatedAt: new Date(row.updatedAt) } : null),
+          ...(row.metrics ? { metrics: cloneMetrics(row.metrics) } : null),
         }));
     },
     async deleteMany(args) {
@@ -91,8 +110,24 @@ describe("TOP300 snapshot persistence", () => {
       {
         keyword: "한남동 맛집",
         results: [
-          { rank: 1, placeId: "C" },
-          { rank: 2, placeId: "A" },
+          {
+            rank: 1,
+            placeId: "C",
+            rating: "4.94",
+            visitorReviewCount: 815,
+            blogReviewCount: 936,
+            saveCountValue: 28_000,
+            saveCountIsApproximate: true,
+          },
+          {
+            rank: 2,
+            placeId: "A",
+            rating: "4.5",
+            visitorReviewCount: 10,
+            blogReviewCount: 20,
+            saveCountValue: 30,
+            saveCountIsApproximate: false,
+          },
         ],
       },
       { reference, delegate: memory.delegate }
@@ -103,6 +138,13 @@ describe("TOP300 snapshot persistence", () => {
       keyword: "한남동 맛집",
       snapshotDate: "2026-09-02",
       rankedPlaceIds: ["C", "A"],
+      metrics: {
+        version: 1,
+        rows: [
+          ["C", 1, 4.94, 815, 936, 28_000, true],
+          ["A", 2, 4.5, 10, 20, 30, false],
+        ],
+      },
     });
     expect(memory.upsertCalls).toHaveLength(2);
     expect(memory.upsertCalls[0].where).toEqual({
@@ -113,6 +155,7 @@ describe("TOP300 snapshot persistence", () => {
     });
     expect(Object.keys(memory.upsertCalls[0].create).sort()).toEqual([
       "keyword",
+      "metrics",
       "rankedPlaceIds",
       "snapshotDate",
     ]);
@@ -182,5 +225,65 @@ describe("TOP300 snapshot persistence", () => {
         rankedPlaceIds: ["A"],
       },
     ]);
+  });
+
+  it("loads only exact KST dates from existing Naver PC rank history", async () => {
+    const rankedPlaceIds = Array.from(
+      { length: 60 },
+      (_, index) => (index === 59 ? "123456789" : `place-${index + 1}`)
+    );
+    const memory = createMemoryDelegate([
+      {
+        keyword: "한남동 맛집",
+        snapshotDate: "2026-09-07",
+        rankedPlaceIds,
+        updatedAt: new Date("2026-09-07T00:18:00.000Z"),
+      },
+    ]);
+    const trackedFindMany = vi.fn<Top300TrackedRankDelegate["findMany"]>();
+    trackedFindMany.mockResolvedValue([
+      {
+        rank: 65,
+        createdAt: new Date("2026-09-07T14:01:00.000Z"),
+        place: {
+          placeUrl: "https://m.place.naver.com/restaurant/123456789/home",
+        },
+      },
+    ]);
+
+    const history = await savePlaceRankTop300Snapshot(
+      {
+        keyword: "한남동 맛집",
+        results: [{ rank: 1, placeId: "NOW" }],
+      },
+      {
+        reference: new Date("2026-09-08T03:00:00.000Z"),
+        delegate: memory.delegate,
+        trackedRankDelegate: { findMany: trackedFindMany },
+      }
+    );
+
+    expect(trackedFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          keyword: "한남동 맛집",
+          rank: { gt: 0 },
+          place: { type: "rank" },
+        }),
+      })
+    );
+    const query = trackedFindMany.mock.calls[0][0];
+    expect(query.where.OR[0]).toEqual({
+      createdAt: {
+        gte: new Date("2026-09-06T15:00:00.000Z"),
+        lt: new Date("2026-09-07T15:00:00.000Z"),
+      },
+    });
+    expect(query.where.OR).toHaveLength(6);
+    expect(history.snapshots[0]).toMatchObject({
+      daysAgo: 1,
+      snapshotDate: "2026-09-07",
+      rankOverrides: [["123456789", 65]],
+    });
   });
 });

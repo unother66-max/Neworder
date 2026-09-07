@@ -98,6 +98,7 @@ describe("place tracking cron", () => {
         place: {
           name: "소풍동물원",
           category: "키즈카페,실내놀이터",
+          placeUrl: "https://m.place.naver.com/place/36192987/home",
           x: "127.072",
           y: "37.117",
         },
@@ -723,6 +724,7 @@ describe("place tracking cron", () => {
       keyword: "평택 동물체험",
       targetName: "소풍동물원",
       placeCategory: "키즈카페,실내놀이터",
+      placeId: "36192987",
       x: "127.072",
       y: "37.117",
       skipVolume: true,

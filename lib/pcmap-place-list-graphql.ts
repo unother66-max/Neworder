@@ -92,6 +92,7 @@ export type PcmapPlaceListParams = {
   display?: number;
   maxPages?: number;
   targetName?: string;
+  targetPlaceId?: string;
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -166,6 +167,7 @@ export async function fetchPcmapPlaceListGraphql(
   const maxPages = Math.min(MAX_PAGES, Math.max(1, Math.floor(params.maxPages ?? MAX_PAGES)));
   const requestedStarts = Array.from({ length: maxPages }, (_, index) => firstStart + index * display);
   const targetName = stringField(params.targetName);
+  const targetPlaceId = stringField(params.targetPlaceId);
   const normalizedTarget = normalizeName(targetName);
   const accumulated: PcmapPlaceListItem[] = [];
   const pages: PcmapPlaceListPageDiagnostic[] = [];
@@ -258,9 +260,13 @@ export async function fetchPcmapPlaceListGraphql(
     if (debugReason) break;
 
     accumulated.push(...items);
-    const foundAt = normalizedTarget
-      ? accumulated.findIndex((item) => normalizeName(item.name) === normalizedTarget)
-      : -1;
+    const foundAt = targetPlaceId
+      ? accumulated.findIndex((item) => item.id === targetPlaceId)
+      : normalizedTarget
+        ? accumulated.findIndex(
+            (item) => normalizeName(item.name) === normalizedTarget
+          )
+        : -1;
     if (foundAt >= 0) {
       return buildResult("FOUND", requestedStarts, pages, accumulated, total, firstStart + foundAt, targetName, null);
     }

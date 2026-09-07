@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import PlaceRankTop300Modal from "@/components/place-rank-top300-modal";
 import TopNav from "@/components/top-nav";
 import { debugFetchBrowserAllSearchJson } from "@/lib/browser-allsearch-debug";
 import { isIntentMixedKeyword } from "@/lib/check-place-rank-intent";
+import { decodeHtmlText } from "@/lib/html-text";
 import {
   logPlaceRankKeywordBlockingResponse,
   mapWithConcurrencyLimit,
@@ -59,6 +61,19 @@ type PlaceDetail = {
   placePcVolume?: number | null;
   jibunAddress?: string | null;
 };
+
+function normalizePlaceDisplayText(place: PlaceDetail | null): PlaceDetail | null {
+  if (!place) return null;
+  return {
+    ...place,
+    name: decodeHtmlText(place.name),
+    category: place.category ? decodeHtmlText(place.category) : place.category,
+    address: place.address ? decodeHtmlText(place.address) : place.address,
+    jibunAddress: place.jibunAddress
+      ? decodeHtmlText(place.jibunAddress)
+      : place.jibunAddress,
+  };
+}
 
 function formatDateLabel(value: string) {
   const date = new Date(value);
@@ -144,6 +159,9 @@ export default function PlaceDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [trackingUpdating, setTrackingUpdating] = useState(false);
   const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
+  const [top300ModalKeyword, setTop300ModalKeyword] = useState<string | null>(
+    null
+  );
   const [keywordInput, setKeywordInput] = useState("");
 
   // 디자인 통일용 상태값 (호버 및 마우스 위치)
@@ -178,7 +196,7 @@ export default function PlaceDetailPage() {
           return;
         }
 
-        setPlace(data.place || null);
+        setPlace(normalizePlaceDisplayText(data.place || null));
       } catch (e) {
         console.error(e);
         setError("상세 조회 중 오류가 발생했습니다.");
@@ -204,7 +222,7 @@ export default function PlaceDetailPage() {
         return;
       }
 
-      setPlace(data.place || null);
+      setPlace(normalizePlaceDisplayText(data.place || null));
     } catch (e) {
       console.error("상세 다시 불러오기 오류:", e);
     }
@@ -275,6 +293,7 @@ export default function PlaceDetailPage() {
                 keyword: keyword.keyword,
                 targetName: place.name,
                 placeCategory: place.category,
+                placeId: publicPlaceId,
                 x: place.x,
                 y: place.y,
                 placeKeywordId: keyword.id,
@@ -922,7 +941,26 @@ export default function PlaceDetailPage() {
                             key={keyword.id}
                             className="min-w-[180px] border-l border-[#e5e7eb] px-4 py-3.5 text-left"
                           >
-                            <div className="text-[13px] font-bold text-[#111827]">
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() =>
+                                setTop300ModalKeyword(keyword.keyword)
+                              }
+                              onKeyDown={(event) => {
+                                if (
+                                  event.key !== "Enter" &&
+                                  event.key !== " "
+                                ) {
+                                  return;
+                                }
+                                event.preventDefault();
+                                setTop300ModalKeyword(keyword.keyword);
+                              }}
+                              title={`${keyword.keyword} TOP300 순위 보기`}
+                              aria-label={`${keyword.keyword} TOP300 순위 모달 열기`}
+                              className="max-w-full cursor-pointer truncate text-[13px] font-bold text-[#111827] underline-offset-2 transition-colors hover:text-[#2563eb] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb]"
+                            >
                               {keyword.keyword}
                             </div>
                             <div className="mt-2 space-y-1 text-[11px] text-[#6b7280]">
@@ -987,11 +1025,6 @@ export default function PlaceDetailPage() {
                                       <div className="mt-0.5 text-[11px] font-semibold text-[#9ca3af]">
                                         {rankMeta.sub}
                                       </div>
-                                      {isIntentMixedKeyword(keyword.keyword) ? (
-                                        <div className="mt-0.5 text-[9px] leading-snug text-[#b0b6bf]">
-                                          모바일 기준
-                                        </div>
-                                      ) : null}
                                     </div>
 
                                     <div className="pt-[2px] text-[11px] font-bold">
@@ -1066,11 +1099,6 @@ export default function PlaceDetailPage() {
                             (chartData[chartData.length - 1]?.rank ?? "-")}
                           {selectedKeyword.currentRank ? "" : "위"}
                         </div>
-                        {isIntentMixedKeyword(selectedKeyword.keyword) ? (
-                          <div className="mt-1 text-[9px] leading-snug text-[#b0b6bf] md:text-[10px] md:leading-tight">
-                            모바일 기준
-                          </div>
-                        ) : null}
                       </div>
 
                       <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">
@@ -1306,6 +1334,11 @@ export default function PlaceDetailPage() {
           </div>
         )}
       </main>
+      <PlaceRankTop300Modal
+        keyword={top300ModalKeyword ?? ""}
+        open={top300ModalKeyword !== null}
+        onClose={() => setTop300ModalKeyword(null)}
+      />
     </>
   );
 }

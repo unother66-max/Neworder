@@ -63,6 +63,7 @@ export type PcmapRestaurantsGraphqlDiagnosticParams = {
   start?: number;
   display?: number;
   targetName?: string;
+  targetPlaceId?: string;
   maxPages?: number;
   fallbackToHtml?: boolean;
 };
@@ -311,6 +312,7 @@ export async function fetchPcmapRestaurantsGraphqlDiagnostic(
     (_, index) => firstStart + index * display
   );
   const targetName = stringField(params.targetName);
+  const targetPlaceId = stringField(params.targetPlaceId);
   const normalizedTarget = normalizeName(targetName);
   const accumulated: PcmapRestaurantGraphqlItem[] = [];
   const pages: PcmapRestaurantsGraphqlPageDiagnostic[] = [];
@@ -408,9 +410,12 @@ export async function fetchPcmapRestaurantsGraphqlDiagnostic(
     if (!response.ok || parsed.debugReason) break;
 
     accumulated.push(...parsed.items);
-    if (normalizedTarget) {
+    if (targetPlaceId || normalizedTarget) {
       const foundAt = accumulated.findIndex(
-        (item) => normalizeName(item.name) === normalizedTarget
+        (item) =>
+          targetPlaceId
+            ? item.id === targetPlaceId
+            : normalizeName(item.name) === normalizedTarget
       );
       if (foundAt >= 0) {
         return diagnosticResult({

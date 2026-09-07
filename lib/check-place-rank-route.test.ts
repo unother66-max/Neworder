@@ -120,6 +120,62 @@ describe("check-place-rank route search mode", () => {
     });
   });
 
+  it("matches the returned business by placeId when the stored name is HTML encoded", async () => {
+    const items = [
+      ...Array.from({ length: 132 }, (_, index) =>
+        placeItem(`other-${index + 1}`, `다른 업체 ${index + 1}`, "세차")
+      ),
+      placeItem("1908590687", "TM광택&스팀세차", "스팀세차"),
+    ];
+    mocks.fetchPlace.mockResolvedValue({
+      ok: true,
+      status: "FOUND",
+      source: "getPlacesList",
+      operationName: "getPlacesList",
+      queryName: "placeList",
+      requestedStarts: [1, 71, 141, 211],
+      completedPages: 2,
+      parsedCount: 133,
+      total: 200,
+      rank: 133,
+      targetName: "TM광택&amp;스팀세차",
+      items,
+      pages: [
+        { start: 1, status: 200, debugReason: null },
+        { start: 71, status: 200, debugReason: null },
+      ],
+      debugReason: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/check-place-rank", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          keyword: "안산 광택",
+          targetName: "TM광택&amp;스팀세차",
+          placeCategory: "스팀세차",
+          placeId: "1908590687",
+          skipVolume: true,
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(mocks.fetchPlace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keyword: "안산 광택",
+        targetPlaceId: "1908590687",
+      })
+    );
+    expect(body).toMatchObject({
+      resultStatus: "FOUND",
+      rank: "133",
+      displayRank: "133위",
+      canSaveRank: true,
+    });
+  });
+
   it("keeps food keywords on the restaurant results", async () => {
     const items = [placeItem("food-1", "한남식당", "한식")];
     mocks.fetchRestaurant.mockResolvedValue({

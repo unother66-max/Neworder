@@ -29,6 +29,7 @@ type TrackedKeyword = {
   place: {
     name: string;
     category: string | null;
+    placeUrl?: string | null;
     x: string | null;
     y: string | null;
   };
@@ -122,6 +123,16 @@ async function runInitialReadWithRetry<T>(
 function boundedReason(value: unknown, fallback: string): string {
   const normalized = String(value ?? "").trim() || fallback;
   return normalized.slice(0, 500);
+}
+
+function extractPublicPlaceId(placeUrl: unknown): string {
+  const value = String(placeUrl ?? "");
+  return (
+    value.match(/restaurant\/(\d+)/) ||
+    value.match(/place\/(\d+)/) ||
+    value.match(/placeId=(\d+)/) ||
+    value.match(/entry\/place\/(\d+)/)
+  )?.[1] ?? "";
 }
 
 function diagnosticStatusForBlock(
@@ -662,6 +673,7 @@ export async function runPlaceTrackingCron(
             keyword: keyword.keyword,
             targetName: keyword.place.name,
             placeCategory: keyword.place.category,
+            placeId: extractPublicPlaceId(keyword.place.placeUrl) || undefined,
             x: keyword.place.x,
             y: keyword.place.y,
             skipVolume: true,

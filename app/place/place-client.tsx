@@ -23,6 +23,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PostlabsSlideHoverButton } from "@/components/postlabs-slide-hover-button";
+import PlaceRankTop300Modal from "@/components/place-rank-top300-modal";
+import { decodeHtmlText } from "@/lib/html-text";
 import {
   LoginRequiredModal,
   PublicPreviewBanner,
@@ -355,7 +357,7 @@ function getRankMeta(rank?: string | number | null) {
 
   if (
     typeof rank === "string" &&
-    (rank.includes("70위 밖") || rank.includes("현재 조회 차단됨"))
+    (rank.includes("위 밖") || rank.includes("현재 조회 차단됨"))
   ) {
     return { main: rank, sub: "-" };
   }
@@ -613,14 +615,17 @@ function getRankChangeUi(rankChange?: number | null) {
 
 function mapPlaceToStore(place: PlaceItem): Store {
   const publicPlaceId = extractPublicPlaceId(place.placeUrl);
-  const links = buildPlaceLinks(publicPlaceId, place.name);
+  const displayName = decodeHtmlText(place.name);
+  const links = buildPlaceLinks(publicPlaceId, displayName);
 
   return {
     dbId: place.id,
-    name: place.name,
-    category: place.category ?? "",
-    address: place.address ?? "",
-    jibunAddress: place.jibunAddress ?? null,
+    name: displayName,
+    category: decodeHtmlText(place.category ?? ""),
+    address: decodeHtmlText(place.address ?? ""),
+    jibunAddress: place.jibunAddress
+      ? decodeHtmlText(place.jibunAddress)
+      : null,
     placeId: publicPlaceId,
     mobilePlaceLink: links.mobilePlaceLink,
     pcPlaceLink: links.pcPlaceLink,
@@ -699,6 +704,9 @@ export default function PlacePage() {
   );
 
   const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
+  const [top300ModalKeyword, setTop300ModalKeyword] = useState<string | null>(
+    null
+  );
   const [selectedStoreIndex, setSelectedStoreIndex] = useState<number | null>(
     null
   );
@@ -950,6 +958,9 @@ useEffect(() => {
       const normalizedItems = (data.items || []).map(
         (item: SearchPlaceItem) => ({
           ...item,
+          title: decodeHtmlText(item.title),
+          category: decodeHtmlText(item.category),
+          address: decodeHtmlText(item.address),
           image: normalizeImageUrl(item.image),
         })
       );
@@ -2262,7 +2273,26 @@ useEffect(() => {
                                     >
                                       <td className="min-w-0 px-1.5 py-2.5 md:px-4 md:py-2.5">
                                         <div className="flex min-w-0 items-center gap-1 md:gap-2">
-                                          <span className="min-w-0 truncate text-[11px] font-bold text-[#111827] md:text-[13px]">
+                                          <span
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() =>
+                                              setTop300ModalKeyword(item.keyword)
+                                            }
+                                            onKeyDown={(event) => {
+                                              if (
+                                                event.key !== "Enter" &&
+                                                event.key !== " "
+                                              ) {
+                                                return;
+                                              }
+                                              event.preventDefault();
+                                              setTop300ModalKeyword(item.keyword);
+                                            }}
+                                            title={`${item.keyword} TOP300 순위 보기`}
+                                            aria-label={`${item.keyword} TOP300 순위 모달 열기`}
+                                            className="min-w-0 cursor-pointer truncate text-[11px] font-bold text-[#111827] underline-offset-2 transition-colors hover:text-[#2563eb] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] md:text-[13px]"
+                                          >
                                             {item.keyword}
                                           </span>
                                           {item.isTracking ? (
@@ -2298,11 +2328,6 @@ useEffect(() => {
                                             <div className="mt-0.5 text-[9px] font-semibold leading-tight text-[#9ca3af] md:mt-0 md:whitespace-nowrap md:text-[11px] md:leading-none">
                                               {rankMeta.sub}
                                             </div>
-                                            {isIntentMixedKeyword(item.keyword) ? (
-                                              <div className="mt-0.5 text-[8px] leading-snug text-[#b0b6bf] md:mt-0 md:whitespace-nowrap md:text-[10px] md:leading-none">
-                                                모바일 기준
-                                              </div>
-                                            ) : null}
                                           </div>
 
                                           <div className={`min-w-[22px] text-[10px] font-bold md:min-w-[36px] md:whitespace-nowrap md:text-[13px] ${rankChangeUi.className}`}>
@@ -2732,6 +2757,11 @@ useEffect(() => {
           </div>
         )}
       </main>
+      <PlaceRankTop300Modal
+        keyword={top300ModalKeyword ?? ""}
+        open={top300ModalKeyword !== null}
+        onClose={() => setTop300ModalKeyword(null)}
+      />
       <LoginRequiredModal open={loginRequiredOpen} onClose={closeLoginRequired} />
     </>
   );

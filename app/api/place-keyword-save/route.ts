@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     const {
       placeId,
       keyword,
+      type,
       mobileVolume,
       pcVolume,
       totalVolume,
@@ -49,11 +50,13 @@ export async function POST(req: Request) {
       );
     }
 
+    const placeType = type === "kakao-place" ? "kakao-place" : "rank";
+
     const ownedPlace = await prisma.place.findFirst({
       where: {
         id: String(placeId),
         userId,
-        type: "rank",
+        type: placeType,
       },
       select: { id: true },
     });

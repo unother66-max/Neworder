@@ -41,6 +41,25 @@ describe("fetchPcmapRestaurantsGraphqlDiagnostic", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("uses placeId before the registered name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      graphqlResponse([{ id: "food-1", name: "네이버 최신 업체명" }])
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPcmapRestaurantsGraphqlDiagnostic({
+      keyword: "한남동 맛집",
+      targetName: "등록 당시 업체명",
+      targetPlaceId: "food-1",
+      maxPages: 4,
+      fallbackToHtml: false,
+    });
+
+    expect(result.status).toBe("FOUND");
+    expect(result.rank).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("stops additional pages and fallback on an explicit CAPTCHA response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

@@ -45,6 +45,7 @@ function normalizeText(value: unknown) {
   const s = String(value).trim();
   if (!s) return "";
   return s
+    .replace(/&amp;|&#0*38;|&#x0*26;/gi, "&")
     .toLowerCase()
     .replace(/\s/g, "")
     .replace(/&/g, "and")
@@ -101,6 +102,7 @@ export async function POST(req: Request) {
       });
     }
     const targetName = String(body.targetName || "").trim();
+    const targetPlaceId = String(body.placeId || body.publicPlaceId || "").trim();
     const placeCategory = String(body.placeCategory || body.category || "").trim();
     const browserAllSearchJson = body?.browserAllSearchJson ?? null;
     const x = body.x ? String(body.x) : "";
@@ -194,6 +196,7 @@ export async function POST(req: Request) {
       const queryKey = [
         useRestaurantGraphql ? "restaurant" : "place",
         actualKeyword,
+        targetPlaceId,
         targetName,
         x,
         y,
@@ -212,6 +215,7 @@ export async function POST(req: Request) {
                 fetchPcmapRestaurantsGraphqlDiagnostic({
                   keyword: actualKeyword,
                   targetName,
+                  targetPlaceId,
                   x: x || undefined,
                   y: y || undefined,
                   start: 1,
@@ -225,6 +229,7 @@ export async function POST(req: Request) {
               fetchPcmapPlaceListGraphql({
                 keyword: actualKeyword,
                 targetName,
+                targetPlaceId,
                 x: x || undefined,
                 y: y || undefined,
                 start: 1,
@@ -459,9 +464,15 @@ export async function POST(req: Request) {
     }
 
     const rank =
-      targetName && fullList.length > 0
+      (targetPlaceId || targetName) && fullList.length > 0
         ? (() => {
             const nTarget = normalizeText(targetName);
+            const idxByPlaceId = targetPlaceId
+              ? fullList.findIndex(
+                  (row) => String(row.placeId || "").trim() === targetPlaceId
+                )
+              : -1;
+            if (idxByPlaceId >= 0) return String(idxByPlaceId + 1);
             if (!nTarget) return "-";
             const idxExact = fullList.findIndex((row) => {
               const nm =

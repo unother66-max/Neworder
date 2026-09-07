@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { fetchNaverPublicPlaceId, fetchNaverPlaceImage } from "@/lib/naver-place-image";
+import { decodeHtmlText } from "@/lib/html-text";
 
 type SearchItem = {
   title: string;
@@ -11,8 +12,18 @@ type SearchItem = {
   image: string;
 };
 
+type NaverLocalSearchItem = {
+  title?: unknown;
+  category?: unknown;
+  roadAddress?: unknown;
+  address?: unknown;
+  link?: unknown;
+};
+
 function stripHtml(value: string) {
-  return String(value || "").replace(/<[^>]*>/g, "").trim();
+  return decodeHtmlText(
+    String(value || "").replace(/<[^>]*>/g, "")
+  ).trim();
 }
 
 function normalizeLink(link: string) {
@@ -70,12 +81,16 @@ export async function POST(request: Request) {
 
     const data = await response.json();
 
-    const baseItems = (data.items || []).map((item: any) => ({
-      title: stripHtml(item.title || ""),
-      category: String(item.category || ""),
-      address: String(item.roadAddress || item.address || ""),
-      link: normalizeLink(String(item.link || "")),
-    }));
+    const baseItems = (Array.isArray(data.items) ? data.items : []).map(
+      (item: NaverLocalSearchItem) => ({
+        title: stripHtml(String(item.title || "")),
+        category: decodeHtmlText(String(item.category || "")),
+        address: decodeHtmlText(
+          String(item.roadAddress || item.address || "")
+        ),
+        link: normalizeLink(String(item.link || "")),
+      })
+    );
 
     const items: SearchItem[] = await Promise.all(
       baseItems.map(async (item: SearchItem) => {

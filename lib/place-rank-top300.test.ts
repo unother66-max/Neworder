@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   collectNaverPlaceTop300,
+  parseTop300SaveCount,
   validateTop300Keyword,
 } from "./place-rank-top300";
 
@@ -84,6 +85,8 @@ describe("collectNaverPlaceTop300", () => {
       visitorReviewCount: 10,
       blogReviewCount: 2,
       saveCount: "100+",
+      saveCountValue: 100,
+      saveCountIsApproximate: true,
     });
     expect(result.results[99]?.rank).toBe(100);
     expect(result.results[199]?.rank).toBe(200);
@@ -140,6 +143,29 @@ describe("collectNaverPlaceTop300", () => {
 
     expect(result.searchMode).toBe("place");
     expect(requestBody[0].variables.input.businessType).toBe("place");
+  });
+});
+
+describe("TOP300 save count parsing", () => {
+  it("keeps Naver bucket markers while extracting only a comparison value", () => {
+    expect(parseTop300SaveCount("28,000+")).toEqual({
+      display: "28,000+",
+      value: 28_000,
+      isApproximate: true,
+    });
+    expect(parseTop300SaveCount("~100")).toEqual({
+      display: "~100",
+      value: 100,
+      isApproximate: true,
+    });
+  });
+
+  it("marks an unadorned numeric raw value as exact", () => {
+    expect(parseTop300SaveCount(28_137)).toEqual({
+      display: "28,137+",
+      value: 28_137,
+      isApproximate: false,
+    });
   });
 });
 

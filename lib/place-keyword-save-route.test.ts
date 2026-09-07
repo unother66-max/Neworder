@@ -81,6 +81,50 @@ describe("place keyword save route", () => {
     expect(mocks.getKeywordSearchVolume).not.toHaveBeenCalled();
   });
 
+  it("saves a keyword for an owned Kakao place using its internal Place id", async () => {
+    mocks.count.mockResolvedValue(0);
+    mocks.findFirst.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/place-keyword-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          placeId: "kakao-place-cuid",
+          keyword: "한남동 맛집",
+          type: "kakao-place",
+          mobileVolume: 100,
+          pcVolume: 20,
+          totalVolume: 120,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.placeFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: "kakao-place-cuid",
+        userId: "user-1",
+        type: "kakao-place",
+      },
+      select: { id: true },
+    });
+    expect(mocks.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          placeId_keyword: {
+            placeId: "kakao-place-cuid",
+            keyword: "한남동 맛집",
+          },
+        },
+        create: expect.objectContaining({
+          placeId: "kakao-place-cuid",
+          keyword: "한남동 맛집",
+        }),
+      })
+    );
+  });
+
   it("rejects unauthenticated requests", async () => {
     mocks.getServerSession.mockResolvedValue(null);
 

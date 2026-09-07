@@ -1,6 +1,9 @@
+import PlaceRankMetricValue from "@/components/place-rank-metric-value";
+import { decodeHtmlText } from "@/lib/html-text";
 import {
   getTop300RankMovement,
   getTop300RankMovementLabel,
+  type Top300SnapshotMetric,
   type Top300RankMovement,
 } from "@/lib/place-rank-top300-history";
 
@@ -22,6 +25,12 @@ function formatCount(value: number | null | undefined): string {
 function formatTextMetric(value: string | null | undefined): string {
   const text = String(value ?? "").trim();
   return text || "-";
+}
+
+function parseNumericMetric(value: string | null | undefined): number | null {
+  const text = String(value ?? "").trim();
+  const parsed = Number(text);
+  return text && Number.isFinite(parsed) ? parsed : null;
 }
 
 function rankMovementTone(movement: Top300RankMovement): string {
@@ -61,9 +70,13 @@ export function PlaceRankMobileResultHeader() {
 export default function PlaceRankMobileResultItem({
   row,
   previousRanks,
+  previousMetrics = null,
+  comparisonActive = false,
 }: {
   row: MobilePlaceRankResult;
   previousRanks: ReadonlyMap<string, number> | null;
+  previousMetrics?: ReadonlyMap<string, Top300SnapshotMetric> | null;
+  comparisonActive?: boolean;
 }) {
   const movement = previousRanks
     ? getTop300RankMovement(row.rank, row.placeId, previousRanks)
@@ -71,12 +84,14 @@ export default function PlaceRankMobileResultItem({
   const rating = formatTextMetric(row.rating);
   const visitorReviewCount = formatCount(row.visitorReviewCount);
   const blogReviewCount = formatCount(row.blogReviewCount);
+  const previousMetric = previousMetrics?.get(row.placeId);
+  const displayName = decodeHtmlText(row.name);
 
   return (
     <article
       role="listitem"
       data-mobile-place-rank-row={row.placeId}
-      aria-label={`${row.rank}위 ${row.name}, 평점 ${rating}, 방문리뷰 ${visitorReviewCount}, 블로그리뷰 ${blogReviewCount}`}
+      aria-label={`${row.rank}위 ${displayName}, 평점 ${rating}, 방문리뷰 ${visitorReviewCount}, 블로그리뷰 ${blogReviewCount}`}
       className="grid min-h-[52px] min-w-0 grid-cols-[46px_36px_minmax(0,1fr)_34px_46px_46px] items-center gap-x-1 px-2 py-2"
     >
       <div
@@ -100,7 +115,7 @@ export default function PlaceRankMobileResultItem({
       {row.thumbnail ? (
         <img
           src={row.thumbnail}
-          alt={`${row.name} 대표 이미지`}
+          alt={`${displayName} 대표 이미지`}
           width={36}
           height={36}
           loading="lazy"
@@ -120,29 +135,48 @@ export default function PlaceRankMobileResultItem({
 
       <div
         data-mobile-place-rank-cell="name"
-        title={row.name}
+        title={displayName}
         className="min-w-0 truncate text-[11px] font-bold leading-4 text-[#111827]"
       >
-        {row.name}
+        {displayName}
       </div>
 
       <div
         data-mobile-place-rank-cell="rating"
         className="whitespace-nowrap text-center text-[10px] font-bold tabular-nums text-[#374151]"
       >
-        {rating}
+        <PlaceRankMetricValue
+          value={rating}
+          currentValue={parseNumericMetric(row.rating)}
+          previousValue={previousMetric?.rating}
+          comparisonActive={comparisonActive}
+          fractionDigits={2}
+          compact
+        />
       </div>
       <div
         data-mobile-place-rank-cell="visitor"
         className="whitespace-nowrap text-center text-[10px] font-semibold tabular-nums text-[#4b5563]"
       >
-        {visitorReviewCount}
+        <PlaceRankMetricValue
+          value={visitorReviewCount}
+          currentValue={row.visitorReviewCount}
+          previousValue={previousMetric?.visitorReviewCount}
+          comparisonActive={comparisonActive}
+          compact
+        />
       </div>
       <div
         data-mobile-place-rank-cell="blog"
         className="whitespace-nowrap text-center text-[10px] font-semibold tabular-nums text-[#4b5563]"
       >
-        {blogReviewCount}
+        <PlaceRankMetricValue
+          value={blogReviewCount}
+          currentValue={row.blogReviewCount}
+          previousValue={previousMetric?.blogReviewCount}
+          comparisonActive={comparisonActive}
+          compact
+        />
       </div>
     </article>
   );

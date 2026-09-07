@@ -22,6 +22,7 @@ import PlaceReviewMobileHistory, {
   mobileReviewDateLabel,
   mobileReviewSaveCount,
 } from "@/components/place-review-mobile-history";
+import { decodeHtmlText } from "@/lib/html-text";
 
 const TopNav = dynamic(() => import("@/components/top-nav"), {
   ssr: false,
@@ -215,14 +216,15 @@ function mapApiPlaceToStore(place: ApiPlace): StoreItem {
       : new Date().toISOString();
 
   const publicPlaceId = extractPublicPlaceId(place.placeUrl);
-  const links = buildPlaceLinks(publicPlaceId, place.name);
+  const displayName = decodeHtmlText(place.name);
+  const links = buildPlaceLinks(publicPlaceId, displayName);
 
   return {
     id: place.id,
-    name: place.name,
-    displayName: place.name,
-    category: place.category || "",
-    address: place.jibunAddress || place.address || "-",
+    name: displayName,
+    displayName,
+    category: decodeHtmlText(place.category || ""),
+    address: decodeHtmlText(place.jibunAddress || place.address || "-"),
     imageUrl:
       place.imageUrl ||
       "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800&auto=format&fit=crop",
@@ -436,6 +438,9 @@ export default function PlaceReviewPage() {
       setRegisterResults(
         (data.items || []).map((item: { title: string; category: string; address: string; link: string; image?: string }) => ({
           ...item,
+          title: decodeHtmlText(item.title),
+          category: decodeHtmlText(item.category),
+          address: decodeHtmlText(item.address),
           image: item.image
             ? item.image.startsWith("//")
               ? `https:${item.image}`
