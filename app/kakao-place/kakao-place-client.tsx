@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin, Trash2 } from "lucide-react";
+import { DeleteMoreMenu } from "@/components/delete-more-menu";
+import { PinToggleButton } from "@/components/pin-toggle-button";
 import {
   LoginRequiredModal,
   PublicPreviewBanner,
@@ -487,14 +488,14 @@ export default function KakaoPlacePage() {
         onClickCapture={previewCapture}
       >
         {isPreview ? <PublicPreviewBanner /> : null}
-        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
+        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-4 lg:px-8">
 
           {/* Page header */}
-          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-5 md:py-3 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2.5 md:gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                  <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[22px]">
                     카카오맵 순위 추적
                   </h2>
                   <span className="rounded-full bg-[#eff6ff] px-2 py-0.5 text-[10px] font-bold text-[#2563eb] md:py-1 md:text-[11px]">
@@ -506,14 +507,14 @@ export default function KakaoPlacePage() {
                 </p>
               </div>
 
-              <div className="flex w-full flex-col gap-2 sm:flex-row md:gap-3 lg:w-auto lg:items-center">
+              <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:items-center">
               <div className="relative hidden w-full sm:block sm:w-[320px]">
                   <input
                     type="text"
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     placeholder="등록된 매장 검색"
-                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white md:h-[44px] md:rounded-[14px] md:px-4 md:pr-11 md:text-[13px]"
+                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white md:h-[40px] md:px-3 md:pr-10 md:text-[13px]"
                   />
                   <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#6b7280] md:right-4 md:text-[14px]">
                     🔍
@@ -524,7 +525,7 @@ export default function KakaoPlacePage() {
                   onMouseLeave={() => setIsAddHovered(false)}
                   onMouseMove={handleMouseMove}
                   onClick={() => setRegisterOpen(true)}
-                  className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]"
+                  className="postlabs-action-button relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden whitespace-nowrap rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[40px] md:min-w-[100px] md:px-3 md:text-[13px]"
                 >
                   <span className="relative z-30 pointer-events-none">매장 등록</span>
                   <div
@@ -553,7 +554,7 @@ export default function KakaoPlacePage() {
               </div>
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:mt-3 md:gap-2 md:pt-3">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-[#f3f4f6] pt-2 md:mt-2.5 md:gap-1.5 md:pt-2.5">
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-[15px] font-black tracking-[-0.02em] text-[#111827] md:text-[17px]">
@@ -563,7 +564,7 @@ export default function KakaoPlacePage() {
                     {filteredStores.length}개
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] text-[#6b7280] md:mt-2 md:text-[12px]">
+                <p className="mt-1 text-[11px] text-[#6b7280] md:text-[12px]">
                   {storeLoading
                     ? "📍 매장 목록 불러오는 중..."
                     : storeError
@@ -578,7 +579,7 @@ export default function KakaoPlacePage() {
           </div>
 
           {/* Store list */}
-          <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
+          <div className="mt-2.5 space-y-3 md:mt-4 md:space-y-3">
             {storeLoading ? (
               <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-4 py-10 text-center text-[13px] text-[#9ca3af] md:rounded-[22px] md:px-6 md:py-14 md:text-[14px]">불러오는 중...</div>
             ) : storeError ? (
@@ -588,7 +589,7 @@ export default function KakaoPlacePage() {
                 <button
                   type="button"
                   onClick={() => void fetchStores()}
-                  className="mt-4 rounded-[10px] bg-[#333333] px-4 py-2 text-[12px] font-bold text-white transition hover:bg-[#2563EB] md:text-[13px]"
+                  className="postlabs-action-button mt-4 rounded-[10px] bg-[#333333] px-4 py-2 text-[12px] font-bold text-white transition hover:bg-[#2563EB] md:text-[13px]"
                 >
                   다시 시도
                 </button>
@@ -604,15 +605,15 @@ export default function KakaoPlacePage() {
                   key={store.id}
                   className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="px-3 py-2.5 md:px-6 md:py-4">
-                    <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="px-3 py-2.5 md:px-5 md:py-3">
+                    <div className="flex flex-col gap-2.5 md:gap-2 xl:flex-row xl:items-start xl:justify-between">
 
                       {/* Info */}
-                      <div className="flex min-w-0 gap-2.5 md:gap-4">
+                      <div className="flex min-w-0 gap-2.5 md:flex-1 md:gap-2.5">
                         {store.imageUrl ? (
                           <img
                             src={store.imageUrl} alt={store.name}
-                            className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] ${
+                            className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px] ${
                               store.id.startsWith("sample-kakao-place-")
                                 ? "bg-white object-contain p-1"
                                 : "object-cover"
@@ -621,13 +622,13 @@ export default function KakaoPlacePage() {
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                           />
                         ) : (
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] md:text-[12px]">이미지</div>
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px] md:text-[12px]">이미지</div>
                         )}
 
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-start justify-between gap-2">
                             <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-wrap md:gap-2">
-                              <h3 className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:text-[20px]">{store.name}</h3>
+                              <h3 className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:text-[18px]">{store.name}</h3>
                               {store.category && (
                                 <span className="max-w-[88px] shrink-0 truncate rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:max-w-none md:px-2.5 md:py-1 md:text-[11px]">{store.category}</span>
                               )}
@@ -640,17 +641,9 @@ export default function KakaoPlacePage() {
                                   카카오맵
                                 </a>
                               ) : null}
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(store.id)}
-                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3]"
-                                aria-label="삭제"
-                              >
-                                <Trash2 className="h-4 w-4 stroke-[#dc2626]" strokeWidth={2} />
-                              </button>
                             </div>
                           </div>
-                          <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">{store.address || "-"}</p>
+                          <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:leading-4 md:text-[13px] md:text-[#6b7280]">{store.address || "-"}</p>
                           <div className="mt-1.5 flex justify-end md:hidden">
                             <button
                               type="button"
@@ -674,11 +667,11 @@ export default function KakaoPlacePage() {
                               </span>
                             </button>
                           </div>
-                          <div className="mt-1 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-2 md:flex md:gap-2 md:text-[12px]">
+                          <div className="mt-1 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-1.5 md:flex md:gap-1.5 md:text-[11px]">
                             <span className="font-semibold text-[#6b7280]">바로가기</span>
                             {store.kakaoUrl ? (
                               <a href={store.kakaoUrl} target="_blank" rel="noreferrer"
-                                className="inline-flex h-6 items-center rounded-full border border-[#d1d5db] bg-white px-2 text-[10px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:h-auto md:px-3 md:py-1.5 md:text-[12px]">
+                                className="inline-flex h-6 items-center rounded-full border border-[#d1d5db] bg-white px-2 text-[10px] font-bold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-0.5 md:text-[11px]">
                                 카카오맵
                               </a>
                             ) : (
@@ -689,15 +682,13 @@ export default function KakaoPlacePage() {
                       </div>
 
                       {/* Actions */}
-                      <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-2 xl:overflow-visible">
-                        <button
-                          type="button"
+                      <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:self-end md:gap-1 md:overflow-visible xl:ml-auto xl:self-auto">
+                        <PinToggleButton
                           onClick={() => handleTogglePin(store)}
-                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f9fafb] md:h-[42px] md:w-[42px] md:rounded-[14px]"
-                          aria-label="핀 고정"
-                        >
-                          <Pin className={`h-4 w-4 transition md:h-[20px] md:w-[20px] ${store.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
-                        </button>
+                          pinned={store.isPinned}
+                          pinnedLabel="핀 고정 해제"
+                          unpinnedLabel="핀 고정"
+                        />
 
                         <button
                           onClick={() => handleUpdate(store)}
@@ -705,7 +696,7 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setUpdateHover({ id: store.id, x: updateHover.x, y: updateHover.y })}
                           onMouseLeave={() => setUpdateHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleUpdateMouseMove(e, store.id)}
-                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4"
+                          className="postlabs-action-button relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 md:h-8 md:flex-none md:shrink-0 md:px-2.5 md:text-[12px] md:font-extrabold"
                         >
                           <span className="relative z-30 pointer-events-none">
                             {updatingId === store.id ? "업데이트 중..." : "업데이트"}
@@ -739,7 +730,7 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setRankChangeHover({ id: store.id, x: rankChangeHover.x, y: rankChangeHover.y })}
                           onMouseLeave={() => setRankChangeHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleRankChangeMouseMove(e, store.id)}
-                          className={`relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px] ${rankChangeHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                          className={`postlabs-action-button relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-8 md:flex-none md:shrink-0 md:px-2.5 md:text-[12px] md:font-extrabold ${rankChangeHover.id === store.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                         >
                           <span className="relative z-30 pointer-events-none md:hidden">순위변화</span>
                           <span className="relative z-30 pointer-events-none hidden md:inline">순위변화보기</span>
@@ -773,7 +764,7 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setTrackingHover({ id: store.id, x: trackingHover.x, y: trackingHover.y })}
                           onMouseLeave={() => setTrackingHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleTrackingMouseMove(e, store.id)}
-                          className={`relative hidden h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-all duration-300 ease-in-out disabled:opacity-60 md:inline-flex md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === store.id ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
+                          className={`postlabs-action-button relative hidden h-8 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] px-2.5 text-xs font-bold transition-all duration-300 ease-in-out disabled:opacity-60 md:inline-flex md:h-8 md:px-2.5 md:text-[12px] md:font-extrabold ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === store.id ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
                         >
                           <span className="relative z-30 pointer-events-none">
                             {trackingLoadingId === store.id ? "처리 중" : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}
@@ -807,7 +798,7 @@ export default function KakaoPlacePage() {
                           onMouseEnter={() => setKwManageHover({ id: store.id, x: kwManageHover.x, y: kwManageHover.y })}
                           onMouseLeave={() => setKwManageHover((prev) => prev.id === store.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleKwManageMouseMove(e, store.id)}
-                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]"
+                          className="postlabs-action-button relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out md:h-8 md:flex-none md:shrink-0 md:px-2.5 md:text-[12px] md:font-extrabold"
                         >
                           <span className="relative z-30 pointer-events-none">키워드 관리</span>
                           <div
@@ -834,19 +825,18 @@ export default function KakaoPlacePage() {
                           />
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(store.id)}
-                          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3] md:inline-flex md:h-[42px] md:w-[42px] md:rounded-[14px] md:border-transparent md:bg-white md:text-[#111827] md:hover:bg-[#f3f4f6]"
-                        >
-                          <Trash2 className="h-4 w-4 stroke-[#dc2626] md:h-[18px] md:w-[18px] md:stroke-[#111827]" strokeWidth={2} />
-                        </button>
+                        <DeleteMoreMenu
+                          disabled={deletingId === store.id}
+                          onDelete={() => handleDelete(store.id)}
+                          buttonLabel="매장 더보기"
+                          menuLabel="매장 작업"
+                        />
                       </div>
                     </div>
                   </div>
 
                   {/* Keyword table */}
-                  <div className="border-t border-[#f3f4f6] px-3 pb-3 md:px-6 md:pb-4">
+                  <div className="border-t border-[#f3f4f6] px-3 pb-3 md:px-5 md:pb-3">
                     <div className="mb-2 mt-2.5 md:mt-3">
                       <p className="text-[11px] font-semibold text-[#6b7280]">키워드 검색 순위</p>
                     </div>
@@ -928,7 +918,7 @@ export default function KakaoPlacePage() {
                   onMouseMove={handleModalSearchMouseMove}
                   onClick={handleRegSearch}
                   disabled={regSearchLoading}
-                  className="relative inline-flex h-[44px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                  className="postlabs-action-button relative inline-flex h-[44px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                 >
                   <span className="relative z-30 pointer-events-none">{regSearchLoading ? "검색 중" : "검색"}</span>
                   <div
@@ -981,7 +971,7 @@ export default function KakaoPlacePage() {
                       onMouseMove={(e) => handleModalRegMouseMove(e, item.kakaoId)}
                       onClick={() => handleRegSave(item)}
                       disabled={regSavingId === item.kakaoId}
-                      className="relative inline-flex h-[36px] shrink-0 min-w-[70px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                      className="postlabs-action-button relative inline-flex h-[36px] shrink-0 min-w-[70px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                     >
                       <span className="relative z-30 pointer-events-none">{regSavingId === item.kakaoId ? "등록 중" : "등록"}</span>
                       <div
@@ -1026,7 +1016,7 @@ export default function KakaoPlacePage() {
                   <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">{kwModalStore.name}</h2>
                   <p className="mt-2 text-[14px] text-[#6b7280]">키워드를 직접 입력해서 관리하세요.</p>
                 </div>
-                <button onClick={closeKwModal} className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]">닫기</button>
+                <button onClick={closeKwModal} className="postlabs-action-button rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]">닫기</button>
               </div>
             </div>
             <div className="max-h-[78vh] overflow-y-auto px-6 py-6">
@@ -1044,7 +1034,7 @@ export default function KakaoPlacePage() {
                     placeholder="쉼표(,)로 여러 개 입력 가능"
                     className="h-[48px] flex-1 rounded-[16px] border border-[#d1d5db] bg-[#fafafa] px-4 text-[14px] outline-none transition focus:border-[#2563eb] focus:bg-white"
                   />
-                  <button onClick={addDirectKeywords} className="h-[48px] rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">추가</button>
+                  <button onClick={addDirectKeywords} className="postlabs-action-button h-[48px] rounded-[16px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">추가</button>
                 </div>
               </div>
               <div className="mt-5 rounded-[18px] border border-[#e5e7eb] bg-white p-5">
@@ -1068,14 +1058,14 @@ export default function KakaoPlacePage() {
             </div>
             <div className="border-t border-[#f3f4f6] bg-[#fcfcfc] px-6 py-4">
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button onClick={closeKwModal} className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">취소</button>
+                <button onClick={closeKwModal} className="postlabs-action-button h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]">취소</button>
                 <button
                   onMouseEnter={() => setKwSaveHovered(true)}
                   onMouseLeave={() => setKwSaveHovered(false)}
                   onMouseMove={handleKwSaveMouseMove}
                   onClick={saveKeywords}
                   disabled={kwSaving}
-                  className="relative inline-flex h-[46px] min-w-[120px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                  className="postlabs-action-button relative inline-flex h-[46px] min-w-[120px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                 >
                   <span className="relative z-30 pointer-events-none">{kwSaving ? "저장 중" : "키워드 저장"}</span>
                   <div

@@ -1,35 +1,90 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import TopNav from "@/components/top-nav";
 import MeshGradient from "@/components/MeshGradient";
 import AutoSpinGlobe from "@/components/AutoSpinGlobe";
 
+type HomeCtaProps = {
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+};
+
+function HomeCta({ href, children, className = "" }: HomeCtaProps) {
+  const glowRef = useRef<HTMLSpanElement>(null);
+  const rectRef = useRef<DOMRect | null>(null);
+  const pointerRef = useRef({ x: 0, y: 0 });
+  const pointerFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pointerFrameRef.current !== null) cancelAnimationFrame(pointerFrameRef.current);
+    };
+  }, []);
+
+  const updateGlowPosition = () => {
+    pointerFrameRef.current = null;
+    const glow = glowRef.current;
+    if (!glow) return;
+    const { x, y } = pointerRef.current;
+    glow.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLAnchorElement>) => {
+    const rect = rectRef.current;
+    if (!rect) return;
+    pointerRef.current = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+    if (pointerFrameRef.current === null) {
+      pointerFrameRef.current = requestAnimationFrame(updateGlowPosition);
+    }
+  };
+
+  return (
+    <Link
+      href={href}
+      onPointerEnter={(event) => {
+        rectRef.current = event.currentTarget.getBoundingClientRect();
+        handlePointerMove(event);
+      }}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={() => {
+        rectRef.current = null;
+      }}
+      className={`group relative isolate z-20 inline-flex items-center overflow-hidden rounded-full border-2 border-black bg-transparent px-5 py-3 text-sm font-bold tracking-wide text-black transition-colors duration-150 hover:border-[#0029FF] hover:text-white md:px-8 md:py-4 ${className}`}
+    >
+      <span className="relative z-30 text-current">{children}</span>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 origin-left scale-x-0 bg-[#0029FF] transition-transform duration-150 ease-in-out group-hover:scale-x-100"
+      />
+      <span
+        ref={glowRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 z-20 h-28 w-28 rounded-full opacity-0 blur-2xl transition-opacity duration-200 ease-out will-change-transform group-hover:opacity-100 md:h-40 md:w-40"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.45) 38%, rgba(255,255,255,0) 72%)",
+          mixBlendMode: "soft-light",
+          filter:
+            "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
+        }}
+      />
+    </Link>
+  );
+}
+
 export default function HomePage() {
-  const [isCtaHovered, setIsCtaHovered] = useState(false);
-  const [ctaMousePos, setCtaMousePos] = useState({ x: 0, y: 0 });
-
-  const handleCtaMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setCtaMousePos({ x, y });
-  };
-
-  const [isBottomCtaHovered, setIsBottomCtaHovered] = useState(false);
-  const [bottomCtaMousePos, setBottomCtaMousePos] = useState({ x: 0, y: 0 });
-
-  const handleBottomCtaMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setBottomCtaMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-  };
 
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-white text-slate-900 font-sans">
       {/* 배경 컨테이너 */}
       <div className="fixed inset-0 z-0 pointer-events-none mask-fade-bottom">
-        <MeshGradient />
+        <MeshGradient visibilityTargetId="home-hero" />
         <div className="noise-overlay"></div>
       </div>
 
@@ -37,7 +92,7 @@ export default function HomePage() {
         <TopNav showBreadcrumb={false} />
       </div>
 
-      <section className="relative z-10 h-[100svh] min-h-[600px] w-full overflow-hidden md:h-screen md:min-h-[640px]">
+      <section id="home-hero" className="relative z-10 h-[100svh] min-h-[600px] w-full overflow-hidden md:h-screen md:min-h-[640px]">
         
         {/* 💡 1층 (z-10): 지구본 영역 (스크린샷 24번 기준 완벽 복구) */}
         {/* 기존의 absolute right 설정과 calc(100vw - 994px) 연산을 그대로 가져왔습니다. */}
@@ -63,51 +118,9 @@ export default function HomePage() {
               순위 분석까지 한 곳에서 관리할 수 있습니다.
             </p>
             <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row md:mt-12 md:gap-4">
-              <Link
-                href="/place"
-                onMouseEnter={() => setIsCtaHovered(true)}
-                onMouseLeave={() => setIsCtaHovered(false)}
-                onMouseMove={handleCtaMouseMove}
-                className={`
-                  relative isolate z-20 inline-flex items-center rounded-full px-5 py-3 text-sm font-bold tracking-wide md:px-8 md:py-4 md:text-lg
-                  bg-transparent border-2 transition-colors duration-0 ease-in-out overflow-hidden
-                  ${isCtaHovered ? 'text-white border-[#0029FF]' : 'text-black border-black'}
-                `}
-              >
-                <span className="relative z-30" style={{ color: isCtaHovered ? "#FFFFFF" : "#000000" }}>
-                  지금 시작하기
-                </span>
-
-                <div
-                  className="pointer-events-none absolute inset-0 w-full h-full z-0"
-                  style={{
-                    transformOrigin: "left",
-                    transform: isCtaHovered ? "scaleX(1)" : "scaleX(0)",
-                    transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
-                    backgroundColor: "#0029FF",
-                    opacity: 1,
-                    mixBlendMode: "normal",
-                  }}
-                />
-
-                <div
-                  className={`
-                    absolute -translate-x-1/2 -translate-y-1/2 h-28 w-28 rounded-full blur-2xl md:h-40 md:w-40
-                    transition-opacity duration-200 ease-out
-                    ${isCtaHovered ? "opacity-100" : "opacity-0"}
-                  `}
-                  style={{
-                    left: `${ctaMousePos.x}px`,
-                    top: `${ctaMousePos.y}px`,
-                    pointerEvents: "none",
-                    zIndex: 25,
-                    backgroundImage:
-                      "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.45) 38%, rgba(255,255,255,0) 72%)",
-                    mixBlendMode: "soft-light",
-                    filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
-                  }}
-                />
-              </Link>
+              <HomeCta href="/place" className="md:text-lg">
+                지금 시작하기
+              </HomeCta>
             </div>
           </div>
         </div>
@@ -161,49 +174,9 @@ export default function HomePage() {
           </h2>
 
           <div className="mt-14 flex justify-center md:mt-16">
-            <Link
-              href="/place"
-              onMouseEnter={() => setIsBottomCtaHovered(true)}
-              onMouseLeave={() => setIsBottomCtaHovered(false)}
-              onMouseMove={handleBottomCtaMouseMove}
-              className={`
-                relative isolate z-20 inline-flex items-center rounded-full px-5 py-3 text-sm font-bold tracking-wide
-                bg-transparent border-2 transition-colors duration-0 ease-in-out overflow-hidden
-                md:px-8 md:py-4 md:text-base
-                ${isBottomCtaHovered ? "text-white border-[#0029FF]" : "text-black border-black"}
-              `}
-            >
-              <span className="relative z-30" style={{ color: isBottomCtaHovered ? "#FFFFFF" : "#000000" }}>
-                순위 확인하기
-              </span>
-              <div
-                className="pointer-events-none absolute inset-0 w-full h-full z-0"
-                style={{
-                  transformOrigin: "left",
-                  transform: isBottomCtaHovered ? "scaleX(1)" : "scaleX(0)",
-                  transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
-                  backgroundColor: "#0029FF",
-                  opacity: 1,
-                  mixBlendMode: "normal",
-                }}
-              />
-              <div
-                className={`
-                  absolute -translate-x-1/2 -translate-y-1/2 h-28 w-28 rounded-full blur-2xl md:h-40 md:w-40
-                  transition-opacity duration-200 ease-out
-                  ${isBottomCtaHovered ? "opacity-100" : "opacity-0"}
-                `}
-                style={{
-                  left: `${bottomCtaMousePos.x}px`,
-                  top: `${bottomCtaMousePos.y}px`,
-                  pointerEvents: "none",
-                  zIndex: 25,
-                  backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.45) 38%, rgba(255,255,255,0) 72%)",
-                  mixBlendMode: "soft-light",
-                  filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))",
-                }}
-              />
-            </Link>
+            <HomeCta href="/place" className="md:text-base">
+              순위 확인하기
+            </HomeCta>
           </div>
         </div>
       </section>

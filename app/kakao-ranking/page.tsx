@@ -4,8 +4,12 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin, Trash2 } from "lucide-react";
 import Tooltip from "@/components/Tooltip";
+import { DeleteMoreMenu } from "@/components/delete-more-menu";
+import {
+  PinnedStatusIcon,
+  PinToggleButton,
+} from "@/components/pin-toggle-button";
 import {
   LoginRequiredModal,
   PublicPreviewBanner,
@@ -315,10 +319,10 @@ export default function KakaoRankingPage() {
         onClickCapture={previewCapture}
       >
         {isPreview ? <PublicPreviewBanner /> : null}
-        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8">
+        <section className="mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-4 lg:px-8">
           
-          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-5 md:py-3 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2.5 md:gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">지역 순위 추적</h2>
@@ -331,7 +335,7 @@ export default function KakaoRankingPage() {
                   <input
                     type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)}
                     placeholder="등록된 매장 검색"
-                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition focus:border-[#2563eb] focus:bg-white md:h-[44px] md:rounded-[14px] md:px-4 md:pr-11 md:text-[13px]"
+                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition focus:border-[#2563eb] focus:bg-white md:h-[40px] md:px-3 md:pr-10 md:text-[13px]"
                   />
                   <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#6b7280] md:right-4 md:text-[14px]">🔍</div>
                 </div>
@@ -339,7 +343,7 @@ export default function KakaoRankingPage() {
                   onMouseEnter={() => setIsAddHovered(true)} onMouseLeave={() => setIsAddHovered(false)}
                   onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setAddMousePos({ x: e.clientX - r.left, y: e.clientY - r.top }); }}
                   onClick={() => setIsRegisterModalOpen(true)}
-                  className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]"
+                  className="postlabs-action-button relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden whitespace-nowrap rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[40px] md:min-w-[100px] md:px-3 md:text-[13px]"
                 >
                   <span className="relative z-30 pointer-events-none">매장 등록</span>
                   <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: isAddHovered ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />
@@ -365,13 +369,13 @@ export default function KakaoRankingPage() {
               const rowId = store.id;
               return (
                 <div key={store.id} className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                  <div className="px-3 py-2.5 md:px-6 md:py-4">
-                    <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="flex min-w-0 gap-2.5 md:gap-4">
+                  <div className="px-3 py-2.5 md:px-5 md:py-3">
+                    <div className="flex flex-col gap-2.5 md:gap-2 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="flex min-w-0 gap-2.5 md:flex-1 md:gap-2.5">
                         {store.imageUrl ? <img src={store.imageUrl} alt={store.name} className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] ${store.id.startsWith("sample-kakao-") ? "bg-white object-contain p-1" : "object-cover"}`} referrerPolicy="no-referrer" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-[70px] md:w-[70px] md:rounded-[16px] md:text-[12px]">이미지</div>}
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5 md:gap-2">
-                            {store.isPinned && <Pin className="h-3.5 w-3.5 fill-[#2563EB] stroke-[#2563EB] md:h-[14px] md:w-[14px]" />}
+                            {store.isPinned && <PinnedStatusIcon />}
                             <h3 className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:text-[20px]">{store.name}</h3>
                             {store.category && <span className="max-w-[88px] shrink-0 truncate rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:max-w-none md:px-2.5 md:py-1 md:text-[11px]">{store.category}</span>}
                           </div>
@@ -381,16 +385,17 @@ export default function KakaoRankingPage() {
                       </div>
 
                       <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-2 xl:overflow-visible">
-                        <button onClick={() => handleTogglePin(store)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-transparent bg-white transition hover:border-[#e5e7eb] hover:bg-[#f9fafb] md:h-[42px] md:w-[42px] md:rounded-[14px]">
-                          <Pin className={`h-4 w-4 md:h-[20px] md:w-[20px] ${store.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
-                        </button>
+                        <PinToggleButton
+                          onClick={() => handleTogglePin(store)}
+                          pinned={store.isPinned}
+                        />
                         
                         <button
                           onClick={() => handleUpdateRank(store)} disabled={updatingId === store.id}
                           onMouseEnter={() => setUpdateHover({ id: rowId, x: 0, y: 0 })}
                           onMouseLeave={() => setUpdateHover({ id: null, x: 0, y: 0 })}
                           onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setUpdateHover({ id: rowId, x: e.clientX - r.left, y: e.clientY - r.top }); }}
-                          className="relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px]"
+                          className="postlabs-action-button relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 md:h-8 md:px-2.5 md:text-[12px] md:font-extrabold"
                         >
                           <span className="relative z-30 pointer-events-none">{updatingId === store.id ? "업데이트 중..." : "업데이트"}</span>
                           <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: updateHover.id === rowId ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />
@@ -402,7 +407,7 @@ export default function KakaoRankingPage() {
                           onMouseEnter={() => setViewChangeHover({ id: rowId, x: 0, y: 0 })}
                           onMouseLeave={() => setViewChangeHover({ id: null, x: 0, y: 0 })}
                           onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setViewChangeHover({ id: rowId, x: e.clientX - r.left, y: e.clientY - r.top }); }}
-                          className={`relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${viewChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                          className={`postlabs-action-button relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-8 md:px-2.5 md:text-[12px] md:font-extrabold ${viewChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                         >
                           <span className="relative z-30 pointer-events-none md:hidden">순위변화</span>
                           <span className="relative z-30 pointer-events-none hidden md:inline">순위변화보기</span>
@@ -415,16 +420,19 @@ export default function KakaoRankingPage() {
                           onMouseEnter={() => setTrackingHover({ id: rowId, x: 0, y: 0 })}
                           onMouseLeave={() => setTrackingHover({ id: null, x: 0, y: 0 })}
                           onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTrackingHover({ id: rowId, x: e.clientX - r.left, y: e.clientY - r.top }); }}
-                          className={`relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-all duration-300 ease-in-out disabled:opacity-60 md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === rowId ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
+                          className={`postlabs-action-button relative isolate inline-flex h-8 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] px-2.5 text-xs font-bold transition-all duration-300 ease-in-out disabled:opacity-60 md:h-8 md:px-2.5 md:text-[12px] md:font-extrabold ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === rowId ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
                         >
                           <span className="relative z-30 pointer-events-none">{trackingLoadingId === store.id ? "처리 중..." : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}</span>
                           <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: trackingHover.id === rowId ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />
                           <div className={`absolute -translate-x-1/2 -translate-y-1/2 h-40 w-40 rounded-full blur-2xl transition-opacity duration-200 ease-out ${trackingHover.id === rowId ? "opacity-100" : "opacity-0"}`} style={{ left: `${trackingHover.x}px`, top: `${trackingHover.y}px`, zIndex: 25, backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(100,255,200,0.4) 30%, rgba(0,100,255,0.1) 60%, rgba(255,255,255,0) 80%)", mixBlendMode: "soft-light", filter: "saturate(1.25) brightness(1.15) drop-shadow(0 0 12px rgba(255,255,255,0.30))" }} />
                         </button>
 
-                        <button onClick={() => handleDeleteStore(store.id)} disabled={deletingStoreId === store.id} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3] md:h-[42px] md:w-[42px] md:rounded-[14px] md:border-transparent md:bg-white md:text-[#111827] md:hover:bg-[#f3f4f6]">
-                          <Trash2 className="h-4 w-4 stroke-[#dc2626] md:h-[18px] md:w-[18px] md:stroke-[#111827]" strokeWidth={2} />
-                        </button>
+                        <DeleteMoreMenu
+                          disabled={deletingStoreId === store.id}
+                          onDelete={() => handleDeleteStore(store.id)}
+                          buttonLabel="매장 더보기"
+                          menuLabel="매장 작업"
+                        />
                       </div>
                     </div>
 
@@ -493,7 +501,7 @@ export default function KakaoRankingPage() {
                     <h2 className="mt-2 text-[22px] font-black tracking-[-0.03em] text-[#111827]">매장 등록</h2>
                     <p className="mt-2 text-[14px] text-[#6b7280]">추적할 카카오맵 매장을 검색하여 등록하세요.</p>
                   </div>
-                  <button onClick={closeRegisterModal} className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]">닫기</button>
+                  <button onClick={closeRegisterModal} className="postlabs-action-button rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]">닫기</button>
                 </div>
               </div>
               <div className="px-6 py-6">
@@ -507,7 +515,7 @@ export default function KakaoRankingPage() {
                     onMouseEnter={() => setModalSearchHovered(true)} onMouseLeave={() => setModalSearchHovered(false)}
                     onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setModalSearchMousePos({ x: e.clientX - r.left, y: e.clientY - r.top }); }}
                     onClick={handlePlaceSearch} disabled={placeSearchLoading}
-                    className="relative isolate inline-flex h-[50px] min-w-[120px] items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[15px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                    className="postlabs-action-button relative isolate inline-flex h-[50px] min-w-[120px] items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[15px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                   >
                     <span className="relative z-30 pointer-events-none">{placeSearchLoading ? "검색 중..." : "매장 검색"}</span>
                     <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: modalSearchHovered ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />
@@ -531,7 +539,7 @@ export default function KakaoRankingPage() {
                             onMouseEnter={() => setRegisterHover({ id: itemKey, x: 0, y: 0 })} onMouseLeave={() => setRegisterHover({ id: null, x: 0, y: 0 })}
                             onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setRegisterHover({ id: itemKey, x: e.clientX - r.left, y: e.clientY - r.top }); }}
                             onClick={() => handleRegisterStore(item)}
-                            className="relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
+                            className="postlabs-action-button relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
                           >
                             <span className="relative z-30 pointer-events-none">이 매장 등록</span>
                             <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: registerHover.id === itemKey ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />

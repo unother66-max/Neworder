@@ -15,7 +15,7 @@ const SwipeButton = ({ children, onClick, defaultBg = "bg-[#333333]", hoverBg = 
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`relative overflow-hidden transition-all duration-300 text-white font-bold ${defaultBg} ${className} ${disabled ? "opacity-30 cursor-not-allowed" : ""}`}
+      className={`postlabs-action-button relative overflow-hidden transition-all duration-300 text-white font-bold ${defaultBg} ${className} ${disabled ? "opacity-30 cursor-not-allowed" : ""}`}
     >
       <span className="relative z-30">{children}</span>
       {!disabled && (
@@ -249,7 +249,7 @@ export default function CommunityDetailClient() {
                             className="w-full min-h-[70px] bg-slate-50 border border-slate-200 rounded-[12px] p-3 text-[14px] outline-none"
                           />
                           <div className="flex justify-end gap-2 mt-3">
-                            <button onClick={() => setEditingCommentId(null)} className="rounded-[8px] border border-slate-300 bg-white/70 px-3 py-1.5 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50 md:px-4 md:py-2 md:text-[12px]">취소</button>
+                            <button onClick={() => setEditingCommentId(null)} className="postlabs-action-button rounded-[8px] border border-slate-300 bg-white/70 px-3 py-1.5 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50 md:px-4 md:py-2 md:text-[12px]">취소</button>
                             <SwipeButton onClick={() => handleCommentEditSubmit(comment.id)} className="px-5 py-2 rounded-[8px] text-[12px]">
                               저장
                             </SwipeButton>

@@ -114,7 +114,7 @@ export default function CommunityWritePage() {
               disabled={!isFormValid || isSubmitting}
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
-              className={`relative overflow-hidden w-full h-[56px] rounded-[14px] text-[15px] font-bold transition-all duration-300 ${
+          className={`postlabs-action-button relative overflow-hidden w-full h-[56px] rounded-[14px] text-[15px] font-bold transition-all duration-300 ${
                 isFormValid ? "bg-[#333333] text-white" : "bg-[#bfdbfe] text-white cursor-not-allowed"
               }`}
             >

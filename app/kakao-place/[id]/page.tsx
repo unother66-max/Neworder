@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin } from "lucide-react";
+import { PinToggleButton } from "@/components/pin-toggle-button";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -167,7 +167,7 @@ export default function KakaoPlaceDetailPage() {
         <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f8fafc] pt-24">
           <p className="text-[15px] text-[#6b7280]">{fetchError}</p>
           <button type="button" onClick={() => router.back()}
-            className="rounded-[14px] border border-[#d1d5db] bg-white px-5 py-2 text-[14px] font-bold text-[#111827] hover:bg-[#f9fafb]">
+            className="postlabs-action-button rounded-[14px] border border-[#d1d5db] bg-white px-5 py-2 text-[14px] font-bold text-[#111827] hover:bg-[#f9fafb]">
             ← 이전으로
           </button>
         </main>
@@ -236,10 +236,13 @@ export default function KakaoPlaceDetailPage() {
                   </div>
 
                   <div className="flex flex-nowrap items-center gap-2">
-                    <button type="button" onClick={handleTogglePin} disabled={pinning}
-                      className={`inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] border transition ${place.isPinned ? "border-[#2563EB] bg-white" : "border-[#d1d5db] bg-white hover:bg-[#f9fafb]"} ${pinning ? "opacity-60" : ""}`}>
-                      <Pin className={`h-[18px] w-[18px] ${place.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
-                    </button>
+                    <PinToggleButton
+                      onClick={handleTogglePin}
+                      disabled={pinning}
+                      pinned={place.isPinned}
+                      pinnedLabel="상단 고정 해제"
+                      unpinnedLabel="상단 고정"
+                    />
                     
                     <button
                       onClick={handleUpdate}
@@ -250,7 +253,7 @@ export default function KakaoPlaceDetailPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setUpdateMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                       }}
-                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="postlabs-action-button relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <span className="relative z-30 pointer-events-none">
                         {updating ? "업데이트 중..." : "업데이트"}

@@ -132,7 +132,7 @@ export default function CommunityEditPage() {
               <button 
                 type="button"
                 onClick={() => router.push(`/community/${id}`)}
-                className="w-1/3 h-[56px] rounded-[14px] text-[15px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+          className="postlabs-action-button w-1/3 h-[56px] rounded-[14px] text-[15px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
               >
                 취소
               </button>
@@ -141,7 +141,7 @@ export default function CommunityEditPage() {
                 disabled={!isFormValid || isSubmitting}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
-                className={`relative overflow-hidden w-2/3 h-[56px] rounded-[14px] text-[15px] font-bold transition-all duration-300 ${
+            className={`postlabs-action-button relative overflow-hidden w-2/3 h-[56px] rounded-[14px] text-[15px] font-bold transition-all duration-300 ${
                   isFormValid ? "bg-[#333333] text-white" : "bg-[#bfdbfe] text-white cursor-not-allowed"
                 }`}
               >

@@ -22,7 +22,7 @@ export default function LoginPage() {
         {/* 🚨 [핵심 수정] 기존 버튼에 { prompt: "login" } 옵션을 추가했습니다. */}
         <button
           onClick={() => signIn("kakao", { callbackUrl: "/place" }, { prompt: "login" })}
-          className="mt-10 flex h-[62px] w-full items-center justify-center gap-3 rounded-[12px] bg-[#FEE500] text-[18px] font-bold text-black"
+          className="postlabs-action-button mt-10 flex h-[62px] w-full items-center justify-center gap-3 rounded-[12px] bg-[#FEE500] text-[18px] font-bold text-black"
         >
           <span className="text-[20px]">💬</span>
           카카오로 시작하기
@@ -61,7 +61,7 @@ export default function LoginPage() {
             </div>
 
             <button
-              className="mt-6 h-[58px] w-full rounded-[12px] bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-[20px] font-black text-white"
+              className="postlabs-action-button mt-6 h-[58px] w-full rounded-[12px] bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-[20px] font-black text-white"
               onClick={() => {
                 alert("이메일 로그인은 다음 단계에서 연결할 예정이에요.");
               }}
@@ -70,7 +70,7 @@ export default function LoginPage() {
             </button>
 
             <button
-              className="mt-4 h-[58px] w-full rounded-[12px] bg-[#efeff2] text-[18px] font-black text-[#333]"
+              className="postlabs-action-button mt-4 h-[58px] w-full rounded-[12px] bg-[#efeff2] text-[18px] font-black text-[#333]"
               onClick={() => {
                 alert("기업회원 가입은 다음 단계에서 연결할 예정이에요.");
               }}

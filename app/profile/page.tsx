@@ -73,7 +73,7 @@ export default function ProfilePage() {
         <p className="mb-6 text-sm text-slate-500 leading-relaxed">잠시 후 로그인 페이지로 이동합니다.<br/>또는 아래 버튼을 눌러주세요.</p>
         <button 
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="w-full rounded-xl bg-[#333333] py-3 text-[14px] font-bold text-white transition-all hover:bg-black"
+          className="postlabs-action-button w-full rounded-xl bg-[#333333] py-3 text-[14px] font-bold text-white transition-all hover:bg-black"
         >
           다시 로그인하기
         </button>

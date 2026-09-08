@@ -46,10 +46,15 @@ function Button({
   size = "default",
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  const isIconOnly = typeof size === "string" && size.startsWith("icon")
+
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(
+        !isIconOnly && "postlabs-action-button",
+        buttonVariants({ variant, size, className })
+      )}
       {...props}
     />
   )

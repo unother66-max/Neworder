@@ -456,7 +456,7 @@ export default function PlaceRankTop300View({
       className={
         mode === "modal"
           ? "mx-auto w-full max-w-[1400px] px-2 py-2 text-[#111827] md:px-5 md:py-4"
-          : "mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-5 lg:px-8"
+          : "mx-auto max-w-[1240px] px-3 py-2 md:px-6 md:py-4 lg:px-8"
       }
     >
           {mode === "page" && isPreview ? (
@@ -482,10 +482,10 @@ export default function PlaceRankTop300View({
             </div>
           ) : null}
           {mode === "page" ? (
-          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-3 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-5 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-col gap-3 md:gap-4">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-3 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-5 md:py-3 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-3">
               <div>
-                <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
+                <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[22px]">
                   네이버 플레이스 순위분석 TOP300
                 </h1>
                 <p className="mt-0.5 text-[11px] leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">
@@ -495,7 +495,7 @@ export default function PlaceRankTop300View({
               </div>
 
               <form
-                className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3"
+                className="flex flex-col gap-2 md:flex-row md:items-center"
                 onSubmit={handleSearch}
               >
                 <div className="relative flex-1">
@@ -509,7 +509,7 @@ export default function PlaceRankTop300View({
                     placeholder="검색 키워드를 입력하세요"
                     aria-label="플레이스 순위 검색 키워드"
                     maxLength={100}
-                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white md:h-[54px] md:rounded-[16px] md:px-4 md:pr-11 md:text-[15px]"
+                    className="h-[40px] w-full rounded-[12px] border border-[#d1d5db] bg-[#fafafa] px-3 pr-9 text-[12px] text-[#111827] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2563eb] focus:bg-white md:h-[40px] md:px-3 md:pr-10 md:text-[13px]"
                   />
                   {keyword ? (
                     <button
@@ -526,7 +526,7 @@ export default function PlaceRankTop300View({
                   type="submit"
                   variant="primary"
                   disabled={loading || status === "loading"}
-                  className="h-[40px] min-w-[96px] shrink-0 rounded-[12px] bg-[#333333] px-4 text-[12px] font-bold text-white disabled:opacity-60 md:h-[54px] md:min-w-[116px] md:rounded-[16px] md:px-7 md:text-[15px]"
+                  className="h-[40px] min-w-[96px] shrink-0 whitespace-nowrap rounded-[12px] bg-[#333333] px-4 text-[12px] font-bold text-white disabled:opacity-60 md:h-[40px] md:min-w-[100px] md:px-3 md:text-[13px]"
                 >
                   {loading ? "조회 중..." : "순위 검색"}
                 </PostlabsSlideHoverButton>
@@ -555,8 +555,8 @@ export default function PlaceRankTop300View({
                 </div>
               ) : null}
               {mode === "page" ? (
-              <div className="mt-3 grid grid-cols-2 gap-2 md:mt-4 md:gap-3">
-                <div className="rounded-[16px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.03)] md:rounded-[20px] md:p-4">
+              <div className="mt-3 grid grid-cols-2 gap-2 md:mt-3 md:gap-2.5">
+                <div className="rounded-[16px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.03)] md:rounded-[20px] md:px-4 md:py-3">
                   <div className="text-[10px] font-bold text-[#9ca3af] md:text-[11px]">
                     분석 키워드
                   </div>
@@ -564,7 +564,7 @@ export default function PlaceRankTop300View({
                     {displayedAnalysis.keyword}
                   </div>
                 </div>
-                <div className="rounded-[16px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.03)] md:rounded-[20px] md:p-4">
+                <div className="rounded-[16px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.03)] md:rounded-[20px] md:px-4 md:py-3">
                   <div className="text-[10px] font-bold text-[#9ca3af] md:text-[11px]">
                     조회 결과
                   </div>
@@ -575,8 +575,8 @@ export default function PlaceRankTop300View({
               </div>
               ) : null}
 
-              <div className={`${mode === "modal" ? "mt-2 md:mt-3" : "mt-3 md:mt-4"} overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px]`}>
-                <div className="border-b border-[#e5e7eb] px-3 py-3 md:px-5 md:py-4">
+              <div className={`${mode === "modal" ? "mt-2 md:mt-3" : "mt-3"} overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px]`}>
+                <div className="border-b border-[#e5e7eb] px-3 py-3 md:px-5 md:py-3">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
                       <h2 className="text-[14px] font-black text-[#111827] md:text-[17px]">

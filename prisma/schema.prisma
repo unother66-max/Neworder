@@ -335,6 +335,21 @@ model PlaceRankTop300Snapshot {
   @@unique([keyword, snapshotDate])
 }
 
+/**
+ * 웹분석의 공용 일별 스냅샷.
+ * Asia/Seoul 날짜별로 블로그를 포함한 전체 웹문서 URL 순서만 저장한다.
+ */
+model WebAnalysisSnapshot {
+  id           String   @id @default(cuid())
+  keyword      String
+  snapshotDate String
+  rankedUrls   Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([keyword, snapshotDate])
+}
+
 model KakaoRankHistory {
   id           String   @id @default(cuid())
   placeId      String

@@ -428,7 +428,7 @@ const TopNav = (_props: TopNavProps) => {
       links: [
         { href: "/kakao-place", label: "키워드 순위 추적", active: isKakaoPlaceActive },
         { href: "/kakao-ranking", label: "지역 순위 추적", active: isKakaoRankingActive },
-        { href: "/kakao-analysis", label: "키워드 분석", active: isKakaoAnalysisActive },
+        { href: "/kakao-analysis", label: "순위분석 TOP150", active: isKakaoAnalysisActive },
       ],
     },
   ];
@@ -957,10 +957,10 @@ const TopNav = (_props: TopNavProps) => {
                           : "text-slate-800 group-hover/item:text-[#0051FF]"
                       }`}
                     >
-                      키워드 분석
+                      순위분석 TOP150
                     </span>
                     <span className="text-[11px] text-slate-400 mt-0.5">
-                      황금 키워드 발굴 도구
+                      카카오맵 장소 순위 확인
                     </span>
                   </Link>
                 </div>

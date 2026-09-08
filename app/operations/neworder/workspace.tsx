@@ -13,7 +13,6 @@ import {
   Plus,
   Search,
   ShoppingCart,
-  Star,
   Store,
   Trash2,
   X,
@@ -42,6 +41,7 @@ import {
 } from "@/lib/neworder/item-keywords";
 import { buildAndroidCoupangIntentUrl } from "@/lib/neworder/purchase-link";
 import { BAEMIN_MART_BASE_URL } from "@/lib/neworder/sellers";
+import { PinToggleButton } from "@/components/pin-toggle-button";
 
 type View =
   | "dashboard"
@@ -405,11 +405,11 @@ function Panel({
 const inputClass =
   "h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-600 focus:ring-2 focus:ring-slate-200";
 const buttonClass =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-xl border-0 bg-[#123f34] px-4 text-sm font-bold text-white transition hover:bg-[#0f332b] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500";
+  "postlabs-action-button inline-flex h-10 items-center justify-center gap-2 rounded-xl border-0 bg-[#123f34] px-4 text-sm font-bold text-white transition hover:bg-[#0f332b] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500";
 const primaryLinkClass =
   "inline-flex items-center justify-center gap-1 border-0 bg-[#123f34] font-bold !text-white transition hover:bg-[#0f332b] hover:!text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:bg-slate-200 aria-disabled:!text-slate-600";
 const secondaryButtonClass =
-  "inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
+  "postlabs-action-button inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
 
 export function NewOrderWorkspace({ view }: { view: View }) {
   const [data, setData] = useState<Snapshot | null>(null);
@@ -1557,35 +1557,16 @@ function PurchaseListView({
               }`}
             >
               <div className="grid min-w-0 grid-cols-[32px_72px_minmax(0,1fr)] items-start gap-3 p-3 md:min-h-[112px] md:grid-cols-[32px_72px_minmax(0,1fr)_minmax(300px,auto)] md:items-center">
-                <button
-                  type="button"
-                  title={
-                    candidate.isPinned ? "즐겨찾기 해제" : "즐겨찾기 고정"
-                  }
-                  aria-label={
-                    candidate.isPinned ? "즐겨찾기 해제" : "즐겨찾기 고정"
-                  }
-                  aria-pressed={candidate.isPinned}
+                <PinToggleButton
+                  pinned={candidate.isPinned}
+                  pinnedLabel="즐겨찾기 해제"
+                  unpinnedLabel="즐겨찾기 고정"
                   disabled={pinningId === candidate.id || saving}
                   onClick={(event) => {
                     event.stopPropagation();
                     void togglePin(candidate);
                   }}
-                  className={`mt-1 inline-flex size-8 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    candidate.isPinned
-                      ? "border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100"
-                      : "border-slate-200 bg-white text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  }`}
-                >
-                  {pinningId === candidate.id ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Star
-                      className="size-4"
-                      fill={candidate.isPinned ? "currentColor" : "none"}
-                    />
-                  )}
-                </button>
+                />
                 <ProductImage
                   src={candidate.imageUrl}
                   alt={`${candidate.title} 상품 이미지`}

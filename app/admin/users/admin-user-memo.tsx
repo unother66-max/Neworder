@@ -49,7 +49,7 @@ export function AdminUserMemoBlock({
           type="button"
           onClick={save}
           disabled={saving}
-          className="rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
+        className="postlabs-action-button rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
         >
           {saving ? "저장 중…" : "저장"}
         </button>

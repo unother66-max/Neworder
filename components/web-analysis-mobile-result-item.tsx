@@ -1,5 +1,10 @@
 import type { MouseEventHandler } from "react";
 
+import {
+  getWebAnalysisRankMovement,
+  getWebAnalysisRankMovementLabel,
+} from "@/lib/web-analysis-history";
+
 export type MobileWebAnalysisResult = {
   collectedIndex: number;
   page: number;
@@ -26,7 +31,7 @@ export function WebAnalysisMobileResultHeader() {
       data-mobile-web-analysis-header
       className="grid min-w-0 grid-cols-[40px_54px_minmax(0,1fr)] items-center gap-x-1.5 border-b border-[#e5e7eb] bg-[#f9fafb] px-3 py-1.5 text-[9px] font-bold leading-3 text-[#6b7280]"
     >
-      <span className="whitespace-nowrap text-center">수집순번</span>
+      <span className="whitespace-nowrap text-center">수집순위</span>
       <span className="text-center">페이지</span>
       <span className="min-w-0 truncate text-left">결과 정보</span>
     </div>
@@ -37,16 +42,27 @@ export default function WebAnalysisMobileResultItem({
   row,
   isPreview,
   onLoginRequired,
+  previousRanks,
 }: {
   row: MobileWebAnalysisResult;
   isPreview: boolean;
   onLoginRequired?: MouseEventHandler<HTMLAnchorElement>;
+  previousRanks?: ReadonlyMap<string, number> | null;
 }) {
   const href = isPreview ? "#login-required" : row.url;
   const source = webAnalysisSourceLabel(row);
   const linkProps = isPreview
     ? { onClick: onLoginRequired }
     : { target: "_blank", rel: "noopener noreferrer" };
+  const movement = previousRanks
+    ? getWebAnalysisRankMovement(row.collectedIndex, row.url, previousRanks)
+    : null;
+  const movementColor =
+    movement?.kind === "up"
+      ? "text-[#ef4444]"
+      : movement?.kind === "down" || movement?.kind === "new"
+        ? "text-[#2563eb]"
+        : "text-[#9ca3af]";
 
   return (
     <article
@@ -54,8 +70,16 @@ export default function WebAnalysisMobileResultItem({
       data-mobile-web-analysis-row={`${row.page}-${row.collectedIndex}`}
       className="grid min-h-[56px] min-w-0 grid-cols-[40px_54px_minmax(0,1fr)] items-center gap-x-1.5 px-3 py-2"
     >
-      <div className="text-center text-[11px] font-bold tabular-nums text-[#4b5563]">
-        {row.collectedIndex}
+      <div className="flex items-center justify-center gap-0.5 text-center text-[11px] font-bold tabular-nums text-[#4b5563]">
+        <span>{row.collectedIndex}</span>
+        {movement ? (
+          <span
+            data-web-rank-movement={movement.kind}
+            className={`whitespace-nowrap text-[9px] font-black ${movementColor}`}
+          >
+            {getWebAnalysisRankMovementLabel(movement)}
+          </span>
+        ) : null}
       </div>
 
       <div className="text-center">

@@ -333,21 +333,21 @@ export default function Home() {
       <TopNav active="blog" />
 
       <section
-        className="mx-auto max-w-[1180px] px-3 py-2 md:px-5 md:py-8"
+        className="mx-auto max-w-[1180px] px-3 py-2 md:px-5 md:py-4"
         onClickCapture={previewCapture}
       >
         {isPreview ? <PublicPreviewBanner /> : null}
-        <div className="[&_h1]:text-[20px] [&_p]:hidden md:[&_h1]:text-[28px] md:[&_p]:mt-3 md:[&_p]:block md:[&_p]:text-[14px] md:[&_p]:leading-7">
+        <div className="[&_h1]:text-[20px] [&_p]:hidden md:[&_h1]:text-[24px] md:[&_p]:mt-1.5 md:[&_p]:block md:[&_p]:text-[13px] md:[&_p]:leading-5">
           <PageHeader
             title="상위 블로그 찾기"
             description="블로그 상위노출, 감으로 하지 마세요. 지금 상위에 노출되는 포스트를 확인하고, 포스트별 키워드 순위와 검색량을 기준으로 체험단용 블로그를 더 빠르게 고를 수 있습니다."
           />
         </div>
 
-        <div className="mt-2 grid gap-1.5 md:mt-8 md:gap-4 md:grid-cols-3">
-          <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-2.5 py-2 shadow-[0_4px_18px_rgba(15,23,42,0.02)] md:rounded-[18px] md:p-5 md:shadow-sm">
+        <div className="mt-2 grid gap-1.5 md:mt-4 md:gap-2.5 md:grid-cols-3">
+          <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-2.5 py-2 shadow-[0_4px_18px_rgba(15,23,42,0.02)] md:rounded-[18px] md:p-4 md:shadow-sm">
             <div className="flex items-center gap-2 md:block">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#eff6ff] text-[10px] font-bold text-[#2563EB] md:mb-4 md:h-10 md:w-10 md:text-[14px]">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#eff6ff] text-[10px] font-bold text-[#2563EB] md:mb-2 md:h-8 md:w-8 md:text-[13px]">
                 1
               </div>
               <h2 className="text-[13px] font-bold leading-tight text-[#111827] md:text-[18px]">블로그 등록</h2>
@@ -357,9 +357,9 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-2.5 py-2 shadow-[0_4px_18px_rgba(15,23,42,0.02)] md:rounded-[18px] md:p-5 md:shadow-sm">
+          <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-2.5 py-2 shadow-[0_4px_18px_rgba(15,23,42,0.02)] md:rounded-[18px] md:p-4 md:shadow-sm">
             <div className="flex items-center gap-2 md:block">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#eff6ff] text-[10px] font-bold text-[#2563EB] md:mb-4 md:h-10 md:w-10 md:text-[14px]">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#eff6ff] text-[10px] font-bold text-[#2563EB] md:mb-2 md:h-8 md:w-8 md:text-[13px]">
                 2
               </div>
               <h2 className="text-[13px] font-bold leading-tight text-[#111827] md:text-[18px]">키워드 검색</h2>
@@ -369,9 +369,9 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-2.5 py-2 shadow-[0_4px_18px_rgba(15,23,42,0.02)] md:rounded-[18px] md:p-5 md:shadow-sm">
+          <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-2.5 py-2 shadow-[0_4px_18px_rgba(15,23,42,0.02)] md:rounded-[18px] md:p-4 md:shadow-sm">
             <div className="flex items-center gap-2 md:block">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#eff6ff] text-[10px] font-bold text-[#2563EB] md:mb-4 md:h-10 md:w-10 md:text-[14px]">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#eff6ff] text-[10px] font-bold text-[#2563EB] md:mb-2 md:h-8 md:w-8 md:text-[13px]">
                 3
               </div>
               <h2 className="text-[13px] font-bold leading-tight text-[#111827] md:text-[18px]">블로그 선정</h2>
@@ -382,8 +382,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-3 rounded-[18px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:mt-6 md:p-6 md:shadow-sm">
-          <div className="mb-3 md:mb-5">
+        <div className="mt-3 rounded-[18px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:mt-4 md:p-4 md:shadow-sm">
+          <div className="mb-3 md:mb-3">
             <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[24px]">
               블로그 URL을 입력하세요
             </h2>
@@ -399,10 +399,10 @@ export default function Home() {
               value={blogUrl}
               onChange={(e) => setBlogUrl(e.target.value)}
               placeholder="https://blog.naver.com/blogname"
-              className="h-[40px] flex-1 rounded-[12px] border border-[#d8dde6] bg-white px-3 text-[12px] text-[#111827] outline-none placeholder:text-[#b7bec8] transition-colors focus:border-[#2563EB] md:h-[46px] md:px-4 md:text-[14px]"
+              className="h-[40px] flex-1 rounded-[12px] border border-[#d8dde6] bg-white px-3 text-[12px] text-[#111827] outline-none placeholder:text-[#b7bec8] transition-colors focus:border-[#2563EB] md:h-[40px] md:px-3 md:text-[13px]"
             />
 
-            <div className="flex h-[40px] min-w-[120px] items-center justify-center rounded-[12px] border border-[#e5e7eb] bg-[#f3f4f6] px-3 text-[12px] text-[#374151] md:h-[46px] md:min-w-[150px] md:rounded-[14px] md:px-4 md:text-[14px]">
+            <div className="flex h-[40px] min-w-[120px] items-center justify-center rounded-[12px] border border-[#e5e7eb] bg-[#f3f4f6] px-3 text-[12px] text-[#374151] md:h-[40px] md:min-w-[138px] md:px-3 md:text-[13px]">
               {visitor !== null ? (
                 <>
                   방문자
@@ -419,7 +419,7 @@ export default function Home() {
               onMouseLeave={() => setIsAnalyzeHovered(false)}
               onMouseMove={handleAnalyzeMouseMove}
               disabled={loading}
-              className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[46px] md:min-w-[120px] md:rounded-[14px] md:px-5 md:text-[15px]"
+              className="postlabs-action-button relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden whitespace-nowrap rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[40px] md:min-w-[104px] md:px-3 md:text-[13px]"
             >
               <span className="relative z-30 pointer-events-none">
                 {loading ? "불러오는 중..." : "분석 시작"}
@@ -461,8 +461,8 @@ export default function Home() {
           )}
         </div>
 
-        <div className="mt-3 rounded-[18px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:mt-6 md:p-6 md:shadow-sm">
-          <div className="mb-3 flex flex-col gap-2 md:mb-6 md:gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="mt-3 rounded-[18px] border border-[#e5e7eb] bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.025)] md:mt-4 md:p-4 md:shadow-sm">
+          <div className="mb-3 flex flex-col gap-2 md:mb-3 md:gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[24px]">
                 블로그 최신 포스트
@@ -522,7 +522,7 @@ export default function Home() {
                       onMouseLeave={() => setSearchHover((prev) => prev.index === index ? { ...prev, index: null } : prev)}
                       onMouseMove={(e) => handleSearchMouseMove(e, index)}
                       disabled={checkingKeys.has(getCheckingKey(post))}
-                      className="relative inline-flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60"
+                      className="postlabs-action-button relative inline-flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <span className="relative z-30 pointer-events-none">
                         {checkingKeys.has(getCheckingKey(post)) ? "검색중" : "검색"}
@@ -636,7 +636,7 @@ export default function Home() {
                             onMouseLeave={() => setSearchHover((prev) => prev.index === index ? { ...prev, index: null } : prev)}
                             onMouseMove={(e) => handleSearchMouseMove(e, index)}
                             disabled={checkingKeys.has(getCheckingKey(post))}
-                            className="relative inline-flex h-9 shrink-0 min-w-[60px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:min-w-[70px] md:rounded-[12px] md:px-4 md:text-[14px]"
+                            className="postlabs-action-button relative inline-flex h-9 shrink-0 min-w-[60px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:min-w-[70px] md:rounded-[12px] md:px-4 md:text-[14px]"
                           >
                             <span className="relative z-30 pointer-events-none">
                               {checkingKeys.has(getCheckingKey(post)) ? "검색중" : "검색"}

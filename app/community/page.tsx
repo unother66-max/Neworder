@@ -141,7 +141,7 @@ export default function CommunityPage() {
                 onMouseEnter={() => setIsSearchHovered(true)}
                 onMouseLeave={() => setIsSearchHovered(false)}
                 onMouseMove={handleSearchMouseMove}
-                className="relative h-11 overflow-hidden rounded-[16px] bg-[#333333] px-6 text-[13px] font-semibold text-white shadow-sm transition-all duration-300 ease-in-out hover:-translate-y-0.5 hover:shadow-xl md:h-auto md:rounded-[12px] md:py-2.5 md:text-[14px] md:font-bold"
+                className="postlabs-action-button relative h-11 overflow-hidden rounded-[16px] bg-[#333333] px-6 text-[13px] font-semibold text-white shadow-sm transition-all duration-300 ease-in-out hover:-translate-y-0.5 hover:shadow-xl md:h-auto md:rounded-[12px] md:py-2.5 md:text-[14px] md:font-bold"
               >
                 <span className="relative z-30 pointer-events-none">검색하기</span>
                 <div
@@ -177,7 +177,7 @@ export default function CommunityPage() {
                 onMouseEnter={() => setIsWriteHovered(true)}
                 onMouseLeave={() => setIsWriteHovered(false)}
                 onMouseMove={handleWriteMouseMove}
-                className="relative flex h-11 items-center justify-center gap-2 overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[13px] font-semibold text-white shadow-sm transition-all duration-300 ease-in-out hover:-translate-y-0.5 hover:shadow-xl md:h-auto md:rounded-[12px] md:py-2.5 md:text-[14px] md:font-bold"
+                className="postlabs-action-button relative flex h-11 items-center justify-center gap-2 overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[13px] font-semibold text-white shadow-sm transition-all duration-300 ease-in-out hover:-translate-y-0.5 hover:shadow-xl md:h-auto md:rounded-[12px] md:py-2.5 md:text-[14px] md:font-bold"
               >
                 <span className="relative z-30 pointer-events-none flex items-center gap-2">
                   <PenLine size={17} /> 글쓰기

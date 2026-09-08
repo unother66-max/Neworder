@@ -1940,7 +1940,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
             <p className="text-sm text-gray-500 mb-6">네이버 블로그 아이디 형식으로 다시 시도해 주세요.</p>
             <Link
               href="/blog-analysis"
-              className="inline-flex h-11 items-center rounded-[14px] bg-[#333] px-6 font-bold text-white hover:bg-[#2563EB]"
+              className="postlabs-action-button inline-flex h-11 items-center rounded-[14px] bg-[#333] px-6 font-bold text-white hover:bg-[#2563EB]"
             >
               검색으로 돌아가기
             </Link>
@@ -1975,7 +1975,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
             <button
               type="button"
               onClick={() => void loadAnalysis()}
-              className="inline-flex h-11 items-center rounded-[14px] bg-[#333] px-6 font-bold text-white hover:bg-[#2563EB]"
+              className="postlabs-action-button inline-flex h-11 items-center rounded-[14px] bg-[#333] px-6 font-bold text-white hover:bg-[#2563EB]"
             >
               다시 시도
             </button>
@@ -2015,7 +2015,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
               <button
                 type="button"
                 onClick={() => void handleSearchAnother()}
-                className="h-9 min-w-[92px] rounded-xl bg-[#333] px-3 text-xs font-bold text-white hover:bg-[#2563EB]"
+                className="postlabs-action-button h-9 min-w-[92px] rounded-xl bg-[#333] px-3 text-xs font-bold text-white hover:bg-[#2563EB]"
               >
                 분석 시작
               </button>
@@ -2504,7 +2504,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                         type="button"
                         onClick={() => void handleShowMoreRecentPosts()}
                         disabled={recentPostsLoadMoreBusy}
-                        className="mb-2.5 flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
+                        className="postlabs-action-button mb-2.5 flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
                       >
                         {recentPostsLoadMoreBusy ? "포스팅 불러오는 중..." : "더보기"}
                       </button>
@@ -2627,7 +2627,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                     <button
                       type="button"
                       onClick={() => setPopularPostsVisibleCount((count) => count + POPULAR_POSTS_ROWS_PER_PAGE)}
-                      className="flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                      className="postlabs-action-button flex h-9 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
                     >
                       더보기
                     </button>
@@ -2659,7 +2659,7 @@ export default function BlogAnalysisDetailClient({ blogId, forceKeywordRefreshDe
                         isKeywordRefreshing ||
                         !isValidNaverBlogId(String(resolvedBlogId || blogId).trim())
                       }
-                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-45"
+                      className="postlabs-action-button inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-45"
                     >
                       {isKeywordRefreshing ? "유효 키워드 업데이트 중..." : "유효 키워드 업데이트"}
                     </button>

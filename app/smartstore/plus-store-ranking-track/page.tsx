@@ -5,8 +5,13 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import TopNav from "@/components/top-nav";
 import { SmartstoreProductRegisterModal } from "@/components/smartstore-product-register-modal";
-import { GripVertical, Pin, Trash2 } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { ADMIN_EMAIL } from "@/lib/constants";
+import { DeleteMoreMenu } from "@/components/delete-more-menu";
+import {
+  PinnedStatusIcon,
+  PinToggleButton,
+} from "@/components/pin-toggle-button";
 import {
   DndContext,
   PointerSensor,
@@ -744,7 +749,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
             <button
               type="button"
               onClick={() => router.push("/smartstore")}
-              className="mt-6 inline-flex h-[42px] items-center justify-center rounded-[12px] bg-[#333333] px-5 text-[13px] font-bold text-white transition hover:bg-[#2563EB]"
+              className="postlabs-action-button mt-6 inline-flex h-[42px] items-center justify-center rounded-[12px] bg-[#333333] px-5 text-[13px] font-bold text-white transition hover:bg-[#2563EB]"
             >
               스마트스토어 순위 추적으로 이동
             </button>
@@ -787,7 +792,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                 <button
                   type="button"
                   className={`
-                    relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px]
+                    postlabs-action-button relative inline-flex h-[44px] min-w-[108px] items-center justify-center overflow-hidden rounded-[14px]
                     bg-[#333333] px-4 text-[13px] font-bold tracking-wide text-white font-sans
                     transition-all duration-300 ease-in-out
                   `}
@@ -900,9 +905,9 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                   key={p.id}
                   className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-6 md:py-4">
-                    <div className="flex flex-col gap-2.5 md:gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="flex min-w-0 gap-2.5 md:gap-4">
+                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-5 md:py-3">
+                    <div className="flex flex-col gap-2.5 md:gap-2 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="flex min-w-0 gap-2.5 md:flex-1 md:gap-2.5">
                         <ProductCardThumb
                           imageUrl={p.imageUrl}
                           alt={cardProductTitle(p)}
@@ -911,9 +916,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-start justify-between gap-2">
                             <div className="flex min-w-0 flex-1 items-start gap-1.5 md:flex-wrap md:items-center md:gap-2">
-                              {p.isPinned && (
-                                <Pin className="mt-0.5 h-[13px] w-[13px] shrink-0 fill-[#b91c1c] stroke-[#b91c1c] md:mt-0 md:h-[14px] md:w-[14px]" />
-                              )}
+                              {p.isPinned && <PinnedStatusIcon />}
                               <h3 className="min-w-0 overflow-hidden text-[15px] font-black leading-snug tracking-[-0.03em] text-[#111827] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] md:text-[15px] md:font-bold md:tracking-[-0.02em]">
                                 {cardProductTitle(p)}
                               </h3>
@@ -937,21 +940,6 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                                 </a>
                               ) : null}
 
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(p.id)}
-                                disabled={deletingId === p.id}
-                                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3] ${
-                                  deletingId === p.id ? "opacity-60" : ""
-                                }`}
-                                aria-label="삭제"
-                              >
-                                {deletingId === p.id ? (
-                                  <span className="text-[11px] text-[#dc2626]">...</span>
-                                ) : (
-                                  <Trash2 className="h-4 w-4 stroke-[#dc2626]" strokeWidth={2} />
-                                )}
-                              </button>
                             </div>
                           </div>
 
@@ -1023,22 +1011,13 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                       </div>
 
                       <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:flex-wrap md:gap-2 md:overflow-visible md:whitespace-normal xl:flex-nowrap xl:justify-end">
-                        <button
-                          type="button"
+                        <PinToggleButton
                           onClick={() => handleTogglePin(p)}
                           disabled={pinningId === p.id}
-                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f9fafb] md:h-[42px] md:w-[42px] md:rounded-[14px] ${pinningId === p.id ? "opacity-60" : ""}`}
-                          aria-label="상단 고정"
-                        >
-                          <Pin
-                            className={`h-4 w-4 transition md:h-[20px] md:w-[20px] ${
-                              p.isPinned
-                                ? "fill-[#b91c1c] stroke-[#b91c1c]"
-                                : "stroke-[#6b7280]"
-                            }`}
-                            strokeWidth={2}
-                          />
-                        </button>
+                          pinned={p.isPinned}
+                          pinnedLabel="상단 고정 해제"
+                          unpinnedLabel="상단 고정"
+                        />
                         
                         <button
                           type="button"
@@ -1047,7 +1026,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                           onMouseEnter={() => setUpdateHover({ id: p.id, x: updateHover.x, y: updateHover.y })}
                           onMouseLeave={() => setUpdateHover((prev) => prev.id === p.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleUpdateMouseMove(e, p.id)}
-                          className={`relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]`}
+                          className={`postlabs-action-button relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:flex-none md:shrink-0 md:px-2.5 md:text-[12px] md:font-extrabold`}
                         >
                           <span className="relative z-30 pointer-events-none md:hidden">
                             {updatingId === p.id ? "업데이트 중..." : "업데이트"}
@@ -1096,7 +1075,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                           onMouseEnter={() => setRankChangeHover({ id: p.id, x: rankChangeHover.x, y: rankChangeHover.y })}
                           onMouseLeave={() => setRankChangeHover((prev) => prev.id === p.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleRankChangeMouseMove(e, p.id)}
-                          className={`relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px] ${rankChangeHover.id === p.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827] md:border-black md:text-black"}`}
+                          className={`postlabs-action-button relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-8 md:flex-none md:shrink-0 md:px-2.5 md:text-[12px] md:font-extrabold ${rankChangeHover.id === p.id ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827] md:border-black md:text-black"}`}
                         >
                           <span className="relative z-30 pointer-events-none md:hidden">순위변화</span>
                           <span className="relative z-30 pointer-events-none hidden md:inline">순위 변화 보기</span>
@@ -1141,7 +1120,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                           onMouseEnter={() => setTrackingHover({ id: p.id, x: trackingHover.x, y: trackingHover.y })}
                           onMouseLeave={() => setTrackingHover((prev) => prev.id === p.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleTrackingMouseMove(e, p.id)}
-                          className={`relative hidden h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold font-sans transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:inline-flex md:h-[42px] md:rounded-[14px] md:px-4 md:text-[14px] ${p.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === p.id ? "bg-transparent border-2 border-[#2563EB] text-white" : "bg-transparent border-1 border-black text-black"} ${trackingLoadingId === p.id ? "opacity-60" : ""}`}
+                          className={`postlabs-action-button relative hidden h-8 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] px-2.5 text-xs font-bold font-sans transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:inline-flex md:h-8 md:px-2.5 md:text-[12px] md:font-extrabold ${p.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover.id === p.id ? "bg-transparent border-2 border-[#2563EB] text-white" : "bg-transparent border-1 border-black text-black"} ${trackingLoadingId === p.id ? "opacity-60" : ""}`}
                         >
                           <span className="relative z-30 pointer-events-none">
                             {trackingLoadingId === p.id ? "처리 중..." : `자동추적 ${p.isAutoTracking ? "ON" : "OFF"}`}
@@ -1181,7 +1160,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                           onMouseEnter={() => setKwManageHover({ id: p.id, x: kwManageHover.x, y: kwManageHover.y })}
                           onMouseLeave={() => setKwManageHover((prev) => prev.id === p.id ? { ...prev, id: null } : prev)}
                           onMouseMove={(e) => handleKwManageMouseMove(e, p.id)}
-                          className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out md:h-[42px] md:flex-none md:shrink-0 md:rounded-[14px] md:px-4 md:text-[14px]"
+                          className="postlabs-action-button relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white font-sans transition-all duration-300 ease-in-out md:h-8 md:flex-none md:shrink-0 md:px-2.5 md:text-[12px] md:font-extrabold"
                         >
                           <span className="relative z-30 pointer-events-none">키워드 관리</span>
                           <div
@@ -1213,19 +1192,12 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                           />
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(p.id)}
+                        <DeleteMoreMenu
                           disabled={deletingId === p.id}
-                          className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f3f4f6] md:inline-flex md:h-[42px] md:w-[42px] md:rounded-[14px] ${deletingId === p.id ? "opacity-60" : ""}`}
-                          aria-label="삭제"
-                        >
-                          {deletingId === p.id ? (
-                            <span className="text-[12px] text-[#111827]">...</span>
-                          ) : (
-                            <Trash2 className="h-[18px] w-[18px] stroke-[#111827]" strokeWidth={2} />
-                          )}
-                        </button>
+                          onDelete={() => handleDelete(p.id)}
+                          buttonLabel="상품 더보기"
+                          menuLabel="상품 작업"
+                        />
                       </div>
                     </div>
                   </div>
@@ -1370,7 +1342,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                 <button
                   type="button"
                   onClick={closeKwModal}
-                  className="rounded-[12px] border border-[#e5e7eb] bg-white px-3 py-2 text-[12px] font-bold text-[#6b7280] transition hover:bg-[#f9fafb]"
+                  className="postlabs-action-button rounded-[12px] border border-[#e5e7eb] bg-white px-3 py-2 text-[12px] font-bold text-[#6b7280] transition hover:bg-[#f9fafb]"
                 >
                   닫기
                 </button>
@@ -1546,7 +1518,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                   <button
                     type="button"
                     onClick={closeKwModal}
-                    className="h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
+                    className="postlabs-action-button h-[46px] rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition hover:bg-[#f9fafb]"
                   >
                     닫기
                   </button>
@@ -1554,7 +1526,7 @@ export default function SmartstorePlusStoreRankingTrackPage() {
                     type="button"
                     onClick={handleSaveKeywords}
                     disabled={kwSaving}
-                    className="h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60"
+                    className="postlabs-action-button h-[46px] rounded-[14px] bg-[#111827] px-5 text-[14px] font-bold text-white transition hover:bg-[#1f2937] disabled:opacity-60"
                   >
                     {kwSaving ? "저장 중..." : "저장"}
                   </button>

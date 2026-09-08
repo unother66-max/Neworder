@@ -62,7 +62,7 @@ export function PostlabsSlideHoverButton({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onMouseMove={handleMove}
-      className={`group relative inline-flex items-center justify-center overflow-hidden transition-all duration-300 ease-in-out disabled:cursor-not-allowed motion-reduce:transition-none ${className}`}
+      className={`postlabs-action-button group relative inline-flex items-center justify-center overflow-hidden transition-all duration-300 ease-in-out disabled:cursor-not-allowed motion-reduce:transition-none ${className}`}
       {...rest}
     >
       <span className="relative z-30 pointer-events-none">{children}</span>

@@ -197,7 +197,7 @@ export function SmartstoreProductRegisterModal({
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
+              className="postlabs-action-button shrink-0 rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
             >
               닫기
             </button>
@@ -257,7 +257,7 @@ export function SmartstoreProductRegisterModal({
               onClick={onClose}
               onMouseEnter={() => setCancelHovered(true)}
               onMouseLeave={() => setCancelHovered(false)}
-              className={`relative h-[46px] shrink-0 overflow-hidden rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition-all duration-200 md:rounded-[16px] md:h-[50px] ${
+              className={`postlabs-action-button relative h-[46px] shrink-0 overflow-hidden rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[14px] font-bold text-[#111827] transition-all duration-200 md:rounded-[16px] md:h-[50px] ${
                 cancelHovered ? "shadow-[0_0_28px_rgba(37,99,235,0.16)] ring-2 ring-[#2563eb]/15" : "hover:bg-[#f9fafb]"
               }`}
             >
@@ -271,7 +271,7 @@ export function SmartstoreProductRegisterModal({
               onMouseMove={handlePrimaryMove}
               onClick={onPrimaryAction}
               disabled={Boolean(saving)}
-              className={`relative inline-flex h-[46px] min-w-[120px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 md:h-[50px] md:min-w-[132px] md:rounded-[16px] md:text-[15px] disabled:opacity-60 ${
+              className={`postlabs-action-button relative inline-flex h-[46px] min-w-[120px] items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 md:h-[50px] md:min-w-[132px] md:rounded-[16px] md:text-[15px] disabled:opacity-60 ${
                 primaryHovered ? "shadow-[0_0_36px_rgba(37,99,235,0.35)]" : ""
               }`}
             >

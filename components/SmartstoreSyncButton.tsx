@@ -38,7 +38,7 @@ export default function SmartstoreSyncButton({
       type="button"
       onClick={doSync}
       disabled={disabled}
-      className="rounded-[12px] bg-[#111827] px-3 py-2 text-[12px] font-extrabold text-white disabled:opacity-50"
+      className="postlabs-action-button rounded-[12px] bg-[#111827] px-3 py-2 text-[12px] font-extrabold text-white disabled:opacity-50"
     >
       <span className="inline-flex items-center gap-2">
         <RefreshCw size={14} className={disabled ? "animate-spin" : ""} />
@@ -47,4 +47,3 @@ export default function SmartstoreSyncButton({
     </button>
   );
 }
-

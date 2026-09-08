@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { PinToggleButton } from "@/components/pin-toggle-button";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import PageHeader from "@/components/page-header";
@@ -138,10 +139,10 @@ export default function BlogAnalysisPage() {
   return (
     <main className="min-h-screen bg-[#f8fafc] pt-24 pb-20">
       <TopNav />
-      <section className="mx-auto max-w-[1180px] px-5 py-8">
+      <section className="mx-auto max-w-[1180px] px-5 py-8 md:py-4">
         <PageHeader title="블로그 채널 분석" description="내 블로그의 실질적인 영향력과 검색 노출 지수를 정밀하게 분석합니다." />
 
-        <div className="mt-8 rounded-[18px] border border-[#e5e7eb] bg-white p-6 shadow-sm">
+        <div className="mt-8 rounded-[18px] border border-[#e5e7eb] bg-white p-6 shadow-sm md:mt-4 md:p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <input
               type="text"
@@ -151,27 +152,27 @@ export default function BlogAnalysisPage() {
                 if (e.key === "Enter") handleStart();
               }}
               placeholder="블로그 아이디 또는 주소를 입력해주세요."
-              className="h-[46px] flex-1 rounded-[12px] border border-[#d8dde6] px-4 outline-none focus:border-[#2563EB]"
+              className="h-[46px] flex-1 rounded-[12px] border border-[#d8dde6] px-4 outline-none focus:border-[#2563EB] md:h-10 md:px-3 md:text-[13px]"
             />
-            <div className="flex h-[46px] min-w-[150px] items-center justify-center rounded-[14px] border border-[#e5e7eb] bg-[#f3f4f6] px-4 text-[14px] font-bold text-gray-400">
+            <div className="flex h-[46px] min-w-[150px] items-center justify-center rounded-[14px] border border-[#e5e7eb] bg-[#f3f4f6] px-4 text-[14px] font-bold text-gray-400 md:h-10 md:min-w-[138px] md:rounded-[12px] md:px-3 md:text-[13px]">
               방문자 -
             </div>
             <button
               type="button"
               onClick={handleStart}
-              className="h-[46px] min-w-[120px] rounded-[14px] bg-[#333] px-5 font-bold text-white hover:bg-[#2563EB]"
+              className="postlabs-action-button h-[46px] min-w-[120px] whitespace-nowrap rounded-[14px] bg-[#333] px-5 font-bold text-white hover:bg-[#2563EB] md:h-10 md:min-w-[104px] md:rounded-[12px] md:px-3 md:text-[13px]"
             >
               분석 시작
             </button>
           </div>
         </div>
 
-        <div className="mt-8 rounded-[18px] border border-[#e5e7eb] bg-white shadow-sm overflow-hidden">
-          <div className="border-b border-[#e5e7eb] bg-gray-50 px-6 py-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="mt-8 rounded-[18px] border border-[#e5e7eb] bg-white shadow-sm overflow-hidden md:mt-4">
+          <div className="border-b border-[#e5e7eb] bg-gray-50 px-6 py-4 flex flex-wrap items-center justify-between gap-2 md:px-5 md:py-3">
             <h4 className="text-[13px] font-bold text-gray-600 tracking-tighter">● 검색 기록</h4>
             {savedListLoading ? <span className="text-[11px] text-gray-400">불러오는 중…</span> : null}
           </div>
-          <p className="px-6 pt-3 text-[11px] text-gray-400 leading-relaxed">
+          <p className="px-6 pt-3 text-[11px] text-gray-400 leading-relaxed md:px-5 md:pt-2">
             한 번 분석한 블로그는 저장 목록에 남고, 이후 방문자·키워드·순위 변화 기록이 자동으로 쌓입니다.
           </p>
           <div className="overflow-x-auto px-2 pb-4">
@@ -199,14 +200,12 @@ export default function BlogAnalysisPage() {
                     return (
                       <tr key={row.id ?? `${row.blogId}-${index}`} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-3 text-center">
-                          <button
-                            type="button"
-                            aria-label={pinned ? "고정 해제" : "고정"}
+                          <PinToggleButton
+                            pinned={pinned}
+                            pinnedLabel="고정 해제"
+                            unpinnedLabel="고정"
                             onClick={() => void patchSavedRow(row.blogId, { isPinned: !pinned })}
-                            className={`text-lg leading-none p-1 rounded-md hover:bg-gray-100 ${pinned ? "text-amber-500" : "text-gray-300 hover:text-amber-400"}`}
-                          >
-                            ★
-                          </button>
+                          />
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button

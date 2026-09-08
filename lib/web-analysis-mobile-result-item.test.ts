@@ -26,8 +26,22 @@ describe("web analysis mobile result item", () => {
     const $ = cheerio.load(html);
 
     expect($("[data-mobile-web-analysis-header]").text()).toBe(
-      "수집순번페이지결과 정보"
+      "수집순위페이지결과 정보"
     );
+  });
+
+  it("shows URL-based movement beside the original collected rank", () => {
+    const html = renderToStaticMarkup(
+      createElement(WebAnalysisMobileResultItem, {
+        row: { ...row, collectedIndex: 3 },
+        isPreview: false,
+        previousRanks: new Map([[row.url, 7]]),
+      })
+    );
+    const $ = cheerio.load(html);
+
+    expect($("[data-web-rank-movement='up']").text()).toBe("▲4");
+    expect($("[data-mobile-web-analysis-row]").text()).toContain("3▲4");
   });
 
   it("uses the result URL for the linked title and keeps the source below it", () => {

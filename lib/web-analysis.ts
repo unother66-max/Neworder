@@ -77,7 +77,7 @@ export function getWebAnalysisStart(page: number): number {
     throw new RangeError("웹 분석 페이지는 2~10 사이여야 합니다.");
   }
 
-  return 1 + (page - 2) * 15;
+  return 1 + (page - 2) * 20;
 }
 
 export function buildNaverWebSearchUrl(keyword: string, page: number): string {
@@ -87,8 +87,10 @@ export function buildNaverWebSearchUrl(keyword: string, page: number): string {
   url.searchParams.set("qdt", "0");
   url.searchParams.set("query", keyword);
   url.searchParams.set("sm", "tab_pge");
+  // tab.url.all은 2페이지 URL에 남아 있어도 이후 page/start를 무시한다.
+  // 네이버 자체 페이지네이션이 생성하는 canonical URL 결과 탭 값을 사용한다.
+  url.searchParams.set("ssc", "tab.ur.all");
   url.searchParams.set("start", String(getWebAnalysisStart(page)));
-  url.searchParams.set("where", "web");
   return url.toString();
 }
 
@@ -158,11 +160,12 @@ function findThumbnail(
   $: cheerio.CheerioAPI,
   card: cheerio.Cheerio<Element>
 ): string | undefined {
-  const images = card
-    .find("img")
-    .filter((_, element) =>
-      compactText($(element).attr("alt")).includes("이미지")
-    );
+  const images = card.find("img").filter((_, element) => {
+    const image = $(element);
+    if (image.closest(".sds-comps-profile").length > 0) return false;
+    if (image.closest(".sds-comps-profile-thumbnail").length > 0) return false;
+    return true;
+  });
 
   for (const element of images.toArray()) {
     const image = $(element);
@@ -192,8 +195,12 @@ export function parseNaverWebSearchHtml(
   const results: WebAnalysisParsedResult[] = [];
   const seenOnPage = new Set<string>();
 
-  $(".fds-web-doc-root").each((cardIndex, element) => {
-    const card = $(element);
+  $(
+    ".fds-web-doc-root, " +
+      ".fds-ugc-single-intention-item-list-rra, " +
+      ".fds-kin-rra-item-list"
+  ).each((_, element) => {
+    const card = $(element as Element);
     const titleAnchor = card
       .find("a[href]")
       .filter((_, anchor) =>
@@ -216,7 +223,8 @@ export function parseNaverWebSearchHtml(
     const snippet = compactText(
       card
         .find(
-          ".sds-comps-text-ellipsis-3.sds-comps-text-type-body1"
+          ".sds-comps-text-ellipsis-3.sds-comps-text-type-body1, " +
+            ".fds-ugc-ellipsis3 .sds-comps-text-type-body1"
         )
         .first()
         .text()
@@ -226,7 +234,7 @@ export function parseNaverWebSearchHtml(
     seenOnPage.add(url);
     results.push({
       page,
-      positionInPage: cardIndex + 1,
+      positionInPage: results.length + 1,
       title,
       url,
       domain,

@@ -255,7 +255,7 @@ export default async function AdminCronRunsPage({
               ))}
             </select>
           </label>
-          <button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white">
+          <button className="postlabs-action-button inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white">
             <Search className="h-4 w-4" aria-hidden />
             조회
           </button>

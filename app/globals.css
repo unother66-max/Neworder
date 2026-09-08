@@ -114,6 +114,19 @@ select {
   font: inherit;
 }
 
+/*
+ * Shared typography for text CTA/action buttons.
+ * Keep sizing, padding, colors, and states local to each page.
+ */
+.postlabs-action-button {
+  font-family: "Poppins", "NotoSansKR", sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  line-height: 24px !important;
+  letter-spacing: normal !important;
+  white-space: nowrap !important;
+}
+
 table {
   border-collapse: collapse;
   width: 100%;

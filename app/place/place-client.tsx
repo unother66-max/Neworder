@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin, Trash2, GripVertical } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PostlabsSlideHoverButton } from "@/components/postlabs-slide-hover-button";
+import { DeleteMoreMenu } from "@/components/delete-more-menu";
 import PlaceRankTop300Modal from "@/components/place-rank-top300-modal";
 import { decodeHtmlText } from "@/lib/html-text";
 import {
@@ -1740,7 +1741,7 @@ useEffect(() => {
                   onMouseLeave={() => setIsAddHovered(false)}
                   onMouseMove={handleMouseMove}
                   onClick={openRegisterModal}
-                  className="relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[40px] md:min-w-[100px] md:rounded-[12px] md:px-3 md:text-[13px]"
+                  className="postlabs-action-button relative inline-flex h-[40px] min-w-[96px] items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out md:h-[40px] md:min-w-[100px] md:rounded-[12px] md:px-3 md:text-[13px]"
                 >
                   <span className="relative z-30 pointer-events-none">매장 등록</span>
                   <div
@@ -1834,14 +1835,14 @@ useEffect(() => {
                     key={`${store.dbId || store.placeId || store.name}-${store.address}-${index}`}
                     className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                   >
-                    <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-5 md:py-3">
-                      <div className="flex flex-col gap-2.5 md:gap-3 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="flex min-w-0 gap-2.5 md:gap-3">
+                    <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-5 md:py-2.5">
+                      <div className="flex flex-col gap-2.5 md:gap-2 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="flex min-w-0 gap-2.5 md:flex-1 md:gap-2.5">
                           {store.image ? (
                             <img
                               src={store.image}
                               alt={store.name}
-                              className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-[64px] md:w-[64px] md:rounded-[14px] ${
+                              className={`h-12 w-12 shrink-0 rounded-[12px] ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px] ${
                                 store.dbId?.startsWith("sample-place-")
                                   ? "bg-white object-contain p-1"
                                   : "object-cover"
@@ -1853,23 +1854,58 @@ useEffect(() => {
                               }}
                             />
                           ) : (
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-[64px] md:w-[64px] md:rounded-[14px] md:text-[12px]">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[10px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px] md:text-[12px]">
                               이미지
                             </div>
                           )}
 
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-start justify-between gap-2">
-                              <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-wrap md:gap-2">
-                                <h3 className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:text-[18px]">
+                              <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-wrap md:gap-2 min-[1440px]:flex-nowrap">
+                                <h3 className="truncate text-[15px] font-black tracking-[-0.03em] text-[#111827] md:max-w-[260px] md:flex-none md:text-[18px] 2xl:max-w-[320px]">
                                   {store.name}
                                 </h3>
 
                                 {store.category ? (
-                                  <span className="max-w-[88px] shrink-0 truncate rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:max-w-none md:px-2.5 md:py-1 md:text-[11px]">
+                                  <span className="max-w-[88px] shrink-0 truncate rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#4b5563] md:max-w-[112px] md:px-2.5 md:py-1 md:text-[11px]">
                                     {store.category}
                                   </span>
                                 ) : null}
+
+                                <div className="hidden shrink-0 items-center gap-3.5 md:flex">
+                                  <span
+                                    className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap"
+                                    aria-label={`모바일 검색량 ${formatCount(store.placeMobileVolume)}`}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                                      style={{
+                                        backgroundImage:
+                                          'url("/icons/mobile_gray.svg")',
+                                      }}
+                                    />
+                                    <span className="text-[13px] font-extrabold leading-none text-[#4b5563]">
+                                      {formatCount(store.placeMobileVolume)}
+                                    </span>
+                                  </span>
+                                  <span
+                                    className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap"
+                                    aria-label={`PC 검색량 ${formatCount(store.placePcVolume)}`}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                                      style={{
+                                        backgroundImage:
+                                          'url("/icons/pc_gray.svg")',
+                                      }}
+                                    />
+                                    <span className="text-[13px] font-extrabold leading-none text-[#4b5563]">
+                                      {formatCount(store.placePcVolume)}
+                                    </span>
+                                  </span>
+                                </div>
                               </div>
 
                               <div className="flex shrink-0 items-center gap-1 md:hidden">
@@ -1895,28 +1931,14 @@ useEffect(() => {
                                   </a>
                                 ) : null}
 
-                                <button
-                                  onClick={() => handleDeleteStore(store)}
-                                  disabled={isDeleting}
-                                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fecdd3] bg-[#fff1f2] text-[#dc2626] transition hover:border-[#fda4af] hover:bg-[#ffe4e6] active:bg-[#fecdd3] ${
-                                    isDeleting ? "opacity-60" : ""
-                                  }`}
-                                  aria-label="삭제"
-                                >
-                                  {isDeleting ? (
-                                    <span className="text-[11px] text-[#dc2626]">...</span>
-                                  ) : (
-                                    <Trash2 className="h-4 w-4 stroke-[#dc2626]" strokeWidth={2} />
-                                  )}
-                                </button>
                               </div>
                             </div>
 
-                            <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:mt-1 md:text-[13px] md:text-[#6b7280]">
+                            <p className="mt-0.5 truncate text-xs leading-5 text-[#4b5563] md:leading-4 md:text-[13px] md:text-[#6b7280]">
                               {store.address || "-"}
                             </p>
 
-                            <div className="mt-1.5 grid grid-cols-4 gap-1.5 md:mt-2 md:flex md:flex-wrap md:gap-1.5">
+                            <div className="mt-1.5 grid grid-cols-4 gap-1.5 md:hidden">
                               <div className="flex h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:h-auto md:rounded-[12px] md:px-2.5 md:py-1.5">
                                 <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
                                   월 검색량
@@ -1968,18 +1990,9 @@ useEffect(() => {
                                   {trackingLabel}
                                 </div>
                               </button>
-
-                              <div className="hidden h-10 min-w-0 flex-col justify-center rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] px-1.5 md:flex md:h-auto md:rounded-[12px] md:px-2.5 md:py-1.5">
-                                <div className="truncate text-[10px] font-semibold leading-none text-[#6b7280]">
-                                  자동 추적
-                                </div>
-                                <div className="mt-1 truncate text-sm font-semibold leading-none text-[#111827] md:text-[14px] md:font-black">
-                                  {trackingLabel}
-                                </div>
-                              </div>
                             </div>
 
-                            <div className="mt-2 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-2 md:flex md:gap-1.5 md:text-[11px]">
+                            <div className="mt-2 hidden flex-wrap items-center gap-1.5 text-[11px] md:mt-1.5 md:flex md:gap-1.5 md:text-[11px]">
                               <span className="font-semibold text-[#6b7280]">
                                 바로가기
                               </span>
@@ -1989,7 +2002,7 @@ useEffect(() => {
                                   href={store.mobilePlaceLink}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-1"
+                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-0.5"
                                 >
                                   모바일
                                 </a>
@@ -2002,7 +2015,7 @@ useEffect(() => {
                                   href={store.pcPlaceLink}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-1"
+                                  className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-0.5"
                                 >
                                   PC
                                 </a>
@@ -2013,21 +2026,33 @@ useEffect(() => {
                           </div>
                         </div>
 
-                        <div className="ml-5 flex w-[calc(100%-1.25rem)] flex-nowrap items-center gap-1.5 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:gap-1.5 xl:overflow-visible">
+                        <div className="flex w-full flex-nowrap items-center gap-1 overflow-x-auto whitespace-nowrap overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:ml-0 md:w-auto md:self-end md:gap-1 md:overflow-visible xl:ml-auto xl:self-auto">
                           {/* 핀 */}
                           <button
                             type="button"
                             onClick={() => handleTogglePin(store)}
-                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f9fafb] md:h-[36px] md:w-[36px] md:rounded-[12px]`}
-                            aria-label="핀 고정"
+                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-transparent transition-colors hover:bg-[#f3f4f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#93c5fd] focus-visible:ring-offset-1 md:h-8 md:w-[30px] md:rounded-[10px] ${
+                              store.isPinned
+                                ? "text-[#2563EB]"
+                                : "text-[#6b7280]"
+                            }`}
+                            aria-label={store.isPinned ? "고정 해제" : "고정하기"}
+                            aria-pressed={store.isPinned}
+                            title={store.isPinned ? "고정 해제" : "고정하기"}
                           >
-                            <Pin
-                              className={`h-4 w-4 transition md:h-[18px] md:w-[18px] ${
-                                store.isPinned
-                                  ? "fill-[#b91c1c] stroke-[#b91c1c]"
-                                  : "stroke-[#6b7280]"
-                              }`}
-                              strokeWidth={2}
+                            <span
+                              aria-hidden="true"
+                              className="block h-[18px] w-[14px] shrink-0 bg-current"
+                              style={{
+                                WebkitMaskImage: `url(${store.isPinned ? "/icons/pin_enabled.svg" : "/icons/pin.svg"})`,
+                                maskImage: `url(${store.isPinned ? "/icons/pin_enabled.svg" : "/icons/pin.svg"})`,
+                                WebkitMaskPosition: "center",
+                                maskPosition: "center",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskRepeat: "no-repeat",
+                                WebkitMaskSize: "contain",
+                                maskSize: "contain",
+                              }}
                             />
                           </button>
                           {/* 업데이트 */}
@@ -2037,9 +2062,9 @@ useEffect(() => {
                             onMouseEnter={() => setUpdateHover({ id: rowId, x: updateHover.x, y: updateHover.y })}
                             onMouseLeave={() => setUpdateHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleUpdateMouseMove(e, rowId)}
-                            className={`relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[36px] md:flex-none md:shrink-0 md:rounded-[12px] md:px-3 md:text-[13px]`}
+                            className={`postlabs-action-button relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-2 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:flex-none md:shrink-0 md:rounded-[10px] md:px-2.5 md:text-[12px]`}
                           >
-                            <span className="relative z-30 pointer-events-none">
+                            <span className="relative z-30 pointer-events-none md:font-black">
                               {isChecking ? "업데이트 중..." : "업데이트"}
                             </span>
                             <div
@@ -2076,10 +2101,10 @@ useEffect(() => {
                             onMouseEnter={() => setRankChangeHover({ id: rowId, x: rankChangeHover.x, y: rankChangeHover.y })}
                             onMouseLeave={() => setRankChangeHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleRankChangeMouseMove(e, rowId)}
-                            className={`relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border px-2.5 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-[36px] md:flex-none md:shrink-0 md:rounded-[12px] md:px-3 md:text-[13px] ${rankChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
+                            className={`postlabs-action-button relative isolate inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] border px-2 text-[13px] font-bold transition-colors duration-0 ease-in-out md:h-8 md:flex-none md:shrink-0 md:rounded-[10px] md:px-2.5 md:text-[12px] ${rankChangeHover.id === rowId ? "border-[#2563EB] text-white" : "border-[#d1d5db] text-[#111827]"}`}
                           >
                             <span className="relative z-30 pointer-events-none md:hidden">순위변화</span>
-                            <span className="relative z-30 pointer-events-none hidden md:inline">순위변화보기</span>
+                            <span className="relative z-30 pointer-events-none hidden md:inline md:font-black">순위변화보기</span>
                             <div
                               className="pointer-events-none absolute inset-0 z-0 h-full w-full"
                               style={{
@@ -2115,7 +2140,7 @@ useEffect(() => {
                             onMouseEnter={() => setTrackingHover({ id: rowId, x: trackingHover.x, y: trackingHover.y })}
                             onMouseLeave={() => setTrackingHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleTrackingMouseMove(e, rowId)}
-                            className={`relative hidden h-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] px-2.5 text-xs font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:inline-flex md:h-[36px] md:rounded-[12px] md:px-3 md:text-[13px] ${
+                            className={`postlabs-action-button relative hidden h-8 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] px-2.5 text-xs font-bold transition-colors duration-0 ease-in-out disabled:cursor-not-allowed md:inline-flex md:h-8 md:rounded-[10px] md:px-2.5 md:text-[12px] ${
                               trackingMode === "ON"
                                 ? "bg-[#2563EB] text-white"
                                 : trackingMode === "MIXED"
@@ -2125,7 +2150,7 @@ useEffect(() => {
                                   : "bg-transparent border border-[#d1d5db] text-[#111827]"
                             } ${isTrackingLoading ? "opacity-60" : ""}`}
                           >
-                            <span className="relative z-30 pointer-events-none">
+                            <span className="relative z-30 pointer-events-none md:font-black">
                               {isTrackingLoading ? "처리 중..." : `자동추적 ${trackingLabel}`}
                             </span>
                             <div
@@ -2162,10 +2187,10 @@ useEffect(() => {
                             onMouseEnter={() => setKwManageHover({ id: rowId, x: kwManageHover.x, y: kwManageHover.y })}
                             onMouseLeave={() => setKwManageHover((prev) => prev.id === rowId ? { ...prev, id: null } : prev)}
                             onMouseMove={(e) => handleKwManageMouseMove(e, rowId)}
-                            className="relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-2.5 text-[13px] font-bold text-white transition-all duration-300 ease-in-out md:h-[36px] md:flex-none md:shrink-0 md:rounded-[12px] md:px-3 md:text-[13px]"
+                            className="postlabs-action-button relative inline-flex h-8 min-w-0 flex-1 items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-2 text-[13px] font-bold text-white transition-all duration-300 ease-in-out md:h-8 md:flex-none md:shrink-0 md:rounded-[10px] md:px-2.5 md:text-[12px]"
                           >
                             <span className="relative z-30 pointer-events-none md:hidden">키워드 관리</span>
-                            <span className="relative z-30 pointer-events-none hidden md:inline">키워드 관리</span>
+                            <span className="relative z-30 pointer-events-none hidden md:inline md:font-black">키워드 관리</span>
                             <div
                               className="pointer-events-none absolute inset-0 z-10 h-full w-full"
                               style={{
@@ -2195,20 +2220,12 @@ useEffect(() => {
                             />
                           </button>
                           {/* 삭제 */}
-                          <button
-                            onClick={() => handleDeleteStore(store)}
+                          <DeleteMoreMenu
                             disabled={isDeleting}
-                            className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white transition hover:bg-[#f3f4f6] md:inline-flex md:h-[36px] md:w-[36px] md:rounded-[12px] ${
-                              isDeleting ? "opacity-60" : ""
-                            }`}
-                            aria-label="삭제"
-                          >
-                            {isDeleting ? (
-                              <span className="text-[12px] text-[#111827]">...</span>
-                            ) : (
-                              <Trash2 className="h-4 w-4 stroke-[#111827] md:h-[18px] md:w-[18px]" strokeWidth={2} />
-                            )}
-                          </button>
+                            onDelete={() => handleDeleteStore(store)}
+                            buttonLabel="매장 더보기"
+                            menuLabel="매장 작업"
+                          />
                         </div>
                       </div>
                     </div>
@@ -2398,7 +2415,7 @@ useEffect(() => {
                   <button
                     onClick={closeRegisterModal}
                     disabled={Boolean(registeringPlaceKey)}
-                    className="rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
+                    className="postlabs-action-button rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
                   >
                     닫기
                   </button>
@@ -2425,7 +2442,7 @@ useEffect(() => {
                     onMouseMove={handleModalSearchMouseMove}
                     onClick={handlePlaceSearch}
                     disabled={placeSearchLoading}
-                    className={`relative inline-flex h-[44px] min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[50px] md:min-w-[100px] md:rounded-[16px] md:px-5 md:text-[15px] ${
+                    className={`postlabs-action-button relative inline-flex h-[44px] min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[13px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[50px] md:min-w-[100px] md:rounded-[16px] md:px-5 md:text-[15px] ${
                       placeSearchLoading ? "opacity-60" : ""
                     }`}
                   >
@@ -2522,7 +2539,7 @@ useEffect(() => {
                             disabled={
                               registeringPlaceKey === `${item.title}__${item.address}__${item.link}`
                             }
-                            className={`relative inline-flex h-10 shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[42px] md:min-w-[100px] md:rounded-[14px] md:px-4 md:text-[14px] ${
+                            className={`postlabs-action-button relative inline-flex h-10 shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#333333] px-3 text-[12px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed md:h-[42px] md:min-w-[100px] md:rounded-[14px] md:px-4 md:text-[14px] ${
                               registeringPlaceKey === `${item.title}__${item.address}__${item.link}`
                                 ? "opacity-60"
                                 : ""
@@ -2590,7 +2607,7 @@ useEffect(() => {
 
                   <button
                     onClick={closeKeywordModal}
-                    className="rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
+                    className="postlabs-action-button rounded-full border border-[#d1d5db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb] md:px-3 md:py-2 md:text-[13px]"
                   >
                     닫기
                   </button>

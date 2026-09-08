@@ -35,7 +35,11 @@ function createProgram(gl: GL, vertexSource: string, fragmentSource: string) {
   return program;
 }
 
-export default function MeshGradient() {
+type MeshGradientProps = {
+  visibilityTargetId?: string;
+};
+
+export default function MeshGradient({ visibilityTargetId }: MeshGradientProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -44,7 +48,7 @@ export default function MeshGradient() {
     if (!canvas) return;
     const gl = canvas.getContext("webgl", {
       alpha: true,
-      antialias: true,
+      antialias: false,
       powerPreference: "high-performance",
       premultipliedAlpha: false,
       preserveDrawingBuffer: false,
@@ -115,7 +119,7 @@ export default function MeshGradient() {
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const dpr = Math.max(1, Math.min(1.5, window.devicePixelRatio || 1));
       const w = Math.max(1, Math.floor(rect.width * dpr));
       const h = Math.max(1, Math.floor(rect.height * dpr));
       if (canvas.width !== w || canvas.height !== h) {
@@ -130,25 +134,63 @@ export default function MeshGradient() {
     ro.observe(canvas);
     resize();
 
+    const targetFps = window.matchMedia("(max-width: 767px)").matches ? 36 : 45;
+    const minFrameInterval = 1000 / targetFps;
     const t0 = performance.now();
+    let lastRenderAt = 0;
+    let pageVisible = document.visibilityState === "visible";
+    let targetVisible = true;
+
     const frame = (now: number) => {
+      rafRef.current = null;
+      if (!pageVisible || !targetVisible) return;
+
+      if (lastRenderAt === 0 || now - lastRenderAt >= minFrameInterval) {
+        const t = (now - t0) * 0.003;
+        if (timeLoc) gl.uniform1f(timeLoc, t);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        lastRenderAt = now - ((now - lastRenderAt) % minFrameInterval);
+      }
+
       rafRef.current = requestAnimationFrame(frame);
-      const t = (now - t0) * 0.003;
-      if (timeLoc) gl.uniform1f(timeLoc, t);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
     };
 
-    rafRef.current = requestAnimationFrame(frame);
+    const syncAnimation = () => {
+      if (pageVisible && targetVisible) {
+        if (rafRef.current === null) rafRef.current = requestAnimationFrame(frame);
+        return;
+      }
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      lastRenderAt = 0;
+    };
+
+    const handleVisibilityChange = () => {
+      pageVisible = document.visibilityState === "visible";
+      syncAnimation();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    const visibilityTarget = visibilityTargetId
+      ? document.getElementById(visibilityTargetId)
+      : canvas;
+    const intersectionObserver = new IntersectionObserver(([entry]) => {
+      targetVisible = entry?.isIntersecting ?? true;
+      syncAnimation();
+    });
+    intersectionObserver.observe(visibilityTarget || canvas);
+    syncAnimation();
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      intersectionObserver.disconnect();
       ro.disconnect();
       gl.deleteBuffer(vbo);
       gl.deleteProgram(program);
     };
-  }, []);
+  }, [visibilityTargetId]);
 
   return <canvas ref={canvasRef} className="h-full w-full" aria-hidden="true" />;
 }
-

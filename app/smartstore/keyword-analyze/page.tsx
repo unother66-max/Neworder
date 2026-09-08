@@ -300,7 +300,7 @@ export default function SmartstoreKeywordAnalyzePage() {
                           <button
                             type="button"
                             onClick={() => goDetail(item.keyword)}
-                            className="inline-flex h-9 items-center justify-center rounded-[12px] bg-[#eef2ff] px-3 text-[12px] font-black text-[#3730a3] transition hover:bg-[#3730a3] hover:text-white active:scale-[0.98]"
+                            className="postlabs-action-button inline-flex h-9 items-center justify-center rounded-[12px] bg-[#eef2ff] px-3 text-[12px] font-black text-[#3730a3] transition hover:bg-[#3730a3] hover:text-white active:scale-[0.98]"
                           >
                             분석
                           </button>

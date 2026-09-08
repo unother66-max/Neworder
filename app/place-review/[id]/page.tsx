@@ -136,7 +136,7 @@ function ReviewMetricCell({
   diff?: number | null;
 }) {
   return (
-    <td className="px-4 py-4 md:px-5">
+    <td className="px-4 py-4 md:px-5 md:py-2.5">
       <div className="flex items-center gap-2">
         <span className="text-[14px] font-bold tabular-nums text-[#111827] md:text-[15px]">
           {formatNumber(value)}
@@ -348,7 +348,7 @@ export default function PlaceReviewDetailPage() {
 
       {/* 🚨 상단 겹침 해결: pt-24 추가 */}
       <main className="min-h-screen bg-[#f8fafc] text-[#111827] pt-24">
-        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
+        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 md:py-4 lg:px-8">
           {loading ? (
             <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-8 text-[14px] text-[#6b7280] shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
               불러오는 중...
@@ -362,33 +362,57 @@ export default function PlaceReviewDetailPage() {
               매장 정보가 없습니다.
             </div>
           ) : (
-            <div className="space-y-5">
-              <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="flex min-w-0 gap-4">
+            <div className="space-y-5 md:space-y-4">
+              <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-5 md:py-3">
+                <div className="flex flex-col gap-4 md:gap-2 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="flex min-w-0 gap-4 md:flex-1 md:gap-2.5">
                   {place.imageUrl ? (
                     <img
                       src={place.imageUrl}
                       alt={place.name}
-                      className="h-[74px] w-[74px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
+                      className="h-[74px] w-[74px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px]"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="flex h-[74px] w-[74px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">
+                    <div className="flex h-[74px] w-[74px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px]">
                       이미지
                     </div>
                   )}
 
                   <div className="min-w-0 flex-1">
-                    <h1 className="text-[21px] font-black tracking-[-0.03em] text-[#111827]">
-                      {place.name}
-                    </h1>
-                    <p className="mt-1.5 text-[13px] text-[#6b7280]">
+                    <div className="flex min-w-0 flex-wrap items-center gap-3.5">
+                      <h1 className="min-w-0 truncate text-[21px] font-black tracking-[-0.03em] text-[#111827] md:max-w-[360px] md:text-[18px]">
+                        {place.name}
+                      </h1>
+                      <div className="hidden shrink-0 items-center gap-3.5 md:flex">
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                          <span
+                            aria-hidden="true"
+                            className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                            style={{ backgroundImage: 'url("/icons/mobile_gray.svg")' }}
+                          />
+                          <span className="text-[13px] font-extrabold leading-none text-[#4b5563]">
+                            {formatNumber(place.placeMobileVolume ?? 0)}
+                          </span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                          <span
+                            aria-hidden="true"
+                            className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                            style={{ backgroundImage: 'url("/icons/pc_gray.svg")' }}
+                          />
+                          <span className="text-[13px] font-extrabold leading-none text-[#4b5563]">
+                            {formatNumber(place.placePcVolume ?? 0)}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                    <p className="mt-1.5 text-[13px] text-[#6b7280] md:mt-1 md:truncate md:leading-4">
                       {place.jibunAddress || place.address || "-"}
                     </p>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2 md:hidden">
                       <div className="rounded-[12px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2">
                         <div className="text-[11px] text-[#9ca3af]">월 검색량</div>
                         <div className="mt-1 text-[15px] font-semibold text-[#111827]">
@@ -411,7 +435,7 @@ export default function PlaceReviewDetailPage() {
                   </div>
                   </div>
 
-                  <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
+                  <div className="flex flex-nowrap items-center gap-2 overflow-x-auto md:gap-1 xl:overflow-visible">
                     <button
                       type="button"
                       onClick={async () => {
@@ -454,7 +478,7 @@ export default function PlaceReviewDetailPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setTrackingMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                       }}
-                      className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`postlabs-action-button relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:rounded-[10px] md:px-2.5 md:text-[12px] md:font-extrabold ${
                         place.reviewAutoTracking
                           ? "bg-[#2563EB] text-white"
                           : trackingHover
@@ -531,7 +555,7 @@ export default function PlaceReviewDetailPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setUpdateMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                       }}
-                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60"
+                      className="postlabs-action-button relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:rounded-[10px] md:px-2.5 md:text-[12px] md:font-extrabold"
                     >
                       <span className="relative z-30 pointer-events-none">
                         {updating ? "업데이트 중..." : "업데이트"}
@@ -567,13 +591,13 @@ export default function PlaceReviewDetailPage() {
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-[#e5e7eb] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:p-6">
-                <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="rounded-[22px] border border-[#e5e7eb] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:p-5">
+                <div className="mb-4 flex flex-col gap-3 md:mb-3 md:flex-row md:items-center md:justify-between md:gap-2">
                   <div>
                     <div className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
                       리뷰 변화 그래프
                     </div>
-                    <div className="mt-1 text-[12px] text-[#9ca3af]">
+                    <div className="mt-0.5 text-[12px] text-[#9ca3af]">
                       최근 1년의 날짜별 {valueLabel} 추이를 표시합니다.
                     </div>
                   </div>
@@ -581,7 +605,7 @@ export default function PlaceReviewDetailPage() {
                   <div
                     role="group"
                     aria-label="리뷰 변화 그래프 지표"
-                    className="flex flex-wrap gap-2"
+                    className="flex flex-wrap gap-2 md:gap-1.5"
                   >
                     {(
                       [
@@ -598,8 +622,8 @@ export default function PlaceReviewDetailPage() {
                         onClick={() => setMetric(m.key)}
                         className={
                           metric === m.key
-                            ? "rounded-full bg-[#111827] px-3 py-1.5 text-[12px] font-bold text-white"
-                            : "rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 text-[12px] font-bold text-[#111827] hover:bg-[#f9fafb]"
+                            ? "rounded-full bg-[#111827] px-3 py-1.5 text-[12px] font-bold text-white md:px-2.5 md:py-1"
+                            : "rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 text-[12px] font-bold text-[#111827] hover:bg-[#f9fafb] md:px-2.5 md:py-1"
                         }
                       >
                         {m.label}
@@ -609,7 +633,7 @@ export default function PlaceReviewDetailPage() {
                 </div>
 
                 {values.length > 0 ? (
-                  <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-4">
+                  <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-4 md:py-3">
                     <div className="h-[280px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
@@ -678,7 +702,7 @@ export default function PlaceReviewDetailPage() {
                       </ResponsiveContainer>
                     </div>
                     {recentUpdatedAt ? (
-                      <div className="mt-3 text-right text-[12px] font-semibold text-[#9ca3af]">
+                      <div className="mt-2 text-right text-[12px] font-semibold text-[#9ca3af]">
                         최근 업데이트: {formatDateTimeLabel(recentUpdatedAt)}
                       </div>
                     ) : null}
@@ -723,7 +747,7 @@ export default function PlaceReviewDetailPage() {
                           <th
                             key={h}
                             scope="col"
-                            className={`px-4 py-3.5 text-left text-[12px] font-extrabold text-[#6b7280] md:px-5 ${
+                            className={`px-4 py-3.5 text-left text-[12px] font-extrabold text-[#6b7280] md:px-5 md:py-2.5 ${
                               index === 0
                                 ? "sticky left-0 z-10 min-w-[96px] bg-[#f9fafb]"
                                 : "min-w-[152px]"
@@ -750,7 +774,7 @@ export default function PlaceReviewDetailPage() {
                             key={row.id}
                             className="border-t border-[#f3f4f6] bg-white transition hover:bg-[#fcfcfc]"
                           >
-                            <td className="sticky left-0 z-[1] whitespace-nowrap bg-white px-4 py-4 text-[12px] font-bold text-[#374151] md:px-5">
+                            <td className="sticky left-0 z-[1] whitespace-nowrap bg-white px-4 py-4 text-[12px] font-bold text-[#374151] md:px-5 md:py-2.5">
                               {formatHistoryDateLabel(
                                 row.trackedDate,
                                 row.updatedAt || row.createdAt
@@ -894,7 +918,7 @@ export default function PlaceReviewDetailPage() {
                         type="button"
                         onClick={loadMoreHistory}
                         disabled={historyLoadingMore}
-                        className="inline-flex h-[42px] min-w-[160px] items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[13px] font-bold text-[#111827] transition hover:border-[#2563EB] hover:bg-[#eff6ff] hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60 md:h-[38px] md:rounded-[12px] md:px-4"
+                        className="postlabs-action-button inline-flex h-[42px] min-w-[160px] items-center justify-center rounded-[14px] border border-[#d1d5db] bg-white px-5 text-[13px] font-bold text-[#111827] transition hover:border-[#2563EB] hover:bg-[#eff6ff] hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60 md:h-[38px] md:rounded-[12px] md:px-4"
                       >
                         {historyLoadingMore
                           ? "불러오는 중..."

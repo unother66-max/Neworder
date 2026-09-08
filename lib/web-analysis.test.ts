@@ -74,14 +74,14 @@ describe("web analysis keyword validation", () => {
 describe("Naver web search URL generation", () => {
   it.each([
     [2, 1],
-    [3, 16],
-    [4, 31],
-    [5, 46],
-    [6, 61],
-    [7, 76],
-    [8, 91],
-    [9, 106],
-    [10, 121],
+    [3, 21],
+    [4, 41],
+    [5, 61],
+    [6, 81],
+    [7, 101],
+    [8, 121],
+    [9, 141],
+    [10, 161],
   ])("maps page %i to start %i", (page, start) => {
     expect(getWebAnalysisStart(page)).toBe(start);
 
@@ -89,7 +89,11 @@ describe("Naver web search URL generation", () => {
     expect(url.searchParams.get("page")).toBe(String(page));
     expect(url.searchParams.get("start")).toBe(String(start));
     expect(url.searchParams.get("query")).toBe("뉴오더클럽 한남");
-    expect(url.searchParams.get("where")).toBe("web");
+    expect(url.searchParams.get("ssc")).toBe("tab.ur.all");
+    expect(url.searchParams.get("sm")).toBe("tab_pge");
+    expect(url.searchParams.get("qdt")).toBe("0");
+    expect(url.searchParams.get("nso")).toBe("");
+    expect(url.searchParams.has("where")).toBe(false);
   });
 
   it("requests exactly pages 2 through 10", () => {
@@ -98,6 +102,73 @@ describe("Naver web search URL generation", () => {
 });
 
 describe("Naver web result parsing", () => {
+  it("keeps normal web, UGC, and Knowledge iN results in DOM order", () => {
+    const html = `
+      <main>
+        <div class="fds-ugc-single-intention-item-list">
+          <a href="https://ader.naver.com/ad">
+            <span class="sds-comps-text-type-headline1">광고 문서</span>
+          </a>
+        </div>
+        <div class="fds-web-doc-root">
+          <span class="sds-comps-profile-info-title-text">식신</span>
+          <a href="https://www.siksinhot.com/a">
+            <span class="sds-comps-text-type-headline1">식신 결과</span>
+          </a>
+        </div>
+        <div class="fds-ugc-single-intention-item-list-rra">
+          <div class="sds-comps-profile">
+            <span class="sds-comps-profile-info-title-text">작성자</span>
+            <img src="https://example.com/profile.jpg">
+          </div>
+          <a href="https://blog.naver.com/postlabs/1">
+            <span class="sds-comps-text-type-headline1">네이버 블로그 결과</span>
+          </a>
+          <a href="https://blog.naver.com/postlabs/1" class="fds-ugc-ellipsis3">
+            <span class="sds-comps-text-type-body1">블로그 설명</span>
+          </a>
+          <a href="https://blog.naver.com/postlabs/1">
+            <img src="https://search.pstatic.net/blog-thumb.jpg">
+          </a>
+        </div>
+        <div class="recommend-carousel">
+          <a href="https://example.com/recommend">
+            <span class="sds-comps-text-type-headline1">추천 캐러셀</span>
+          </a>
+        </div>
+        <div class="fds-web-doc-root">
+          <span class="sds-comps-profile-info-title-text">다이닝코드</span>
+          <a href="https://www.diningcode.com/a">
+            <span class="sds-comps-text-type-headline1">다이닝코드 결과</span>
+          </a>
+        </div>
+        <div class="fds-kin-rra-item-list">
+          <span class="sds-comps-profile-info-title-text">지식iN</span>
+          <a href="https://kin.naver.com/qna/detail.naver?docId=1">
+            <span class="sds-comps-text-type-headline1">지식iN 결과</span>
+          </a>
+        </div>
+      </main>
+    `;
+
+    const results = parseNaverWebSearchHtml(html, 2);
+
+    expect(results.map(({ title, positionInPage }) => ({
+      title,
+      positionInPage,
+    }))).toEqual([
+      { title: "식신 결과", positionInPage: 1 },
+      { title: "네이버 블로그 결과", positionInPage: 2 },
+      { title: "다이닝코드 결과", positionInPage: 3 },
+      { title: "지식iN 결과", positionInPage: 4 },
+    ]);
+    expect(results[1]).toMatchObject({
+      source: "네이버 블로그",
+      snippet: "블로그 설명",
+      thumbnail: "https://search.pstatic.net/blog-thumb.jpg",
+    });
+  });
+
   it("collects one representative result per result card", () => {
     const results = parseNaverWebSearchHtml(
       resultHtml({

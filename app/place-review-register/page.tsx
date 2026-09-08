@@ -211,7 +211,7 @@ export default function PlaceReviewRegisterPage() {
           <button
             type="button"
             onClick={() => router.push("/place-review")}
-            className="ml-8 flex h-[92px] w-[118px] shrink-0 items-center justify-center rounded-full border border-[#c8cdd4] bg-[#f7f7f8] text-[26px] font-medium text-[#6b7280] transition hover:bg-white"
+            className="postlabs-action-button ml-8 flex h-[92px] w-[118px] shrink-0 items-center justify-center rounded-full border border-[#c8cdd4] bg-[#f7f7f8] text-[26px] font-medium text-[#6b7280] transition hover:bg-white"
           >
             닫기
           </button>
@@ -236,7 +236,7 @@ export default function PlaceReviewRegisterPage() {
               type="button"
               onClick={handlePlaceSearch}
               disabled={placeSearchLoading}
-              className="h-[100px] min-w-[210px] rounded-[30px] bg-[#c91717] px-10 text-[24px] font-bold text-white shadow-[0_18px_34px_rgba(201,23,23,0.16)] transition hover:bg-[#ae1414] disabled:opacity-60"
+              className="postlabs-action-button h-[100px] min-w-[210px] rounded-[30px] bg-[#c91717] px-10 text-[24px] font-bold text-white shadow-[0_18px_34px_rgba(201,23,23,0.16)] transition hover:bg-[#ae1414] disabled:opacity-60"
             >
               {placeSearchLoading ? "검색 중..." : "매장 검색"}
             </button>
@@ -306,7 +306,7 @@ export default function PlaceReviewRegisterPage() {
                       type="button"
                       onClick={() => handleRegisterPlace(item)}
                       disabled={registeringName === item.title}
-                      className="h-[60px] min-w-[130px] rounded-[18px] bg-[#c91717] px-6 text-[18px] font-bold text-white transition hover:bg-[#ae1414] disabled:opacity-60"
+                      className="postlabs-action-button h-[60px] min-w-[130px] rounded-[18px] bg-[#c91717] px-6 text-[18px] font-bold text-white transition hover:bg-[#ae1414] disabled:opacity-60"
                     >
                       {registeringName === item.title ? "등록 중..." : "등록"}
                     </button>

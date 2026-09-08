@@ -28,7 +28,7 @@ const ROLE_LABEL: Record<Role, string> = {
 const inputClass =
   "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-500";
 const buttonClass =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white disabled:opacity-50";
+  "postlabs-action-button inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white disabled:opacity-50";
 
 export function NewOrderOperatorAdmin() {
   const [operators, setOperators] = useState<Operator[]>([]);

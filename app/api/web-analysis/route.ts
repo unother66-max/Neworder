@@ -5,6 +5,12 @@ import {
   validateWebAnalysisKeyword,
 } from "@/lib/web-analysis";
 import { requireAuthApi } from "@/lib/require-auth-api";
+import {
+  loadWebAnalysisRankHistory,
+  saveWebAnalysisSnapshot,
+  WEB_ANALYSIS_PARTIAL_SNAPSHOT_MESSAGE,
+  WEB_ANALYSIS_SNAPSHOT_SAVE_FAILED_MESSAGE,
+} from "@/lib/web-analysis-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +59,37 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, ...analysis });
+    let rankHistory;
+    let snapshotSaved = false;
+    const isPartialCollection = analysis.failedPages.length > 0;
+    let snapshotWarning: string | null = isPartialCollection
+      ? WEB_ANALYSIS_PARTIAL_SNAPSHOT_MESSAGE
+      : null;
+
+    try {
+      if (isPartialCollection) {
+        rankHistory = await loadWebAnalysisRankHistory(validation.keyword);
+      } else {
+        rankHistory = await saveWebAnalysisSnapshot({
+          keyword: validation.keyword,
+          results: analysis.results,
+        });
+        snapshotSaved = true;
+      }
+    } catch (snapshotError) {
+      console.error("[web-analysis snapshot]", snapshotError);
+      if (!isPartialCollection) {
+        snapshotWarning = WEB_ANALYSIS_SNAPSHOT_SAVE_FAILED_MESSAGE;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      ...analysis,
+      rankHistory,
+      snapshotSaved,
+      snapshotWarning,
+    });
   } catch (error) {
     console.error("[web-analysis]", error);
     return NextResponse.json(

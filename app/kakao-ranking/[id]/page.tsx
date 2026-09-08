@@ -4,8 +4,11 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import TopNav from "@/components/top-nav";
 import { useSession } from "next-auth/react";
-import { Pin } from "lucide-react";
 import Tooltip from "@/components/Tooltip";
+import {
+  PinnedStatusIcon,
+  PinToggleButton,
+} from "@/components/pin-toggle-button";
 
 type KakaoRankRow = {
   id: string;
@@ -210,7 +213,7 @@ export default function KakaoRankingDetailPage() {
         <TopNav active="kakao-ranking" />
         <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f8fafc] pt-24">
           <p className="text-[15px] text-[#6b7280]">{fetchError}</p>
-          <button type="button" onClick={() => router.back()} className="rounded-[14px] border border-[#d1d5db] bg-white px-5 py-2 text-[14px] font-bold text-[#111827] hover:bg-[#f9fafb]">← 목록으로</button>
+          <button type="button" onClick={() => router.back()} className="postlabs-action-button rounded-[14px] border border-[#d1d5db] bg-white px-5 py-2 text-[14px] font-bold text-[#111827] hover:bg-[#f9fafb]">← 목록으로</button>
         </main>
       </>
     );
@@ -237,7 +240,7 @@ export default function KakaoRankingDetailPage() {
                       {store.imageUrl ? <img src={store.imageUrl} alt={store.name} className="h-[72px] w-[72px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]" referrerPolicy="no-referrer" /> : <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">이미지</div>}
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          {store.isPinned && <Pin className="h-[14px] w-[14px] fill-[#2563EB] stroke-[#2563EB]" />}
+                          {store.isPinned && <PinnedStatusIcon />}
                           <h1 className="text-[22px] font-black tracking-[-0.03em] text-[#111827]">{store.name}</h1>
                           {store.category && <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">{store.category}</span>}
                         </div>
@@ -247,15 +250,19 @@ export default function KakaoRankingDetailPage() {
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
-                      <button onClick={handleTogglePin} disabled={pinning} className={`inline-flex h-[42px] w-[42px] items-center justify-center rounded-[14px] border transition ${store.isPinned ? "border-[#2563EB] bg-white" : "border-[#d1d5db] bg-white hover:bg-[#f9fafb]"} ${pinning ? "opacity-60" : ""}`} aria-label="상단 고정">
-                        <Pin className={`h-[18px] w-[18px] ${store.isPinned ? "fill-[#2563EB] stroke-[#2563EB]" : "stroke-[#6b7280]"}`} strokeWidth={2} />
-                      </button>
+                      <PinToggleButton
+                        onClick={handleTogglePin}
+                        disabled={pinning}
+                        pinned={store.isPinned}
+                        pinnedLabel="상단 고정 해제"
+                        unpinnedLabel="상단 고정"
+                      />
 
                       <button
                         onClick={handleToggleTracking} disabled={trackingLoading}
                         onMouseEnter={() => setTrackingHover(true)} onMouseLeave={() => setTrackingHover(false)}
                         onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTrackingMousePos({ x: e.clientX - r.left, y: e.clientY - r.top }); }}
-                        className={`relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:opacity-60 ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
+                        className={`postlabs-action-button relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:opacity-60 ${store.isAutoTracking ? "bg-[#2563EB] text-white" : trackingHover ? "border border-[#2563EB] text-white" : "border border-[#d1d5db] bg-white text-[#111827]"}`}
                       >
                         <span className="relative z-30 pointer-events-none">{trackingLoading ? "처리 중..." : `자동추적 ${store.isAutoTracking ? "ON" : "OFF"}`}</span>
                         <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: trackingHover ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />
@@ -266,7 +273,7 @@ export default function KakaoRankingDetailPage() {
                         onClick={handleCheckRank} disabled={checking}
                         onMouseEnter={() => setUpdateHover(true)} onMouseLeave={() => setUpdateHover(false)}
                         onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setUpdateMousePos({ x: e.clientX - r.left, y: e.clientY - r.top }); }}
-                        className="relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
+                        className="postlabs-action-button relative isolate inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:opacity-60"
                       >
                         <span className="relative z-30 pointer-events-none">{checking ? "업데이트 중..." : "업데이트"}</span>
                         <div className="absolute inset-0 z-10 w-full h-full bg-[#2563EB]" style={{ transformOrigin: "left", transform: updateHover ? "scaleX(1)" : "scaleX(0)", transition: "transform 300ms cubic-bezier(0.19, 1, 0.22, 1)" }} />

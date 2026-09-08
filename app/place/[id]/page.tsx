@@ -82,6 +82,23 @@ function formatDateLabel(value: string) {
   return `${mm}/${dd}`;
 }
 
+function formatDesktopDateLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatDateLabel(value);
+
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(date);
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
+
+  return `${month}/${day}(${weekday})`;
+}
+
 function formatCount(value?: number | null) {
   if (value === null || value === undefined) return "-";
   return Number(value).toLocaleString("ko-KR");
@@ -671,7 +688,7 @@ export default function PlaceDetailPage() {
 
       {/* 🚨 pt-24를 추가하여 메뉴 잘림 현상 해결! */}
       <main className="min-h-screen bg-[#f8fafc] text-[#111827] pt-24">
-        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 lg:px-8">
+        <section className="mx-auto max-w-[1240px] px-5 py-5 md:px-6 md:py-4 lg:px-8">
           {loading ? (
             <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-6 py-8 text-[14px] text-[#6b7280] shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
               불러오는 중...
@@ -685,27 +702,27 @@ export default function PlaceDetailPage() {
               매장 정보가 없습니다.
             </div>
           ) : (
-            <div className="space-y-5">
-              <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-6">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="flex min-w-0 gap-4">
+            <div className="flex flex-col gap-5 md:gap-4">
+              <div className="rounded-[22px] border border-[#e5e7eb] bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:px-5 md:py-3">
+                <div className="flex flex-col gap-2.5 md:gap-2 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="flex min-w-0 gap-2.5 md:flex-1 md:gap-2.5">
                     {place.imageUrl ? (
                       <img
                         src={place.imageUrl}
                         alt={place.name}
-                        className="h-[74px] w-[74px] shrink-0 rounded-[16px] object-cover ring-1 ring-[#e5e7eb]"
+                        className="h-14 w-14 shrink-0 rounded-[13px] object-cover ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px]"
                         loading="lazy"
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <div className="flex h-[74px] w-[74px] shrink-0 items-center justify-center rounded-[16px] bg-[#f3f4f6] text-[12px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb]">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[13px] bg-[#f3f4f6] text-[11px] font-semibold text-[#9ca3af] ring-1 ring-[#e5e7eb] md:h-14 md:w-14 md:rounded-[13px] md:text-[12px]">
                         이미지
                       </div>
                     )}
 
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h1 className="text-[21px] font-black tracking-[-0.03em] text-[#111827]">
+                        <h1 className="min-w-0 truncate text-[18px] font-black tracking-[-0.03em] text-[#111827] md:max-w-[300px] md:text-[18px]">
                           {place.name}
                         </h1>
 
@@ -714,13 +731,36 @@ export default function PlaceDetailPage() {
                             {place.category}
                           </span>
                         ) : null}
+
+                        <div className="flex w-full shrink-0 items-center gap-3.5 md:w-auto">
+                          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                            <span
+                              aria-hidden="true"
+                              className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                              style={{ backgroundImage: 'url("/icons/mobile_gray.svg")' }}
+                            />
+                            <span className="text-[13px] font-extrabold leading-none text-[#4b5563]">
+                              {formatCount(place.placeMobileVolume)}
+                            </span>
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                            <span
+                              aria-hidden="true"
+                              className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                              style={{ backgroundImage: 'url("/icons/pc_gray.svg")' }}
+                            />
+                            <span className="text-[13px] font-extrabold leading-none text-[#4b5563]">
+                              {formatCount(place.placePcVolume)}
+                            </span>
+                          </span>
+                        </div>
                       </div>
 
-                      <p className="mt-1.5 text-[13px] text-[#6b7280]">
+                      <p className="mt-1 text-[12px] leading-4 text-[#6b7280] md:mt-1 md:truncate md:text-[13px] md:leading-4">
                         {place.address || "-"}
                       </p>
 
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div className="hidden">
                         <div className="rounded-[12px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2">
                           <div className="text-[11px] text-[#9ca3af]">월 검색량</div>
                           <div className="mt-1 text-[15px] font-semibold text-[#111827]">
@@ -758,7 +798,7 @@ export default function PlaceDetailPage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] md:mt-1.5 md:gap-1.5 md:text-[11px]">
                         <span className="font-semibold text-[#6b7280]">
                           바로가기
                         </span>
@@ -767,7 +807,7 @@ export default function PlaceDetailPage() {
                           href={placeLinks.mobilePlaceLink}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
+                          className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-0.5"
                         >
                           모바일
                         </a>
@@ -776,7 +816,7 @@ export default function PlaceDetailPage() {
                           href={placeLinks.pcPlaceLink}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb]"
+                          className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 font-semibold text-[#111827] transition hover:bg-[#f9fafb] md:px-2.5 md:py-0.5"
                         >
                           PC
                         </a>
@@ -784,7 +824,7 @@ export default function PlaceDetailPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-nowrap items-center gap-2 overflow-x-auto xl:overflow-visible">
+                  <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto md:gap-1 xl:overflow-visible">
                     <button
                       onClick={handleToggleTracking}
                       disabled={trackingUpdating || !place?.keywords?.length}
@@ -794,7 +834,7 @@ export default function PlaceDetailPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setTrackingMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                       }}
-                      className={`relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-4 text-[14px] font-bold transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`postlabs-action-button relative inline-flex h-9 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[11px] px-3 text-[13px] font-semibold transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:rounded-[10px] md:px-2.5 md:text-[12px] md:font-extrabold ${
                         isAllTrackingOn
                           ? "bg-[#2563EB] text-white"
                           : trackingHover
@@ -841,7 +881,7 @@ export default function PlaceDetailPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setKwManageMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                       }}
-                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
+                      className="postlabs-action-button relative inline-flex h-9 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[11px] bg-[#333333] px-3 text-[13px] font-semibold text-white transition-all duration-300 ease-in-out md:h-8 md:rounded-[10px] md:px-2.5 md:text-[12px] md:font-extrabold"
                     >
                       <span className="relative z-30 pointer-events-none">키워드관리</span>
                       <div
@@ -881,7 +921,7 @@ export default function PlaceDetailPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setUpdateMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                       }}
-                      className="relative inline-flex h-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#333333] px-4 text-[14px] font-bold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60"
+                      className="postlabs-action-button relative inline-flex h-9 shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-[11px] bg-[#333333] px-3 text-[13px] font-semibold text-white transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:rounded-[10px] md:px-2.5 md:text-[12px] md:font-extrabold"
                     >
                       <span className="relative z-30 pointer-events-none">
                         {updating ? "업데이트 중..." : "업데이트"}
@@ -917,29 +957,34 @@ export default function PlaceDetailPage() {
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                <div className="border-b border-[#f3f4f6] px-5 py-4 md:px-6">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
-                      추적 키워드
-                    </h2>
-                    <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
-                      {place.keywords.length}개
-                    </span>
+              <div className="order-2 rounded-[22px] border border-[#e5e7eb] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:order-2">
+                <div className="border-b border-[#f3f4f6] px-5 py-4 md:px-5 md:py-3">
+                  <div className="md:flex md:items-end md:justify-between md:gap-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
+                        추적 키워드
+                      </h2>
+                      <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
+                        {place.keywords.length}개
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-4 text-[#9ca3af]">
+                      현재값 오른쪽의 ▲·▼ 표시는 바로 전날 대비 증감입니다.
+                    </p>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse">
+                <div className="overflow-x-auto overscroll-x-contain max-md:touch-pan-x max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
+                  <table className="min-w-full border-collapse md:min-w-[900px]">
                     <thead className="bg-[#f9fafb]">
                       <tr>
-                        <th className="px-5 py-3.5 text-left text-[12px] font-extrabold text-[#6b7280]">
+                        <th className="sticky left-0 z-20 w-[88px] min-w-[88px] bg-[#f9fafb] px-3 py-3 text-left text-[11px] font-extrabold text-[#6b7280] md:static md:z-auto md:w-[118px] md:min-w-0 md:px-5 md:py-3 md:text-[12px]">
                           날짜
                         </th>
                         {place.keywords.map((keyword) => (
                           <th
                             key={keyword.id}
-                            className="min-w-[180px] border-l border-[#e5e7eb] px-4 py-3.5 text-left"
+                            className="min-w-[165px] border-l border-[#e5e7eb] px-3 py-3 text-left md:min-w-[200px] md:px-5 md:py-3"
                           >
                             <div
                               role="button"
@@ -963,10 +1008,27 @@ export default function PlaceDetailPage() {
                             >
                               {keyword.keyword}
                             </div>
-                            <div className="mt-2 space-y-1 text-[11px] text-[#6b7280]">
-                              <div>월 검색량 {formatCount(keyword.totalVolume)}</div>
-                              <div>📱 {formatCount(keyword.mobileVolume)}</div>
-                              <div>🖥 {formatCount(keyword.pcVolume)}</div>
+                            <div className="mt-1 flex items-center gap-3 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1.5">
+                                <span
+                                  aria-hidden="true"
+                                  className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                                  style={{ backgroundImage: 'url("/icons/mobile_gray.svg")' }}
+                                />
+                                <span className="text-[11px] font-semibold tabular-nums text-[#4b5563]">
+                                  {formatCount(keyword.mobileVolume)}
+                                </span>
+                              </span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <span
+                                  aria-hidden="true"
+                                  className="h-3 w-[13px] shrink-0 bg-contain bg-center bg-no-repeat"
+                                  style={{ backgroundImage: 'url("/icons/pc_gray.svg")' }}
+                                />
+                                <span className="text-[11px] font-semibold tabular-nums text-[#4b5563]">
+                                  {formatCount(keyword.pcVolume)}
+                                </span>
+                              </span>
                             </div>
                           </th>
                         ))}
@@ -989,8 +1051,9 @@ export default function PlaceDetailPage() {
                             key={row.createdAt}
                             className="border-t border-[#f3f4f6] bg-white"
                           >
-                            <td className="whitespace-nowrap px-5 py-4 align-top text-[12px] font-semibold text-[#6b7280]">
-                              {formatDateLabel(row.createdAt)}
+                            <td className="sticky left-0 z-10 w-[88px] min-w-[88px] whitespace-nowrap bg-white px-3 py-3 align-middle text-[11px] font-bold text-[#374151] md:static md:z-auto md:w-auto md:min-w-0 md:px-5 md:py-3 md:text-[13px]">
+                              <span className="md:hidden">{formatDesktopDateLabel(row.createdAt)}</span>
+                              <span className="hidden md:inline">{formatDesktopDateLabel(row.createdAt)}</span>
                             </td>
 
                             {place.keywords.map((keyword) => {
@@ -1015,19 +1078,19 @@ export default function PlaceDetailPage() {
                               return (
                                 <td
                                   key={`${row.createdAt}-${keyword.id}`}
-                                  className="border-l border-[#f3f4f6] px-4 py-4 align-top"
+                                  className="border-l border-[#f3f4f6] px-3 py-3 align-middle md:px-5 md:py-3"
                                 >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <div className="text-[14px] font-black text-[#111827]">
+                                  <div className="flex items-center justify-between gap-2 whitespace-nowrap md:gap-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-[14px] font-black leading-none text-[#111827]">
                                         {rankMeta.main}
                                       </div>
-                                      <div className="mt-0.5 text-[11px] font-semibold text-[#9ca3af]">
+                                      <div className="whitespace-nowrap text-[11px] font-semibold leading-none text-[#9ca3af]">
                                         {rankMeta.sub}
                                       </div>
                                     </div>
 
-                                    <div className="pt-[2px] text-[11px] font-bold">
+                                    <div className="text-[11px] font-bold leading-none">
                                       {diff === null ? (
                                         <span className="text-[#9ca3af]">-</span>
                                       ) : diff > 0 ? (
@@ -1052,7 +1115,7 @@ export default function PlaceDetailPage() {
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-[#e5e7eb] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:p-6">
+              <div className="order-1 rounded-[22px] border border-[#e5e7eb] bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:order-1 md:p-5">
                 <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="text-[17px] font-black tracking-[-0.02em] text-[#111827]">
@@ -1063,15 +1126,15 @@ export default function PlaceDetailPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex w-full flex-nowrap gap-2 overflow-x-auto overscroll-x-contain whitespace-nowrap pb-1 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:w-auto md:flex-wrap md:overflow-visible md:pb-0">
                     {place.keywords.map((keyword) => (
                       <button
                         key={keyword.id}
                         onClick={() => setSelectedKeywordId(keyword.id)}
                         className={
                           selectedKeywordId === keyword.id
-                            ? "rounded-full bg-[#111827] px-3 py-1.5 text-[12px] font-bold text-white"
-                            : "rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 text-[12px] font-bold text-[#111827] hover:bg-[#f9fafb]"
+                            ? "shrink-0 rounded-full bg-[#111827] px-3 py-1.5 text-[12px] font-bold text-white"
+                            : "shrink-0 rounded-full border border-[#d1d5db] bg-white px-3 py-1.5 text-[12px] font-bold text-[#111827] hover:bg-[#f9fafb]"
                         }
                       >
                         {keyword.keyword}
@@ -1083,16 +1146,16 @@ export default function PlaceDetailPage() {
                 {selectedKeyword &&
                 selectedKeyword.currentRank !== "-" &&
                 chartData.length > 0 ? (
-                  <div className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-4">
-                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">
+                  <div className="space-y-3 md:space-y-4">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 md:px-4 md:py-3">
                         <div className="text-[11px] text-[#9ca3af]">선택 키워드</div>
                         <div className="mt-1 text-[13px] font-bold text-[#111827]">
                           {selectedKeyword.keyword}
                         </div>
                       </div>
 
-                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">
+                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 md:px-4 md:py-3">
                         <div className="text-[11px] text-[#9ca3af]">현재 순위</div>
                         <div className="mt-1 text-[13px] font-bold text-[#111827]">
                           {selectedKeyword.currentRank ??
@@ -1101,7 +1164,7 @@ export default function PlaceDetailPage() {
                         </div>
                       </div>
 
-                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">
+                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 md:px-4 md:py-3">
                         <div className="text-[11px] text-[#9ca3af]">최고 순위</div>
                         <div className="mt-1 text-[13px] font-bold text-[#111827]">
                           {selectedKeywordCurrentRank !== null
@@ -1112,7 +1175,7 @@ export default function PlaceDetailPage() {
                         </div>
                       </div>
 
-                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">
+                      <div className="rounded-[14px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 md:px-4 md:py-3">
                         <div className="text-[11px] text-[#9ca3af]">기록 수</div>
                         <div className="mt-1 text-[13px] font-bold text-[#111827]">
                           {chartData.length}개
@@ -1120,7 +1183,7 @@ export default function PlaceDetailPage() {
                       </div>
                     </div>
 
-                    <div className="h-[320px] rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-4">
+                    <div className="h-[260px] rounded-[18px] border border-[#e5e7eb] bg-white px-1 py-3 md:h-[320px] md:px-3 md:py-4">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
                           data={chartData}
@@ -1190,7 +1253,7 @@ export default function PlaceDetailPage() {
 
                   <button
                     onClick={() => setIsKeywordModalOpen(false)}
-                    className="rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]"
+                    className="postlabs-action-button rounded-full border border-[#d1d5db] bg-white px-3 py-2 text-[13px] font-semibold text-[#6b7280] transition hover:bg-[#f9fafb]"
                   >
                     닫기
                   </button>
@@ -1241,7 +1304,7 @@ export default function PlaceDetailPage() {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setAddKwMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                       }}
-                      className="relative inline-flex h-[48px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
+                      className="postlabs-action-button relative inline-flex h-[48px] min-w-[80px] shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#333333] px-5 text-[14px] font-bold text-white transition-all duration-300 ease-in-out"
                     >
                       <span className="relative z-30 pointer-events-none">추가</span>
                       <div

@@ -11,8 +11,8 @@ import {
   Minus,
   Plus,
   RefreshCw,
-  Trash2,
 } from "lucide-react";
+import { DeleteMoreMenu } from "@/components/delete-more-menu";
 
 const PRODUCT_CARD_PLACEHOLDER_IMG = "/file.svg";
 
@@ -470,9 +470,9 @@ export default function SmartstoreReviewTrackPage() {
     <main className="min-h-screen bg-[#f8fafc] pt-20 text-[#111111] md:pt-24">
       <TopNav activeSmartstoreSub="review-track" />
 
-      <section className="mx-auto max-w-[1240px] px-3 py-2 pb-16 md:px-6 md:py-5 lg:px-8">
-        <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-          <div className="flex flex-col gap-2.5 md:gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <section className="mx-auto max-w-[1240px] px-3 py-2 pb-16 md:px-6 md:py-4 lg:px-8">
+        <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-5 md:py-3 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-2.5 md:gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-[18px] font-black tracking-[-0.03em] text-[#111827] md:text-[26px]">
@@ -494,7 +494,7 @@ export default function SmartstoreReviewTrackPage() {
               <button
                 type="button"
                 className={`
-                  relative inline-flex h-[40px] min-w-0 items-center justify-center overflow-hidden rounded-[12px]
+                  postlabs-action-button relative inline-flex h-[40px] min-w-0 items-center justify-center overflow-hidden rounded-[12px]
                   bg-[#333333] px-3 text-[12px] font-bold text-white font-sans
                   transition-all duration-300 ease-in-out
                   md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]
@@ -552,7 +552,7 @@ export default function SmartstoreReviewTrackPage() {
               onMouseLeave={() => setIsSyncAllHovered(false)}
               onMouseMove={handleSyncAllMouseMove}
               className={`
-                relative inline-flex h-[40px] min-w-0 items-center justify-center overflow-hidden rounded-[12px]
+                postlabs-action-button relative inline-flex h-[40px] min-w-0 items-center justify-center overflow-hidden rounded-[12px]
                 bg-[#333333] px-3 text-[12px] font-bold text-white font-sans
                 transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-50
                 md:h-[44px] md:min-w-[108px] md:rounded-[14px] md:px-4 md:text-[13px]
@@ -605,7 +605,7 @@ export default function SmartstoreReviewTrackPage() {
           </div>
         ) : null}
 
-        <div className="mt-2.5 overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:mt-5 md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+        <div className="mt-2.5 overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:mt-4 md:rounded-[22px] md:px-5 md:py-3 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
           {selectedTarget ? (
             <div className="flex min-w-0 items-center gap-2.5 md:gap-4">
               <ProductThumb
@@ -638,7 +638,7 @@ export default function SmartstoreReviewTrackPage() {
         </div>
 
         <div className="mt-2.5 space-y-3 md:mt-5 md:space-y-4">
-          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-6 md:py-4 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+          <div className="rounded-[18px] border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-[0_4px_18px_rgba(15,23,42,0.035)] md:rounded-[22px] md:px-5 md:py-3 md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             <div className="flex flex-wrap items-center justify-between gap-1.5 md:gap-2">
               <div>
                 <div className="flex items-center gap-2">
@@ -681,7 +681,7 @@ export default function SmartstoreReviewTrackPage() {
                   key={t.id}
                   className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition hover:shadow-[0_8px_24px_rgba(15,23,42,0.055)] md:rounded-[22px] md:shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-6 md:py-4">
+                  <div className="border-b border-[#f3f4f6] bg-[#fcfcfc] px-3 py-2.5 md:px-5 md:py-3">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                       <div className="flex min-w-0 flex-1 gap-2.5 md:gap-4 xl:min-w-0">
                         <ProductThumb src={t.target.imageUrl} alt={t.target.name} />
@@ -747,7 +747,7 @@ export default function SmartstoreReviewTrackPage() {
                         onMouseEnter={() => setUpdateHover({ id: t.id, x: updateHover.x, y: updateHover.y })}
                         onMouseLeave={() => setUpdateHover((prev) => prev.id === t.id ? { ...prev, id: null } : prev)}
                         onMouseMove={(e) => handleUpdateMouseMove(e, t.id)}
-                        className={`relative inline-flex h-8 min-w-[104px] items-center justify-center overflow-hidden rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-[42px] md:min-w-[118px] md:rounded-[14px] md:px-4 md:text-[13px]`}
+                        className={`postlabs-action-button relative inline-flex h-8 min-w-[104px] items-center justify-center overflow-hidden whitespace-nowrap rounded-[10px] bg-[#333333] px-3 text-[12px] font-bold text-white font-sans transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:min-w-[104px] md:px-2.5 md:text-[12px] md:font-extrabold`}
                       >
                         <span className="relative z-30 inline-flex items-center gap-1.5 pointer-events-none">
                           <RefreshCw
@@ -784,23 +784,19 @@ export default function SmartstoreReviewTrackPage() {
                           }}
                         />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => removeTarget(t.id)}
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#e5e7eb] bg-white text-[#6b7280] transition hover:border-[#d1d5db] hover:bg-[#f9fafb] hover:text-[#111827] md:h-[42px] md:w-[42px] md:rounded-[14px]`}
-                        aria-label="삭제"
-                        title="삭제"
-                      >
-                        <Trash2 size={15} strokeWidth={2} />
-                      </button>
+                      <DeleteMoreMenu
+                        onDelete={() => removeTarget(t.id)}
+                        buttonLabel="상품 더보기"
+                        menuLabel="상품 작업"
+                      />
                       </div>
                     </div>
                   </div>
 
                   {stars ? (
-                    <div className="px-3 py-2.5 md:px-6 md:py-4">
+                    <div className="px-3 py-2.5 md:px-5 md:py-3">
                       <div className="rounded-[14px] border border-[#e5e7eb] bg-white px-3 py-2.5 md:rounded-[16px] md:px-4 md:py-3">
-                        <div className="grid grid-cols-5 gap-2 md:gap-4">
+                        <div className="grid grid-cols-5 gap-2 md:gap-2.5">
                           <StarTrackTick label="5점" count={stars["5"]} total={totalStars} />
                           <StarTrackTick label="4점" count={stars["4"]} total={totalStars} />
                           <StarTrackTick label="3점" count={stars["3"]} total={totalStars} />
