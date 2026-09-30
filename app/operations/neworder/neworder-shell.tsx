@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Boxes,
+  MapPin,
   Menu,
   PackageSearch,
   ShoppingCart,
@@ -24,6 +25,11 @@ const NAV_ITEMS = [
     icon: ShoppingCart,
   },
   { href: "/operations/neworder/items", label: "품목 관리", icon: Boxes },
+  {
+    href: "/operations/neworder/place-id",
+    label: "플레이스 ID 조회",
+    icon: MapPin,
+  },
 ] as const;
 
 const ROLE_LABEL = {
